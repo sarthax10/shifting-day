@@ -1083,6 +1083,53 @@ export function plankSignArt(): Art {
   return { key: 'sign_plank', svg: p.svg(w, h), w, h };
 }
 
+/**
+ * A toll booth on a hill: a little striped-roof hut with a sleepy attendant in the window (cap, moustache,
+ * eyes shut), and the striped post the barrier hinges on at its left edge.
+ */
+export function tollBoothArt(): Art {
+  const p = pen('toll_booth');
+  const w = 220;
+  const h = 330;
+  // The post the barrier swings on.
+  p.rect(18, h - 200, 24, 200, { fill: C.cream, r: 4, width: 4.5 });
+  for (let y = h - 190; y < h - 10; y += 40) p.rect(18, y, 24, 18, { fill: C.terracotta, r: 0, stroke: null });
+  p.ellipse(30, h - 184, 18, 18, { fill: '#9AA0B5', width: 4 });
+  // The hut.
+  p.rect(64, 130, 140, h - 132, { fill: C.sky, r: 8, width: 6, shade: [{ pts: [[160, 120], [220, 120], [220, h], [164, h]], color: '#4E96B4' }] });
+  for (let y = 150; y < h - 10; y += 22) p.line([[70, y], [198, y]], { width: 2, color: '#00000022', raw: true });
+  // A striped awning.
+  p.shape([[50, 136], [134, 88], [218, 136]], { fill: C.cream, raw: true, width: 6 });
+  for (let i = 0; i < 4; i++) p.shape([[62 + i * 40, 130 - i * 0], [82 + i * 40, 118 - (i < 2 ? i * 12 : (3 - i) * 12) - 6], [102 + i * 40, 130]], { fill: C.terracotta, raw: true, stroke: null });
+  p.rect(48, 130, 172, 14, { fill: C.terracottaDark, r: 4, width: 4 });
+  // The window, with the attendant asleep in it.
+  p.rect(84, 160, 100, 82, { fill: '#FFD98A', r: 6, width: 5 });
+  p.ellipse(134, 222, 30, 26, { fill: C.cream, width: 4 });
+  p.shape([[104, 206], [110, 190], [134, 184], [158, 190], [164, 206]], { fill: C.dusk, width: 4 });
+  p.rect(100, 202, 72, 8, { fill: C.dusk, r: 3, width: 3 });
+  p.line([[120, 222], [128, 225]], { width: 3, raw: true });
+  p.line([[140, 225], [148, 222]], { width: 3, raw: true });
+  p.shape([[124, 232], [134, 228], [144, 232], [140, 238], [128, 238]], { fill: C.walnut, raw: true, width: 2.5 });
+  p.rect(80, 238, 108, 12, { fill: C.walnut, r: 3, width: 4 });
+  // A sign over the window, and a door.
+  p.rect(92, 262, 84, 26, { fill: C.cream, r: 4, width: 3.5 });
+  for (const [x0, x1] of [[100, 118], [124, 142], [148, 168]] as const) p.line([[x0, 275], [x1, 275]], { width: 4, raw: true, color: C.terracottaDark });
+  p.rect(110, 296, 50, h - 296, { fill: C.walnut, r: 4, width: 4 });
+  return { key: 'toll_booth', svg: p.svg(w, h), w, h };
+}
+
+/** The toll barrier: a long striped pole with a counterweight at the hinged end. */
+export function tollArmArt(): Art {
+  const p = pen('toll_arm');
+  const w = 400;
+  const h = 44;
+  p.rect(4, 12, w - 50, 20, { fill: C.cream, r: 10, width: 4.5 });
+  for (let x = 20; x < w - 60; x += 56) p.shape([[x, 14], [x + 26, 14], [x + 16, 30], [x - 10, 30]], { fill: C.terracotta, raw: true, stroke: null });
+  p.ellipse(12, 22, 7, 7, { fill: '#FF6B4A', width: 2.5 });
+  p.rect(w - 56, 4, 50, 36, { fill: '#9AA0B5', r: 6, width: 4.5 });
+  return { key: 'toll_arm', svg: p.svg(w, h), w, h };
+}
+
 /** A signpost pointing home, with a little house on it. */
 export function homeSignArt(): Art {
   const p = pen('sign_home');
@@ -1647,40 +1694,81 @@ export function loadArt(textures: Phaser.Textures.TextureManager, art: Art): Pro
 export type CursorKind = 'point' | 'open' | 'grab' | 'rope';
 export const CURSOR_KINDS: CursorKind[] = ['point', 'open', 'grab', 'rope'];
 /** Where in each 48-pixel cursor picture the click lands. */
-export const CURSOR_HOTSPOT: Record<CursorKind, [number, number]> = { point: [7, 5], open: [24, 22], grab: [24, 24], rope: [24, 24] };
+export const CURSOR_HOTSPOT: Record<CursorKind, [number, number]> = { point: [5, 4], open: [22, 24], grab: [24, 26], rope: [24, 24] };
 
-/** The game's own mouse pointers, inked like everything else: an arrow, an open hand, a fist, and a coil of rope. */
+/**
+ * The game's own mouse pointers, as cartoon gloves: an arrow with a cuff, an open glove over things you can
+ * pick up, a fist while carrying, and a lasso for roping. Each has a soft drop shadow so it reads on any colour.
+ */
 export function cursorArt(kind: CursorKind): Art {
   const key = `cursor_${kind}`;
   const p = new Pen(key, 0, 0);
   p.plain = true;
-  const skin = C.cream;
+  p.steady = true;
+  const GLOVE = '#FFFDF6';
+  const FOLD = '#D9CFE0';
+  const CUFF = C.terracotta;
+  const INK = C.ink;
+  const o = { width: 3, wobble: 0 };
+  /** Draws a shape twice: a soft shadow down and to the right, then the shape itself. */
+  const solid = (pts: Pt[], fill: string, raw = true) => {
+    p.shape(pts.map(([x, y]) => [x + 2, y + 3] as Pt), { fill: '#2A2140', stroke: null, raw, wobble: 0, opacity: 0.28 });
+    p.shape(pts, { fill, stroke: INK, raw, ...o });
+  };
+  const rr = (x: number, y: number, w: number, h: number, r: number): Pt[] => {
+    const pts: Pt[] = [];
+    const corner = (cx: number, cy: number, a0: number) => {
+      for (let i = 0; i <= 4; i++) {
+        const a = a0 + (i / 4) * (Math.PI / 2);
+        pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+      }
+    };
+    corner(x + w - r, y + r, -Math.PI / 2);
+    corner(x + w - r, y + h - r, 0);
+    corner(x + r, y + h - r, Math.PI / 2);
+    corner(x + r, y + r, Math.PI);
+    return pts;
+  };
+
   if (kind === 'point') {
-    p.shape([[7, 5], [7, 38], [15, 30], [21, 43], [28, 40], [22, 27], [34, 27]], { fill: skin, raw: true, width: 3.2, wobble: 0.5 });
-    p.line([[10, 12], [10, 26]], { width: 2, color: C.creamShade, raw: true });
+    // A crisp arrow with a little cuff band, so it belongs with the gloves.
+    const arrow: Pt[] = [[5, 4], [5, 38], [14, 30], [20, 43], [27, 40], [21, 27], [33, 27]];
+    solid(arrow, GLOVE);
+    p.shape([[9, 13], [9, 28], [13, 25]], { fill: FOLD, stroke: null, raw: true, wobble: 0 });
+    p.line([[14, 31], [21, 28]], { width: 4.5, color: CUFF, raw: true, wobble: 0 });
   } else if (kind === 'open') {
-    for (const [x, top] of [[14, 9], [21, 5], [28, 6], [35, 11]] as const) p.rect(x - 3.5, top, 7, 22, { fill: skin, r: 3.5, width: 2.8, wobble: 0.4 });
-    p.shape([[6, 26], [11, 22], [16, 30]], { fill: skin, width: 2.8, wobble: 0.4 });
-    p.rect(9, 22, 31, 20, { fill: skin, r: 9, width: 3, wobble: 0.5 });
-    p.line([[16, 34], [30, 34]], { width: 2, color: C.creamShade, raw: true });
-  } else if (kind === 'grab') {
-    p.rect(9, 16, 31, 26, { fill: skin, r: 11, width: 3, wobble: 0.5 });
-    for (const x of [16, 23, 30]) p.line([[x, 17], [x + 2, 24]], { width: 2.4, raw: true });
-    p.shape([[8, 28], [14, 24], [18, 33]], { fill: skin, width: 2.8, wobble: 0.4 });
-  } else {
-    // A loop of rope with a small dot in the middle to aim with.
-    const ring = (r: number, w: number, c: string) => p.ellipse(24, 24, r, r * 0.86, { stroke: c, width: w });
-    ring(15, 9, C.ink);
-    ring(15, 5, '#D2B07A');
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
-      p.line([[24 + Math.cos(a) * 13, 24 + Math.sin(a) * 11], [24 + Math.cos(a + 0.25) * 17, 24 + Math.sin(a + 0.25) * 15]], { width: 1.6, color: '#8C6A3E', raw: true });
+    // An open glove, fingers spread, ready to grab.
+    for (const [x, top, tilt] of [[13, 8, -3], [20, 4, -1], [27, 5, 1], [34, 10, 3]] as const) {
+      const f = rr(x - 3.6, top, 7.2, 22, 3.6).map(([px, py]) => [px + ((py - top) / 22) * -tilt, py] as Pt);
+      solid(f, GLOVE);
     }
-    // The loose end of the rope, curling away.
-    const tail: Pt[] = [[36, 32], [42, 30], [45, 36], [40, 42], [44, 46]];
-    p.line(tail, { width: 6.5, color: C.ink });
-    p.line(tail, { width: 3, color: '#D2B07A' });
-    p.dot(24, 24, 3, C.terracotta);
+    solid([[4, 27], [8, 21], [13, 22], [17, 30], [12, 34]], GLOVE, false);
+    solid(rr(8, 21, 31, 19, 8), GLOVE);
+    for (const x of [16.5, 23.5, 30.5]) p.line([[x, 22], [x, 27]], { width: 1.6, color: FOLD, raw: true, wobble: 0 });
+    // The cuff.
+    solid(rr(12, 38, 24, 8, 3), CUFF);
+  } else if (kind === 'grab') {
+    // A fist, gripping.
+    solid(rr(9, 14, 30, 24, 10), GLOVE);
+    for (const x of [16, 23, 30]) p.line([[x, 15], [x + 1, 23]], { width: 2.2, color: INK, raw: true, wobble: 0 });
+    p.line([[12, 30], [36, 30]], { width: 1.6, color: FOLD, raw: true, wobble: 0 });
+    solid([[6, 24], [12, 20], [19, 26], [15, 33], [8, 31]], GLOVE, false);
+    solid(rr(13, 36, 22, 8, 3), CUFF);
+  } else {
+    // A lasso: a loop of rope with a knot, and a target dot in the middle to aim with.
+    p.ellipse(26, 27, 16, 13, { stroke: '#2A2140', width: 9, wobble: 0, opacity: 0.25 });
+    p.ellipse(24, 24, 16, 13, { stroke: INK, width: 9, wobble: 0 });
+    p.ellipse(24, 24, 16, 13, { stroke: '#D9B67E', width: 5, wobble: 0 });
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      p.line([[24 + Math.cos(a) * 14, 24 + Math.sin(a) * 11.5], [24 + Math.cos(a + 0.3) * 18, 24 + Math.sin(a + 0.3) * 14.5]], { width: 1.4, color: '#8C6A3E', raw: true, wobble: 0 });
+    }
+    p.ellipse(38, 33, 5, 4, { fill: '#D9B67E', stroke: INK, width: 2.5, wobble: 0 });
+    const tail: Pt[] = [[40, 35], [44, 40], [41, 45], [46, 47]];
+    p.line(tail, { width: 6, color: INK, wobble: 0 });
+    p.line(tail, { width: 3, color: '#D9B67E', wobble: 0 });
+    p.dot(24, 24, 4.5, INK);
+    p.dot(24, 24, 3, CUFF);
   }
   return { key, svg: p.svg(48, 48), w: 48, h: 48 };
 }

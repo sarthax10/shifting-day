@@ -12,6 +12,8 @@ const X0 = 20;
 const Y0 = 758;
 const SPD = { x: 190, y: 908 };
 const GEAR = { x: 438, y: 884 };
+/** The handbrake warning lamp, beside the dashboard. */
+const LAMP = { x: 608, y: 846 };
 /** Game speed (pixels a frame) to the number shown on the speedometer. */
 export const KMH = 5.6;
 
@@ -24,6 +26,10 @@ export class Dash {
   private needle!: Phaser.GameObjects.Graphics;
   private odo: Phaser.GameObjects.Text[] = [];
   private gearText!: Phaser.GameObjects.Text;
+  private lamp!: Phaser.GameObjects.Arc;
+  private lampGlow!: Phaser.GameObjects.Image;
+  private lampText!: Phaser.GameObjects.Text;
+  private stallText!: Phaser.GameObjects.Text;
   private shown = '1';
   /** The needle eases towards the speed rather than jumping, as a real one does. */
   private shownSpeed = 0;
@@ -73,15 +79,26 @@ export class Dash {
     this.gearText = this.keep(s.add.text(GEAR.x, GEAR.y + 2, '1', { fontFamily: TITLE, fontSize: '70px', color: C.ink }).setOrigin(0.5));
     this.keep(s.add.text(GEAR.x, GEAR.y + 96, 'GEAR', { fontFamily: TITLE, fontSize: '22px', color: C.walnut }).setOrigin(0.5));
     this.keep(s.add.text(GEAR.x, GEAR.y + 124, 'SHIFT ▲   CTRL ▼', { fontFamily: TEXT, fontSize: '20px', color: C.walnut }).setOrigin(0.5));
+    this.stallText = this.keep(s.add.text(GEAR.x, GEAR.y - 62, 'STALLED', { fontFamily: TITLE, fontSize: '20px', color: C.cream, backgroundColor: C.terracottaDark, padding: { x: 8, y: 2 } }).setOrigin(0.5));
+
+    // The handbrake lamp: a round red warning light with a (P) on it, lit while the handbrake is on.
+    this.keep(s.add.circle(LAMP.x, LAMP.y, 58, hex(C.ink)));
+    this.keep(s.add.circle(LAMP.x, LAMP.y, 50, hex('#E6E8DF')).setStrokeStyle(4, hex(C.walnut)));
+    this.lampGlow = this.keep(s.add.image(LAMP.x, LAMP.y, 'halo').setDisplaySize(220, 220).setTint(0xff5a3c));
+    this.lamp = this.keep(s.add.circle(LAMP.x, LAMP.y, 40, hex(C.terracotta)).setStrokeStyle(4, hex(C.ink)));
+    this.lampText = this.keep(s.add.text(LAMP.x, LAMP.y + 1, '(P)', { fontFamily: TITLE, fontSize: '34px', color: C.cream }).setOrigin(0.5));
+    this.keep(s.add.text(LAMP.x, LAMP.y + 86, 'HANDBRAKE', { fontFamily: TITLE, fontSize: '20px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5));
+    this.keep(s.add.text(LAMP.x, LAMP.y + 112, 'P / SPACE', { fontFamily: TEXT, fontSize: '18px', color: C.cream, stroke: C.ink, strokeThickness: 4 }).setOrigin(0.5));
     this.show(false);
   }
 
   show(on: boolean) {
     for (const o of this.all) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(on);
+    if (on && this.stallText) this.stallText.setVisible(this.drive().stalled);
   }
 
   /** `km` is how far the truck has come, for the odometer; `fuel` is 0 to 1. */
-  update(speed: number, km: number, fuel: number) {
+  update(speed: number, km: number, fuel: number, handbrake = false) {
     const d = this.drive();
     const kmh = Math.abs(speed) * KMH;
     this.shownSpeed += (kmh - this.shownSpeed) * 0.18;
@@ -115,5 +132,12 @@ export class Dash {
     }
     const high = typeof d.gear === 'number' && d.gear < 4 && d.rpm > REDLINE - 400;
     this.gearText.setText(label).setColor(high ? C.terracotta : d.shifting ? C.walnut : C.ink);
+    this.stallText.setVisible(d.stalled);
+
+    // The lamp glows while the handbrake is on, and flashes if you try to drive against it.
+    const flash = handbrake && d.throttle > 0.5 ? (Math.floor(this.scene.time.now / 160) % 2 === 0 ? 1 : 0.35) : 1;
+    this.lamp.setFillStyle(hex(handbrake ? C.terracotta : '#7A5E66'), handbrake ? flash : 1);
+    this.lampGlow.setVisible(handbrake).setAlpha(0.55 * flash);
+    this.lampText.setColor(handbrake ? C.cream : '#B9A9AE');
   }
 }

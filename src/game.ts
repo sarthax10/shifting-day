@@ -22,6 +22,7 @@ const TEXT = '"Karla", sans-serif';
 const TITLE = '"Fraunces", serif';
 /** How hard the brakes slow the truck, in pixels a frame each frame. */
 const BRAKE = 0.3;
+const hexOf = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
 /** Where things sit on the truck, in its own coordinates: the headlight eye, the air freshener's hook, the aerial's foot, the exhaust. */
 const EYE_AT = { x: 401, y: -28 };
 const FRESHENER_AT = { x: 300, y: -138 };
@@ -66,6 +67,28 @@ interface Rope {
 const ROPE_CATEGORY = 0x0002;
 const ROPE_LINK = 12;
 
+interface Gate {
+  x: number;
+  body: Body;
+  arm: Phaser.GameObjects.Image;
+  state: 'closed' | 'checking' | 'open';
+  timer: number;
+  announced: boolean;
+  nagged: boolean;
+  bumped: boolean;
+  still: number;
+  snore: number;
+  booth: { x: number; y: number };
+}
+
+/** Where the bay outside the new house starts and ends, in the world. */
+const BAY = { from: FINISH + 80, to: FINISH + 900 };
+/** How far the truck reaches behind and in front of its middle (tailgate to bumper). */
+const TRUCK_BACK = 194;
+const TRUCK_NOSE = 448;
+/** The toll gates, each partway up a hill so the stop is on a slope. */
+const GATE_XS = [6740, 11640, 16740];
+
 interface Thing {
   spec: ItemSpec;
   body: Body;
@@ -105,6 +128,10 @@ const SOUND = {
   clunk: [0.55, 0.05, 110, 0, 0.02, 0.07, 4, 1, 0, 0, 0, 0, 0, 0.5],
   grind: [0.6, 0.4, 600, 0.01, 0.16, 0.22, 3, 2, 0, 0, 0, 0, 0, 1.8, 0, 0.4],
   bang: [0.8, 0.2, 80, 0, 0.03, 0.12, 4, 2.5, 0, 0, 0, 0, 0, 1, 0, 0.3],
+  ratchet: [0.4, 0.05, 900, 0, 0.05, 0.08, 4, 3, 0, 0, 0, 0, 0.012, 0.6],
+  stall: [0.6, 0.1, 70, 0.01, 0.1, 0.35, 3, 1, -2, 0, 0, 0, 0, 0.8],
+  crank: [0.5, 0.2, 60, 0.02, 0.4, 0.1, 3, 1, 0, 0, 0, 0, 0.06, 1.2],
+  squeal: [0.25, 0.1, 1400, 0.02, 0.15, 0.1, 2, 0.5, 0, 0, 0, 0, 0, 0.4],
   win: [0.6, 0, 523, 0.02, 0.15, 0.3, 0, 1.3, 0, 0, 200, 0.08, 0.1],
 } as const;
 
@@ -211,7 +238,7 @@ export class PlayScene extends Phaser.Scene {
   /** From the truck's centre of mass to the (0, 0) its picture is drawn around. */
   private anchor = { x: 0, y: 0 };
   private held: { thing: Thing; dx: number; dy: number; angle: number } | null = null;
-  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four' | 'p' | 'space', Phaser.Input.Keyboard.Key>;
   private hint!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
   private goButton!: Phaser.GameObjects.Container;
@@ -223,6 +250,15 @@ export class PlayScene extends Phaser.Scene {
   private engine = new Engine();
   private driveTime = 0;
   private arrivedAt = 0;
+  /** The handbrake (the parking brake): on when the truck sets off, P or Space pulls it on or lets it off. */
+  private handbrake = true;
+  private brakeNagged = 0;
+  private stallNagged = false;
+  /** Toll gates on the hills: the barrier only lifts once the truck has stopped with its handbrake on. */
+  private gates: Gate[] = [];
+  /** The parking bay outside the new house. */
+  private parkNote = 0;
+  private parkBonus = 0;
   private lastSlam = 0;
   private lastThud = 0;
   private frame = 0;
@@ -319,6 +355,14 @@ export class PlayScene extends Phaser.Scene {
       const speed = Math.hypot(a.velocity.x - b.velocity.x, a.velocity.y - b.velocity.y);
       loudest = Math.max(loudest, speed);
       if (this.phase === 'drive' || this.phase === 'arrived') this.impact(a, b, speed, pair.collision?.supports?.[0]);
+      if (this.phase === 'drive' && (a.label === 'gate' || b.label === 'gate') && speed > 2) {
+        const g = this.gates.find((x) => x.body === a || x.body === b);
+        if (g && !g.bumped) {
+          g.bumped = true;
+          this.say("Ow! It's a barrier, not a suggestion.");
+          this.lookStartled(700);
+        }
+      }
       if (this.phase !== 'drive') continue;
       for (const [me, other] of [[a, b], [b, a]]) {
         const t = this.byBody.get(me.id);
@@ -336,12 +380,12 @@ export class PlayScene extends Phaser.Scene {
 
   /** What a hard knock looks like: the thing squashes and springs back, a twinkle pops, and grit flies off the road. */
   private impact(a: Body, b: Body, speed: number, at?: { x: number; y: number }) {
-    if (speed < 3) return;
+    if (speed < 4) return;
     const where = at ?? { x: (a.position.x + b.position.x) / 2, y: (a.position.y + b.position.y) / 2 };
     for (const body of [a, b]) {
       const t = this.byBody.get(body.id);
       if (!t || t.img.getData('squash')) continue;
-      const k = Math.min(0.22, speed * 0.03);
+      const k = Math.min(0.1, speed * 0.012);
       t.img.setData('squash', true);
       this.tweens.add({ targets: t.img, scaleX: 1 + k, scaleY: 1 - k, duration: 70, yoyo: true, ease: 'Quad.easeOut', onComplete: () => t.img.setScale(1).setData('squash', false) });
     }
@@ -354,7 +398,7 @@ export class PlayScene extends Phaser.Scene {
     if (road && road.label === 'road') {
       const other = road === a ? b : a;
       const isWheel = this.wheels.includes(other);
-      if (isWheel && speed < 5) return;
+      if (isWheel && speed < 7) return;
       const n = Math.min(10, Math.floor(speed * 1.2));
       for (let i = 0; i < n; i++) {
         const chip = this.add.image(where.x, where.y, 'bit').setDepth(9).setScale(0.3 + Math.random() * 0.4).setTint([0xedb27d, 0xb97e5e, 0x8c7c88][i % 3]).setRotation(Math.random() * 6);
@@ -362,10 +406,184 @@ export class PlayScene extends Phaser.Scene {
         this.tweens.add({ targets: chip, x: where.x + vx, y: { value: where.y - 40 - Math.random() * 50, ease: 'Quad.easeOut' }, angle: 360, duration: 300, onComplete: () => this.tweens.add({ targets: chip, y: where.y + 10, alpha: 0, duration: 260, ease: 'Quad.easeIn', onComplete: () => chip.destroy() }) });
       }
       for (let i = 0; i < 3; i++) this.dust(where.x + (i - 1) * 26, where.y - 6);
-      if (isWheel && this.time.now - this.lastSlam > 300) {
+      // Only a really heavy landing nudges the camera, and only a little.
+      if (isWheel && speed > 9 && this.time.now - this.lastSlam > 800) {
         this.lastSlam = this.time.now;
-        this.cameras.main.shake(180, Math.min(0.012, speed * 0.0016));
+        this.cameras.main.shake(120, 0.0025);
       }
+    }
+  }
+
+  private toggleHandbrake() {
+    if (this.phase !== 'drive') return;
+    this.handbrake = !this.handbrake;
+    play('ratchet');
+    const lever = this.onTruckAt(240, -40);
+    this.floatText(lever.x, lever.y - 40, this.handbrake ? 'Handbrake on' : 'Handbrake off', this.handbrake ? C.terracotta : C.cream);
+  }
+
+  /** Driving with the handbrake on: smoke from the back wheel, a squeal, and a reminder. */
+  private fightingBrake() {
+    if (this.frame % 5 === 0) {
+      const w = this.wheels[0].position;
+      const puff = this.add.image(w.x - 20, w.y + TRUCK.wheelR - 10, 'puff').setDepth(9).setScale(0.5).setTint(0xd8d0e0).setAlpha(0.8);
+      this.tweens.add({ targets: puff, x: puff.x - 90, y: puff.y - 70, scale: 1.6, alpha: 0, duration: 900, onComplete: () => puff.destroy() });
+    }
+    if (this.frame % 30 === 0) play('squeal');
+    if (this.time.now - this.brakeNagged > 4000) {
+      this.brakeNagged = this.time.now;
+      this.say('Smell that? The handbrake is still on. Press P!');
+      this.lookStartled(600);
+    }
+  }
+
+  /** The engine labouring in too high a gear: the truck judders. */
+  private truckShudder(how: number) {
+    const c = this.chassis;
+    M.Body.setAngularVelocity(c, c.angularVelocity + (Math.random() - 0.5) * 0.004 * how);
+    if (this.frame % 40 === 0) this.say('The engine is struggling. Change down!');
+  }
+
+  private stalledOut() {
+    play('stall');
+    this.exhaust(true);
+    this.lookStartled(900);
+    this.stallNagged = false;
+    this.say('Stalled! Too high a gear to pull away. Shift to 1st (press 1), then D.');
+  }
+
+  /** Turning the key: only in a low gear, as the clutch can not drag the truck off in 3rd or 4th. */
+  private tryRestart() {
+    const g = this.drive.target;
+    if (typeof g === 'number' && g >= 3) {
+      if (!this.stallNagged) {
+        this.stallNagged = true;
+        this.say('It will only start in 1st, 2nd, N or R. Press 1.');
+      }
+      return;
+    }
+    this.drive.restart();
+    play('crank');
+    this.exhaust(true);
+  }
+
+  /** The toll gates: a booth, a striped barrier, and a sleepy attendant who wants to see that handbrake on. */
+  private buildGates() {
+    this.gates = [];
+    for (const x of GATE_XS) {
+      const y = groundY(x);
+      this.add.image(x + 30, y + 8, 'toll_booth').setOrigin(0.15, 1).setDepth(-6);
+      const arm = this.add.image(x, y - 150, 'toll_arm').setOrigin(1, 0.5).setDepth(22);
+      // Where the barrier is, the road is blocked.
+      const body = M.Bodies.rectangle(x + 10, y - 150, 26, 300, { isStatic: true, label: 'gate', friction: 0.2 });
+      this.matter.world.add(body);
+      // The white line to stop at, painted on the road, and a warning sign before it.
+      const line = this.add.graphics().setDepth(0.5);
+      line.fillStyle(0xfff6e4, 0.9);
+      for (let k = 0; k < 4; k++) line.fillRect(x - 230 + k * 8, groundY(x - 230 + k * 8) + 2, 6, 16);
+      const sx = x - 900;
+      const tilt = -0.02;
+      this.add.image(sx, groundY(sx) + 10, 'sign_plank').setOrigin(0.5, 1).setDepth(-6).setScale(0.8).setRotation(tilt);
+      const words = this.add.text(sx, groundY(sx) + 10 - (PLANK.h - PLANK.text.y) * 0.8, 'TOLL AHEAD.\nSTOP. HANDBRAKE ON.\nNO EXCEPTIONS.', { fontFamily: TITLE, fontSize: '26px', color: C.terracottaDark, align: 'center', lineSpacing: -2 }).setOrigin(0.5).setDepth(-5.9).setRotation(tilt);
+      words.setScale(Math.min(1, (PLANK.text.w * 0.8) / words.width, (PLANK.text.h * 0.8) / words.height));
+      this.gates.push({ x, body, arm, state: 'closed', timer: 0, announced: false, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 70, y: y - 200 } });
+    }
+  }
+
+  private updateGates(forward: number, delta: number) {
+    const front = this.onTruckAt(TRUCK_NOSE, 0).x;
+    const dt = delta / 1000;
+    for (const g of this.gates) {
+      if (g.state === 'open') continue;
+      const gap = g.x - front;
+      // The attendant snores until somebody turns up.
+      g.snore += dt;
+      if (g.state === 'closed' && g.snore > 1.4 && Math.abs(gap) < 2200) {
+        g.snore = 0;
+        const z = this.add.text(g.booth.x, g.booth.y, 'z', { fontFamily: TITLE, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 4 }).setDepth(-5);
+        this.tweens.add({ targets: z, x: z.x + 40, y: z.y - 70, scale: 1.6, alpha: 0, duration: 1600, onComplete: () => z.destroy() });
+      }
+      if (!g.announced && gap < 900 && gap > 0) {
+        g.announced = true;
+        this.say('Toll gate! Stop at the line and put the handbrake on (P).');
+      }
+      const stopped = gap > -10 && gap < 340 && Math.abs(forward) < 0.15;
+      g.still = stopped ? g.still + dt : 0;
+      if (g.state === 'closed' && stopped && this.handbrake) {
+        g.state = 'checking';
+        g.timer = 0;
+        const wake = this.add.text(g.booth.x, g.booth.y + 10, '!', { fontFamily: TITLE, fontSize: '54px', color: C.mustard, stroke: C.ink, strokeThickness: 6 }).setOrigin(0.5).setDepth(-5);
+        this.tweens.add({ targets: wake, y: wake.y - 40, alpha: 0, delay: 500, duration: 600, onComplete: () => wake.destroy() });
+        play('beep');
+      } else if (g.state === 'closed' && g.still > 1 && !this.handbrake && !g.nagged) {
+        g.nagged = true;
+        this.say('"Handbrake on, please. Rules are rules." (P)');
+      }
+      if (g.state === 'checking') {
+        // Let the handbrake off too soon and the attendant starts over.
+        if (!this.handbrake) g.state = 'closed';
+        g.timer += dt;
+        if (g.timer > 1.3) {
+          g.state = 'open';
+          this.matter.world.remove(g.body);
+          play('ratchet');
+          this.tweens.add({ targets: g.arm, rotation: Math.PI / 2, duration: 700, ease: 'Back.easeOut' });
+          this.floatText(g.booth.x, g.booth.y - 20, 'Off you go!', C.cream);
+          const quips = ['Mind the hill. Low gear.', 'Lovely handbrake work.', 'Pull away in 1st, or you will stall.'];
+          this.say(`"${quips[GATE_XS.indexOf(g.x) % quips.length]}" Handbrake off (P), then go.`);
+        }
+      }
+    }
+  }
+
+  /** The parking bay outside the new house: two cones, painted lines, and a P sign. */
+  private buildBay() {
+    const paint = this.add.graphics().setDepth(0.5);
+    for (let x = BAY.from; x < BAY.to; x += 40) {
+      paint.fillStyle(0xffc94a, 0.95).fillRect(x, groundY(x) + 3, 24, 7);
+    }
+    for (const x of [BAY.from, BAY.to]) {
+      const y = groundY(x);
+      paint.fillStyle(0xfff6e4, 1).fillRect(x - 4, y + 1, 8, 18);
+      const cone = this.add.graphics().setDepth(23);
+      cone.fillStyle(0x2a2140).fillTriangle(x - 24, y + 4, x + 24, y + 4, x, y - 62);
+      cone.fillStyle(0xee6a4d).fillTriangle(x - 19, y + 1, x + 19, y + 1, x, y - 56);
+      cone.fillStyle(0xfff2da).fillRect(x - 10, y - 30, 20, 9);
+      cone.fillStyle(0x2a2140).fillRect(x - 28, y, 56, 8);
+    }
+    const px = BAY.from + 30;
+    this.add.rectangle(px, groundY(px) - 90, 10, 190, hexOf(C.walnut)).setOrigin(0.5, 0).setDepth(-6);
+    this.add.circle(px, groundY(px) - 210, 40, hexOf(C.sky)).setStrokeStyle(6, hexOf(C.ink)).setDepth(-6);
+    this.add.text(px, groundY(px) - 210, 'P', { fontFamily: TITLE, fontSize: '50px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(-5.9);
+  }
+
+  /** Parking: the truck must stop wholly inside the bay with the handbrake on. Neat parking earns a bonus. */
+  private parking(forward: number) {
+    const cx = this.chassis.position.x;
+    const back = this.onTruckAt(-TRUCK_BACK, 0).x;
+    const nose = this.onTruckAt(TRUCK_NOSE, 0).x;
+    if (this.parkNote === 0 && nose > BAY.from - 1400) {
+      this.parkNote = 1;
+      this.say('Nearly home! Park in the bay between the cones, then handbrake on (P).');
+    }
+    if (this.parkNote === 1 && nose > BAY.to + 40) {
+      this.parkNote = 2;
+      this.say('Too far! Stop, press R, and back into the bay.');
+    }
+    const inside = back > BAY.from && nose < BAY.to;
+    if (inside && Math.abs(forward) < 0.1 && this.handbrake) {
+      // A bonus for parking right in the middle of the bay.
+      const slack = (BAY.to - BAY.from - (TRUCK_BACK + TRUCK_NOSE)) / 2;
+      const off = Math.abs((back + nose) / 2 - (BAY.from + BAY.to) / 2);
+      this.parkBonus = Math.round(Phaser.Math.Clamp(100 * (1 - off / slack), 10, 100));
+      this.phase = 'arrived';
+      this.dash.show(false);
+      this.hint.setVisible(false).setText('');
+      this.arrivedAt = this.time.now;
+      this.engine.stop();
+      this.confetti();
+      play('honk');
+      this.floatText(cx, this.chassis.position.y - 220, this.parkBonus >= 90 ? 'Perfect parking!' : 'Parked!', C.mustard);
     }
   }
 
@@ -455,7 +673,7 @@ export class PlayScene extends Phaser.Scene {
     const bumps = [2250, 7450, 10050, 14350, 20650];
     const hills = [3800, 6300, 11150, 13300, 16200, 18800, 21800];
     for (const x of bumps) this.add.image(x, groundY(x) + 8, 'sign_bump').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
-    for (const x of hills) this.add.image(x, groundY(x) + 8, 'sign_hill').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
+    for (const x of hills.filter((h) => GATE_XS.every((g) => Math.abs(g - h) > 400))) this.add.image(x, groundY(x) + 8, 'sign_hill').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
     for (let x = 4600; x < FINISH - 1500; x += 4000) {
       const km = Math.round((FINISH - x) / 1000);
       this.add.image(x, groundY(x) + 10, 'milestone').setOrigin(0.5, 1).setDepth(-6).setScale(0.75);
@@ -486,6 +704,8 @@ export class PlayScene extends Phaser.Scene {
       const dy = (PLANK.text.y - PLANK.h) * k;
       label.setPosition(x + dx * Math.cos(tilt) - dy * Math.sin(tilt), foot + dx * Math.sin(tilt) + dy * Math.cos(tilt));
     }
+    this.buildGates();
+    this.buildBay();
     this.add.image(FINISH - 700, groundY(FINISH - 700) + 8, 'sign_home').setOrigin(0.5, 1).setDepth(-6).setScale(0.85);
     for (let x = 1960; x < FINISH + 300; x += 1250 + rnd() * 500) {
       this.add.image(x, groundY(x) + 6, 'lamppost').setOrigin(47 / 140, 396 / 400).setDepth(-8);
@@ -798,7 +1018,11 @@ export class PlayScene extends Phaser.Scene {
       two: kb.addKey('TWO'),
       three: kb.addKey('THREE'),
       four: kb.addKey('FOUR'),
+      p: kb.addKey('P'),
+      space: kb.addKey('SPACE'),
     };
+    this.keys.p.on('down', () => this.toggleHandbrake());
+    this.keys.space.on('down', () => this.toggleHandbrake());
     this.input.mouse?.disableContextMenu();
     const turn = (by: number) => {
       if (this.held) this.held.angle += by;
@@ -960,9 +1184,10 @@ export class PlayScene extends Phaser.Scene {
     this.goButton.setVisible(false);
     this.ropeButton.setVisible(false);
     this.pointer('point');
-    this.hint.setPosition(580, 1028).setFontSize(28).setText('D gas    A brake    SHIFT gear up    CTRL gear down    1 2 3 4 R N pick a gear');
+    this.hint.setPosition(640, 1028).setFontSize(26).setText('D gas    A brake    P handbrake    SHIFT gear up    CTRL gear down    1 2 3 4 R N');
     this.dash.show(true);
-    this.say("You're in 1st. Hold D, and press SHIFT when the gear number turns red. Try not to stall.");
+    this.handbrake = true;
+    this.say("Handbrake's on. Press P to let it off, then hold D. Change up with SHIFT when the gear goes red.");
     play('honk');
     this.engine.start();
   }
@@ -992,7 +1217,7 @@ export class PlayScene extends Phaser.Scene {
     if (!result.why) return;
     play('grind');
     this.say(result.why);
-    this.cameras.main.shake(160, 0.003);
+    this.cameras.main.shake(120, 0.0015);
     this.lookStartled(500);
   }
 
@@ -1005,7 +1230,7 @@ export class PlayScene extends Phaser.Scene {
   private jolted(jolt: number) {
     const size = Math.abs(jolt);
     if (size < 0.25) return;
-    this.cameras.main.shake(140, Math.min(0.007, size * 0.004));
+    if (size > 0.6) this.cameras.main.shake(110, Math.min(0.003, size * 0.0015));
     thud(size * 4);
     this.lookStartled(450);
     if (jolt > 0.3) this.backfire();
@@ -1146,7 +1371,7 @@ export class PlayScene extends Phaser.Scene {
     this.floatText(t.body.position.x, t.body.position.y - 40, 'Lost!', C.cream);
     this.say(t.spec.pet ? `${t.spec.name} fell off!` : `Oh no, ${this.name(t)}!`);
     play('lost');
-    this.cameras.main.shake(140, 0.004);
+    this.cameras.main.shake(120, 0.002);
   }
 
   /** A fragile thing breaks. It stays where it is, as dead weight. */
@@ -1166,7 +1391,7 @@ export class PlayScene extends Phaser.Scene {
     }
     this.floatText(t.body.position.x, t.body.position.y - 40, `−${Math.round(this.valueOf(t) / 2)}`, C.terracotta);
     play('crack');
-    this.cameras.main.shake(160, 0.005);
+    this.cameras.main.shake(120, 0.0025);
   }
 
   private moodOf(t: Thing): Mood {
@@ -1319,7 +1544,7 @@ export class PlayScene extends Phaser.Scene {
     const earned = delivered.reduce((n, t) => n + this.valueOf(t), 0);
     const penalty = broken.reduce((n, t) => n + Math.round(this.valueOf(t) / 2), 0);
     const bonus = broken.length === 0 && lost.length === 0 && delivered.length > 0 ? 100 : 0;
-    const score = Math.max(0, earned - penalty + bonus);
+    const score = Math.max(0, earned - penalty + bonus + this.parkBonus);
     const stars = score >= 900 ? 3 : score >= 600 ? 2 : score >= 300 ? 1 : 0;
     const catLeft = !this.things.find((t) => t.spec.key === 'cat')?.aboard;
     const verdict = catLeft
@@ -1362,18 +1587,19 @@ export class PlayScene extends Phaser.Scene {
       [`Broken (${broken.length})`, broken.length ? `−${penalty}` : '0', broken.length ? C.terracottaDark : C.walnut],
       [`Fell off on the way (${lost.length})`, '0', C.walnut],
       ['Careful driver bonus', bonus ? `+${bonus}` : '—', bonus ? C.sageDark : C.walnut],
+      [this.parkBonus >= 90 ? 'Parking: perfect!' : 'Parking', `+${this.parkBonus}`, C.sageDark],
     ];
     lines.forEach(([label, value, colour], i) => {
-      const y = cy + 4 + i * 40;
+      const y = cy - 6 + i * 36;
       keep(fixed(this.add.text(cx - 300, y, label, { fontFamily: TEXT, fontSize: '34px', color: colour }).setOrigin(0, 0.5)));
       keep(fixed(this.add.text(cx + 300, y, value, { fontFamily: TITLE, fontSize: '32px', color: colour }).setOrigin(1, 0.5)));
     });
-    keep(fixed(this.add.rectangle(cx, cy + 160, 620, 4, 0x2a2140)));
-    keep(fixed(this.add.text(cx - 300, cy + 196, 'Score', { fontFamily: TITLE, fontSize: '44px', color: C.ink }).setOrigin(0, 0.5)));
-    const total = keep(fixed(this.add.text(cx + 300, cy + 196, '0', { fontFamily: TITLE, fontSize: '52px', color: C.terracotta, stroke: C.ink, strokeThickness: 6 }).setOrigin(1, 0.5)));
+    keep(fixed(this.add.rectangle(cx, cy + 150, 620, 4, 0x2a2140)));
+    keep(fixed(this.add.text(cx - 300, cy + 184, 'Score', { fontFamily: TITLE, fontSize: '44px', color: C.ink }).setOrigin(0, 0.5)));
+    const total = keep(fixed(this.add.text(cx + 300, cy + 184, '0', { fontFamily: TITLE, fontSize: '52px', color: C.terracotta, stroke: C.ink, strokeThickness: 6 }).setOrigin(1, 0.5)));
     const count = { v: 0 };
     this.tweens.add({ targets: count, v: score, delay: 700, duration: 1300, ease: 'Cubic.easeOut', onUpdate: () => total.setText(String(Math.round(count.v))) });
-    keep(fixed(this.add.text(cx, cy + 242, verdict, { fontFamily: TEXT, fontSize: '30px', color: C.walnut }).setOrigin(0.5)));
+    keep(fixed(this.add.text(cx, cy + 232, verdict, { fontFamily: TEXT, fontSize: '30px', color: C.walnut }).setOrigin(0.5)));
     const again = this.button(cx, cy + 296, 'btn', 'Shift again', 46, () => this.scene.restart({ intro: false })).box.setDepth(203);
     shown.push(again);
     for (const o of shown) {
@@ -1420,24 +1646,36 @@ export class PlayScene extends Phaser.Scene {
       const grounded = this.wheels.some((w) => w.position.y + TRUCK.wheelR > groundY(w.position.x) - 6);
       const pedal = this.phase === 'drive' && right ? 1 : 0;
       const out = this.drive.step(Math.min(0.05, delta / 1000), forward, pedal);
+      if (out.stalled) this.stalledOut();
+      if (this.drive.stalled && pedal) this.tryRestart();
       let dv = out.accel;
+      const slope = Math.sin(c.angle);
       if (this.phase !== 'drive') dv = -forward * 0.07;
-      else if (left) dv += Math.abs(forward) > BRAKE ? -BRAKE * Math.sign(forward) : -forward;
-      else if (!pedal && Math.abs(forward) < 0.15) dv = -forward * 0.5;
+      else if (this.handbrake) {
+        // The handbrake holds the truck still, hills and all. Driving against it only drags the truck along, smoking.
+        dv = pedal && !this.drive.stalled ? -forward * 0.3 + Math.max(0, out.accel) * 0.25 : -forward;
+        if (pedal && !this.drive.stalled && this.drive.gear !== 'N') this.fightingBrake();
+      } else if (left) dv += Math.abs(forward) > BRAKE ? -BRAKE * Math.sign(forward) : -forward;
+      // On the flat, a truck nearly at rest stays at rest; on a slope it rolls, unless something holds it.
+      else if (!pedal && Math.abs(forward) < 0.12 && Math.abs(slope) < 0.03) dv = -forward;
+      if (this.drive.lugging > 0.3 && this.frame % 4 === 0) this.truckShudder(this.drive.lugging);
       if (grounded) {
         const kick = dv + out.jolt;
         M.Body.setVelocity(c, { x: c.velocity.x + dir.x * kick, y: c.velocity.y + dir.y * kick });
       }
       if (out.jolt) this.jolted(out.jolt);
       for (const w of this.wheels) M.Body.setAngularVelocity(w, forward / TRUCK.wheelR);
-      this.engine.rev(this.drive.rpm, this.drive.throttle, this.drive.limiting);
+      if (this.drive.stalled) this.engine.rev(30, -0.75);
+      else this.engine.rev(this.drive.rpm, this.drive.throttle, this.drive.limiting);
       if (grounded && Math.abs(forward) > 2.5 && this.frame % 9 === 0) {
         const rear = this.wheels[0].position;
         this.dust(rear.x - 20, rear.y + TRUCK.wheelR - 14);
       }
       if (this.phase === 'drive' && this.frame % (pedal ? 7 : 20) === 0) this.exhaust();
       if (this.phase === 'drive') {
-        this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), 1 - 0.85 * Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1));
+        this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), 1 - 0.85 * Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1), this.handbrake);
+        this.updateGates(forward, delta);
+        this.parking(forward);
       }
     }
 
@@ -1455,15 +1693,7 @@ export class PlayScene extends Phaser.Scene {
         if (t.aboard) this.lose(t);
         else this.leave(t);
       }
-      if (cx > FINISH) {
-        this.phase = 'arrived';
-        this.dash.show(false);
-        this.hint.setVisible(false);
-        this.arrivedAt = this.time.now;
-        this.hint.setText('');
-        this.confetti();
-        play('honk');
-      }
+
     } else if (this.phase === 'arrived' && this.time.now - this.arrivedAt > 1600) {
       this.finish();
     }

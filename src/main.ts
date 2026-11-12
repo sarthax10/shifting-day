@@ -155,6 +155,8 @@ game.events.once('ready', async () => {
     art.milestoneArt(),
     art.homeSignArt(),
     art.plankSignArt(),
+    art.tollBoothArt(),
+    art.tollArmArt(),
     art.dashArt(),
     art.speedoArt(),
     art.speedoGlassArt(),
