@@ -1,0 +1,1504 @@
+import Phaser from 'phaser';
+import { zzfx } from 'zzfx';
+import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood } from './art';
+import { Dash } from './dash';
+import { CURSOR } from './cursors';
+import { Fx } from './fx';
+import { buildBackdrop } from './backdrop';
+import { Drivetrain, REDLINE, type Gear } from './drivetrain';
+import { C } from './ink';
+import { FINISH, GROUND, H, W, WORLD_END, WORLD_START, groundY } from './terrain';
+
+/** Road pictures are cut into pieces this wide, starting this far down the screen. */
+export const CHUNK = 1500;
+export const CHUNK_TOP = 500;
+
+// The physics library that ships inside Phaser. Its own types are loose, so bodies are `any` here.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const M = (Phaser.Physics.Matter as any).Matter;
+type Body = any;
+
+const TEXT = '"Karla", sans-serif';
+const TITLE = '"Fraunces", serif';
+/** How hard the brakes slow the truck, in pixels a frame each frame. */
+const BRAKE = 0.3;
+/** Where things sit on the truck, in its own coordinates: the headlight eye, the air freshener's hook, the aerial's foot, the exhaust. */
+const EYE_AT = { x: 401, y: -28 };
+const FRESHENER_AT = { x: 300, y: -138 };
+const AERIAL_AT = { x: 354, y: -64 };
+const PIPE_AT = { x: -210, y: 37 };
+const TRUCK_X = 1440;
+/** Bodies that share a negative group never touch each other. */
+const TRUCK_GROUP = -7;
+const ROPES = 3;
+/** About six drawings a second, like Pip's Last Sprint. */
+const BOIL_MS = 160;
+const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** A picture whose line boils: it cycles through a few redraws of the same drawing. */
+interface Inked {
+  img: Phaser.GameObjects.Image;
+  base: string;
+}
+
+/** The same "random" numbers every time, so the scenery does not change between runs. */
+function seeded(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * A rope is a real chain: small round links, each tied to the next, with the two end links tied to
+ * rings on the truck bed. It is laid over the thing a little shorter than it needs to be, so it pulls
+ * tight and drapes over whatever is under it, and moves when the load moves.
+ */
+interface Rope {
+  links: Body[];
+  joins: any[];
+}
+
+/** Rope links are their own kind of body: they touch the load, but not the truck or each other. */
+const ROPE_CATEGORY = 0x0002;
+const ROPE_LINK = 12;
+
+interface Thing {
+  spec: ItemSpec;
+  body: Body;
+  img: Phaser.GameObjects.Image;
+  ink: Inked;
+  shadow: Phaser.GameObjects.Image;
+  /** A bright shape over something shiny (the fish bowl's highlight), where it sits relative to the thing's middle. */
+  spark?: { img: Phaser.GameObjects.Image; dx: number; dy: number };
+  /** Still on its way to the new house, in one piece. */
+  aboard: boolean;
+  broken: boolean;
+  /** Left behind: faded, and the truck passes through it. */
+  ghost: boolean;
+  groundFrames: number;
+  /** On the truck when it set off. */
+  packed?: boolean;
+  /** Fell off on the way. */
+  lost?: boolean;
+  /** Out of the physics world, far behind the truck. */
+  gone?: boolean;
+  rope?: Rope;
+  mood: Mood;
+  moodUntil: number;
+}
+
+type Phase = 'intro' | 'pack' | 'drive' | 'arrived' | 'done';
+
+const SOUND = {
+  pick: [0.5, 0.05, 420, 0.01, 0.02, 0.06, 0, 1.5, 0, 0, 120, 0.03],
+  drop: [0.4, 0.05, 260, 0.01, 0.02, 0.06, 0, 1.5, 0, 0, -80, 0.03],
+  lost: [0.6, 0.02, 300, 0.02, 0.12, 0.25, 0, 1.2, -4, 0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0.05],
+  crack: [0.7, 0.3, 900, 0, 0.01, 0.12, 4, 2.2, 0, 0, 0, 0, 0, 1.4, 0, 0.2],
+  tie: [0.5, 0.05, 180, 0.01, 0.03, 0.08, 1, 1.4, 12],
+  untie: [0.4, 0.05, 240, 0.01, 0.03, 0.06, 1, 1.4, -10],
+  honk: [0.5, 0, 310, 0.02, 0.12, 0.08, 2, 0.6],
+  beep: [0.35, 0, 1180, 0.01, 0.12, 0.05, 1, 1.4],
+  clunk: [0.55, 0.05, 110, 0, 0.02, 0.07, 4, 1, 0, 0, 0, 0, 0, 0.5],
+  grind: [0.6, 0.4, 600, 0.01, 0.16, 0.22, 3, 2, 0, 0, 0, 0, 0, 1.8, 0, 0.4],
+  bang: [0.8, 0.2, 80, 0, 0.03, 0.12, 4, 2.5, 0, 0, 0, 0, 0, 1, 0, 0.3],
+  win: [0.6, 0, 523, 0.02, 0.15, 0.3, 0, 1.3, 0, 0, 200, 0.08, 0.1],
+} as const;
+
+function play(name: keyof typeof SOUND) {
+  try {
+    zzfx(...SOUND[name]);
+  } catch {
+    // Sound is a nicety. The game carries on without it.
+  }
+}
+
+function thud(force: number) {
+  try {
+    zzfx(Math.min(0.7, 0.12 + force * 0.05), 0.2, 90 + Math.random() * 40, 0, 0.02, 0.08, 4, 1.2, 0, 0, 0, 0, 0, 0.6);
+  } catch {
+    // As above.
+  }
+}
+
+/** The truck's engine: a low hum that rises with speed. */
+class Engine {
+  private ctx?: AudioContext;
+  private osc?: OscillatorNode;
+  private gain?: GainNode;
+
+  start() {
+    try {
+      this.ctx = new AudioContext();
+      this.osc = this.ctx.createOscillator();
+      this.osc.type = 'square';
+      this.osc.frequency.value = 38;
+      const muffle = this.ctx.createBiquadFilter();
+      muffle.type = 'lowpass';
+      muffle.frequency.value = 220;
+      this.gain = this.ctx.createGain();
+      this.gain.gain.value = 0;
+      this.osc.connect(muffle).connect(this.gain).connect(this.ctx.destination);
+      this.osc.start();
+    } catch {
+      this.ctx = undefined;
+    }
+  }
+
+  /** Sets the note from the engine's rpm and how open the throttle is. A cut from the rev limiter dips the sound. */
+  rev(rpm: number, throttle: number, cut = false) {
+    if (!this.ctx || !this.osc || !this.gain) return;
+    const now = this.ctx.currentTime;
+    this.osc.frequency.setTargetAtTime(Math.max(24, rpm / 30), now, 0.05);
+    this.gain.gain.setTargetAtTime(cut ? 0.02 : 0.045 + throttle * 0.06, now, 0.05);
+  }
+
+  stop() {
+    if (!this.ctx) return;
+    this.gain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2);
+    const ctx = this.ctx;
+    this.ctx = undefined;
+    setTimeout(() => void ctx.close(), 800);
+  }
+}
+
+export class PlayScene extends Phaser.Scene {
+  private phase: Phase = 'pack';
+  private things: Thing[] = [];
+  private byBody = new Map<number, Thing>();
+  private chassis!: Body;
+  private wheels: Body[] = [];
+  private truckImg!: Phaser.GameObjects.Image;
+  private truckFront!: Phaser.GameObjects.Image;
+  private wheelImgs: Phaser.GameObjects.Image[] = [];
+  private truckShadow!: Phaser.GameObjects.Image;
+  private fx!: Fx;
+  private slabs: Body[] = [];
+  private slabsIn = new Set<Body>();
+  private roadAt = -1e9;
+  private fxLabel!: Phaser.GameObjects.Text;
+  private headlight!: Phaser.GameObjects.Image;
+  private drive = new Drivetrain();
+  private eye!: Inked;
+  private eyeMood = 'open';
+  private eyeUntil = 0;
+  private nextBlink = 0;
+  private freshener!: Phaser.GameObjects.Image;
+  private aerial!: Phaser.GameObjects.Image;
+  /** The company name painted on the side of the bed. */
+  private decal!: Phaser.GameObjects.Text;
+  /** The air freshener swings as a pendulum and the aerial as a spring: angle and speed of each. */
+  private swing = { fa: 0, fv: 0, aa: 0, av: 0 };
+  private lastForward = 0;
+  private dash!: Dash;
+  private hudHearts!: Phaser.GameObjects.Text;
+  private tag!: Phaser.GameObjects.Text;
+  private tagFor: Thing | null = null;
+  private hudLabel!: Phaser.GameObjects.Text;
+  private hudBar!: Phaser.GameObjects.Graphics;
+  private hudTruck!: Phaser.GameObjects.Image;
+  private hudHomes: Phaser.GameObjects.Image[] = [];
+  private joltTip = false;
+  private scenery2: { sails: Phaser.GameObjects.Image[]; clouds: { img: Phaser.GameObjects.Image; speed: number }[] } = { sails: [], clouds: [] };
+  private chimneys: { x: number; y: number; kind: 'old' | 'new'; n: number }[] = [];
+  private milestone = 0;
+  private boiling: Inked[] = [];
+  private cursorNow = '';
+  private boilFrame = 0;
+  /** From the truck's centre of mass to the (0, 0) its picture is drawn around. */
+  private anchor = { x: 0, y: 0 };
+  private held: { thing: Thing; dx: number; dy: number; angle: number } | null = null;
+  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four', Phaser.Input.Keyboard.Key>;
+  private hint!: Phaser.GameObjects.Text;
+  private toast!: Phaser.GameObjects.Text;
+  private goButton!: Phaser.GameObjects.Container;
+  private ropeButton!: Phaser.GameObjects.Container;
+  private ropeLabel!: Phaser.GameObjects.Text;
+  private ropeLines!: Phaser.GameObjects.Graphics;
+  private ropesLeft = ROPES;
+  private roping = false;
+  private engine = new Engine();
+  private driveTime = 0;
+  private arrivedAt = 0;
+  private lastSlam = 0;
+  private lastThud = 0;
+  private frame = 0;
+
+  constructor() {
+    super('play');
+  }
+
+  /** How far the truck still has to back up, during the opening. */
+  private introLeft = 0;
+  private introFrom = 0;
+  private introTime = 0;
+
+  create(data?: { intro?: boolean }) {
+    this.phase = data?.intro ? 'intro' : 'pack';
+    this.things = [];
+    this.byBody.clear();
+    this.wheels = [];
+    this.wheelImgs = [];
+    this.boiling = [];
+    this.cursorNow = '';
+    this.boilFrame = 0;
+    this.milestone = 0;
+    this.roadAt = -1e9;
+    this.drive = new Drivetrain();
+    this.swing = { fa: 0, fv: 0, aa: 0, av: 0 };
+    this.lastForward = 0;
+    this.eyeMood = 'open';
+    this.joltTip = false;
+    this.chimneys = [];
+    this.held = null;
+    this.ropesLeft = ROPES;
+    this.roping = false;
+    this.driveTime = 0;
+    this.arrivedAt = 0;
+    this.frame = 0;
+    this.cameras.main.scrollX = 0;
+
+    this.fx = new Fx(this);
+    this.fx.setup(W, H);
+    this.scenery();
+    this.road();
+    this.truck();
+    this.household();
+    this.hud();
+    this.controls();
+
+    this.matter.world.on('collisionstart', (event: { pairs: { bodyA: Body; bodyB: Body }[] }) => this.knocks(event.pairs));
+
+    // The opening: the truck starts off to the right and backs up to the house, beeping.
+    if (this.phase === 'intro') {
+      this.introFrom = 1400;
+      this.introLeft = this.introFrom;
+      this.introTime = 0;
+      this.slideTruck(this.introFrom);
+      this.goButton.setVisible(false);
+      this.ropeButton.setVisible(false);
+      this.hint.setVisible(false);
+      this.engine.start();
+      this.cameras.main.fadeIn(350, 42, 33, 64);
+    }
+    this.events.once('shutdown', () => this.engine.stop());
+
+    // Paper grain and darker corners over the whole picture, under the buttons and text.
+    this.add.image(0, 0, 'vignette').setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(95);
+    if (!STILL) this.time.addEvent({ delay: BOIL_MS, loop: true, callback: () => this.boil() });
+  }
+
+  /** A picture with a boiling line. */
+  private inked(x: number, y: number, base: string): Inked {
+    const entry = { img: this.add.image(x, y, `${base}#0`), base };
+    this.boiling.push(entry);
+    return entry;
+  }
+
+  /** Changes which drawing a boiling picture shows. */
+  private redraw(entry: Inked, base: string) {
+    entry.base = base;
+    entry.img.setTexture(`${base}#${this.boilFrame}`);
+  }
+
+  private boil() {
+    this.boilFrame = (this.boilFrame + 1) % BOIL_FRAMES;
+    // Each picture is a little out of step with its neighbours, so the whole screen does not twitch at once.
+    this.boiling.forEach((b, i) => b.img.active && b.img.setTexture(`${b.base}#${(this.boilFrame + i) % BOIL_FRAMES}`));
+  }
+
+  /** Things hitting each other: a thud, and fragile things may break. */
+  private knocks(pairs: { bodyA: Body; bodyB: Body; collision?: { supports?: { x: number; y: number }[] } }[]) {
+    let loudest = 0;
+    for (const pair of pairs) {
+      const a = pair.bodyA.parent ?? pair.bodyA;
+      const b = pair.bodyB.parent ?? pair.bodyB;
+      const speed = Math.hypot(a.velocity.x - b.velocity.x, a.velocity.y - b.velocity.y);
+      loudest = Math.max(loudest, speed);
+      if (this.phase === 'drive' || this.phase === 'arrived') this.impact(a, b, speed, pair.collision?.supports?.[0]);
+      if (this.phase !== 'drive') continue;
+      for (const [me, other] of [[a, b], [b, a]]) {
+        const t = this.byBody.get(me.id);
+        if (!t?.spec.fragile || t.broken) continue;
+        // A heavy thing hits harder than a light one, and the road is hardest of all.
+        const weight = other.isStatic ? 1.5 : Phaser.Math.Clamp(other.mass / me.mass, 0.6, 2.5);
+        if (speed * weight > t.spec.fragile) this.shatter(t);
+      }
+    }
+    if (loudest > 3.5 && this.time.now - this.lastThud > 90) {
+      this.lastThud = this.time.now;
+      thud(loudest);
+    }
+  }
+
+  /** What a hard knock looks like: the thing squashes and springs back, a twinkle pops, and grit flies off the road. */
+  private impact(a: Body, b: Body, speed: number, at?: { x: number; y: number }) {
+    if (speed < 3) return;
+    const where = at ?? { x: (a.position.x + b.position.x) / 2, y: (a.position.y + b.position.y) / 2 };
+    for (const body of [a, b]) {
+      const t = this.byBody.get(body.id);
+      if (!t || t.img.getData('squash')) continue;
+      const k = Math.min(0.22, speed * 0.03);
+      t.img.setData('squash', true);
+      this.tweens.add({ targets: t.img, scaleX: 1 + k, scaleY: 1 - k, duration: 70, yoyo: true, ease: 'Quad.easeOut', onComplete: () => t.img.setScale(1).setData('squash', false) });
+    }
+    if (speed > 4.5) {
+      const tw = this.add.image(where.x, where.y, 'twinkle').setDepth(25).setScale(0.2).setTint(0xfff3c4);
+      this.tweens.add({ targets: tw, scale: 0.5 + Math.min(0.6, speed * 0.05), angle: 45, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => tw.destroy() });
+    }
+    // Hitting the road: a spray of grit and a cloud of dust, and a wheel slamming down shakes the camera.
+    const road = a.isStatic ? a : b.isStatic ? b : null;
+    if (road && road.label === 'road') {
+      const other = road === a ? b : a;
+      const isWheel = this.wheels.includes(other);
+      if (isWheel && speed < 5) return;
+      const n = Math.min(10, Math.floor(speed * 1.2));
+      for (let i = 0; i < n; i++) {
+        const chip = this.add.image(where.x, where.y, 'bit').setDepth(9).setScale(0.3 + Math.random() * 0.4).setTint([0xedb27d, 0xb97e5e, 0x8c7c88][i % 3]).setRotation(Math.random() * 6);
+        const vx = (Math.random() - 0.5) * 160 - other.velocity.x * 12;
+        this.tweens.add({ targets: chip, x: where.x + vx, y: { value: where.y - 40 - Math.random() * 50, ease: 'Quad.easeOut' }, angle: 360, duration: 300, onComplete: () => this.tweens.add({ targets: chip, y: where.y + 10, alpha: 0, duration: 260, ease: 'Quad.easeIn', onComplete: () => chip.destroy() }) });
+      }
+      for (let i = 0; i < 3; i++) this.dust(where.x + (i - 1) * 26, where.y - 6);
+      if (isWheel && this.time.now - this.lastSlam > 300) {
+        this.lastSlam = this.time.now;
+        this.cameras.main.shake(180, Math.min(0.012, speed * 0.0016));
+      }
+    }
+  }
+
+  /** Confetti and streamers over the new house when the truck pulls up. */
+  private confetti() {
+    const cam = this.cameras.main;
+    const colours = [0xee6a4d, 0xffb23f, 0x5daa7a, 0x3fa7b5, 0xf49aa0, 0xb9a3d6, 0xfff2da];
+    for (let i = 0; i < 140; i++) {
+      const side = i % 2 ? 1 : -1;
+      const x0 = cam.scrollX + W / 2 + side * (W / 2 - 60);
+      const y0 = cam.scrollY + H * 0.75;
+      const bit = this.add.image(x0, y0, 'bit').setDepth(150).setTint(colours[i % colours.length]).setScale(1.4 + Math.random() * 1.2, 1 + Math.random() * 0.8);
+      const peakX = x0 - side * (200 + Math.random() * 700);
+      const peakY = cam.scrollY + 80 + Math.random() * 300;
+      const delay = Math.random() * 250;
+      this.tweens.add({
+        targets: bit,
+        x: peakX,
+        y: { value: peakY, ease: 'Cubic.easeOut' },
+        angle: (Math.random() - 0.5) * 720,
+        duration: 700,
+        delay,
+        onComplete: () =>
+          this.tweens.add({
+            targets: bit,
+            x: peakX + (Math.random() - 0.5) * 220,
+            y: cam.scrollY + H + 40,
+            angle: bit.angle + (Math.random() - 0.5) * 900,
+            scaleX: { from: bit.scaleX, to: -bit.scaleX },
+            duration: 2600 + Math.random() * 1600,
+            ease: 'Sine.easeIn',
+            onComplete: () => bit.destroy(),
+          }),
+      });
+    }
+  }
+
+  /** Wind streaks past the truck when it is going fast. */
+  private speedLines(forward: number) {
+    if (this.phase !== 'drive' || forward < 7 || this.frame % 3 !== 0) return;
+    const cam = this.cameras.main;
+    const y = cam.scrollY + 160 + Math.random() * (GROUND - 300);
+    const x = cam.scrollX + W + 40;
+    const line = this.add.rectangle(x, y, 80 + forward * 16, 3, 0xfff6e4, 0.5).setDepth(55).setOrigin(0, 0.5);
+    this.tweens.add({ targets: line, x: x - W * 0.7, alpha: 0, duration: 420, onComplete: () => line.destroy() });
+  }
+
+  private scenery() {
+    const rnd = seeded(11);
+    this.add.image(0, 0, 'sky').setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(-50);
+    const sun = this.add.image(1480, 250, 'sun').setScrollFactor(0.04).setDepth(-45);
+    this.fx.light(sun, 0xffc65a, 0.75, 250, 0.12);
+    // Mountains, forest and farmland behind the road, layered with haze, with clouds, birds and windmills.
+    this.scenery2 = buildBackdrop(this, { reach: WORLD_END, horizon: GROUND - 40, width: W, height: H, parallax: true });
+
+    // The far side of the road: a strip of grass with a town on it, sliding by more slowly than the road.
+    const far = 0.6;
+    const reach = W + WORLD_END * far;
+    for (let x = -100; x < reach; x += 1000) {
+      this.add.image(x, GROUND - 64, 'field').setOrigin(0, 0).setScrollFactor(far).setDepth(-22);
+    }
+    for (let x = 500; x < reach; x += 700) {
+      this.add.image(x, GROUND - 30, 'pole').setOrigin(30 / 740, 1).setScrollFactor(far).setDepth(-21);
+    }
+    // The town starts past the first screen, so nothing stands right behind the parked truck.
+    for (let x = 2000; x < reach; x += 320 + rnd() * 400) {
+      const kind = Math.floor(rnd() * 4);
+      if (kind === 3) this.add.image(x, GROUND - 30, 'fence').setOrigin(0, 1).setScrollFactor(far).setDepth(-20);
+      else this.add.image(x, GROUND - 30, `town_${kind}`).setOrigin(0, 280 / 290).setScrollFactor(far).setDepth(-20).setScale(0.85 + rnd() * 0.25);
+    }
+
+    // This side of the road, behind the truck.
+    // The two houses, standing on the ground line of their pictures. Their banners are written on in the game.
+    const houses: [number, string, string][] = [[-20, 'house_old', 'SOLD'], [FINISH + 250, 'house_new', 'WELCOME!']];
+    this.chimneys = [];
+    for (const [x0, key, words] of houses) {
+      const k = 0.95;
+      const groundY0 = GROUND + 6;
+      this.inked(x0, groundY0, key).img.setOrigin(0, HOUSE.ground / HOUSE.h).setDepth(-10).setScale(k);
+      const banner = key === 'house_old' ? HOUSE.oldBanner : HOUSE.banner;
+      this.add.text(x0 + banner.x * k, groundY0 - (HOUSE.ground - banner.y) * k, words, { fontFamily: TITLE, fontSize: words.length > 5 ? '24px' : '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(-9.9).setRotation(-0.03);
+      this.chimneys.push({ x: x0 + HOUSE.chimney.x * k, y: groundY0 - (HOUSE.ground - HOUSE.chimney.y) * k, kind: key === 'house_old' ? 'old' : 'new', n: 0 });
+    }
+    for (let x = 2200, i = 0; x < FINISH - 200; x += 520 + ((i * 173) % 300), i++) {
+      this.inked(x, groundY(x) + 6, `tree_${(i * 7) % TREE_KINDS}`).img.setOrigin(0.5, 392 / 406).setDepth(-9).setScale(0.9 + ((i * 37) % 30) / 100).setFlipX(i % 2 === 1);
+    }
+    const bumps = [2250, 7450, 10050, 14350, 20650];
+    const hills = [3800, 6300, 11150, 13300, 16200, 18800, 21800];
+    for (const x of bumps) this.add.image(x, groundY(x) + 8, 'sign_bump').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
+    for (const x of hills) this.add.image(x, groundY(x) + 8, 'sign_hill').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
+    for (let x = 4600; x < FINISH - 1500; x += 4000) {
+      const km = Math.round((FINISH - x) / 1000);
+      this.add.image(x, groundY(x) + 10, 'milestone').setOrigin(0.5, 1).setDepth(-6).setScale(0.75);
+      this.add.text(x, groundY(x) - 34, `${km} km`, { fontFamily: TITLE, fontSize: '22px', color: C.ink }).setOrigin(0.5).setDepth(-5.9);
+      this.add.text(x, groundY(x) - 66, 'HOME', { fontFamily: TEXT, fontSize: '15px', color: C.cream }).setOrigin(0.5).setDepth(-5.9);
+    }
+    // Signs from the locals, who have seen a lot of people try this.
+    const jokes: [number, string][] = [
+      [2100, 'DRIVE SLOW.\nYOUR STUFF\nIS WATCHING.'],
+      [3300, 'BUMPS AHEAD.\nMANY. SORRY.'],
+      [5400, 'LAST CHANCE\nTO TURN BACK'],
+      [8600, 'NO, REALLY.\nIT IS UPHILL.'],
+      [12300, 'HALFWAY.\nPROBABLY.'],
+      [15400, 'LOST A SOFA?\nKEEP IT.\n- MGMT'],
+      [19700, 'CAT SPOTTED\nLOOKING SMUG\nAT TRAFFIC'],
+      [22800, 'NEARLY THERE\n(NOT REALLY)'],
+    ];
+    for (const [x, words] of jokes) {
+      const tilt = ((x * 31) % 7 - 3) * 0.012;
+      // The board stands on the ground; the words are shrunk until they fit inside its plank, and tilt with it.
+      const k = 0.8;
+      const foot = groundY(x) + 10;
+      this.add.image(x, foot, 'sign_plank').setOrigin(0.5, 1).setDepth(-6).setScale(k).setRotation(tilt);
+      const label = this.add.text(0, 0, words, { fontFamily: TITLE, fontSize: '26px', color: C.ink, align: 'center', lineSpacing: -2 }).setOrigin(0.5).setDepth(-5.9).setRotation(tilt);
+      label.setScale(Math.min(1, (PLANK.text.w * k) / label.width, (PLANK.text.h * k) / label.height));
+      // Where the middle of the plank lands once the board is turned about its foot.
+      const dx = (PLANK.text.x - PLANK.w / 2) * k;
+      const dy = (PLANK.text.y - PLANK.h) * k;
+      label.setPosition(x + dx * Math.cos(tilt) - dy * Math.sin(tilt), foot + dx * Math.sin(tilt) + dy * Math.cos(tilt));
+    }
+    this.add.image(FINISH - 700, groundY(FINISH - 700) + 8, 'sign_home').setOrigin(0.5, 1).setDepth(-6).setScale(0.85);
+    for (let x = 1960; x < FINISH + 300; x += 1250 + rnd() * 500) {
+      this.add.image(x, groundY(x) + 6, 'lamppost').setOrigin(47 / 140, 396 / 400).setDepth(-8);
+      // The lantern is a separate bright shape, so the glow does not spill over the dark post.
+      const lamp = this.add.image(x + 57, groundY(x) - 352, 'spark').setDepth(-7).setScale(0.62, 0.5).setTint(0xfff0b4);
+      this.fx.light(lamp, 0xffbf4d, 0.85, 80, 0.2);
+    }
+    for (let x = 820; x < WORLD_END; x += 380 + rnd() * 620) {
+      this.add.image(x, groundY(x) + 16, `bush_${Math.floor(rnd() * 2)}`).setOrigin(0.5, 1).setDepth(-7).setScale(0.7 + rnd() * 0.4);
+    }
+    for (let x = WORLD_START + 80; x < WORLD_END; x += 70 + rnd() * 170) {
+      const key = rnd() < 0.22 ? `flower_${Math.floor(rnd() * 2)}` : `tuft_${Math.floor(rnd() * 2)}`;
+      this.add.image(x, groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-1).setFlipX(rnd() < 0.5);
+    }
+    // Stones and cracks in the earth under the road.
+    for (let x = WORLD_START + 40; x < WORLD_END; x += 90 + rnd() * 190) {
+      this.add.image(x, groundY(x) + 58 + rnd() * 40, `pebble_${Math.floor(rnd() * 3)}`).setDepth(1).setRotation((rnd() - 0.5) * 0.5);
+    }
+    // Close to the camera: a strip of tall grass and wildflowers, sliding by faster than the road.
+    const near = 1.3;
+    for (let x = -200; x < W + WORLD_END * near; x += 1200) {
+      this.add.image(x, H + 40, 'bd_grass').setOrigin(0, 1).setScrollFactor(near, 1).setDepth(60);
+    }
+
+    this.add.text(960, 70, 'Shifting Day', { fontFamily: TITLE, fontSize: '120px', color: C.terracotta, stroke: C.ink, strokeThickness: 12 }).setOrigin(0.5, 0).setDepth(-5);
+    this.add.text(960, 222, 'Moving day. One small truck. Everything shifts.', { fontFamily: TEXT, fontSize: '38px', color: C.ink }).setOrigin(0.5, 0).setDepth(-5);
+    this.add.text(FINISH + 700, 16, 'Home!', { fontFamily: TITLE, fontSize: '96px', color: C.mustard, stroke: C.ink, strokeThickness: 10 }).setOrigin(0.5, 0).setDepth(-5);
+  }
+
+  private road() {
+    for (let x0 = WORLD_START, i = 0; x0 < WORLD_END; x0 += CHUNK, i++) {
+      this.add.image(x0, CHUNK_TOP, `ground_${i}`).setOrigin(0, 0).setDepth(0);
+    }
+    const step = 30;
+    const thick = 80;
+    const slabs: Body[] = [];
+    for (let x = WORLD_START; x < WORLD_END; x += step) {
+      const y1 = groundY(x);
+      const y2 = groundY(x + step);
+      const angle = Math.atan2(y2 - y1, step);
+      const len = Math.hypot(step, y2 - y1) + 2;
+      // Push the slab down along its own normal, so its top edge is the road.
+      const cx = x + step / 2 - Math.sin(angle) * (thick / 2);
+      const cy = (y1 + y2) / 2 + Math.cos(angle) * (thick / 2);
+      slabs.push(M.Bodies.rectangle(cx, cy, len, thick, { isStatic: true, angle, friction: 1, frictionStatic: 2, label: 'road' }));
+    }
+    // Walls at both ends of the world.
+    slabs.push(M.Bodies.rectangle(WORLD_START - 40, GROUND - 400, 80, 1200, { isStatic: true, label: 'road' }));
+    slabs.push(M.Bodies.rectangle(WORLD_END + 40, GROUND - 400, 80, 1200, { isStatic: true, label: 'road' }));
+    // Hundreds of road pieces make the physics slow, and the truck only ever touches the few beside it.
+    // So the road is kept in pieces, and only those near the truck are in the world at any moment.
+    this.slabs = slabs;
+    this.slabsIn = new Set();
+    this.nearRoad(0, true);
+  }
+
+  /** Puts the road pieces within reach of this x into the physics world, and takes the others out. */
+  private nearRoad(x: number, force = false) {
+    if (!force && Math.abs(x - this.roadAt) < 250) return;
+    this.roadAt = x;
+    const from = x - 1700;
+    const to = x + 2700;
+    const keep: Body[] = [];
+    for (const b of this.slabs) {
+      const near = b.bounds.max.x > from && b.bounds.min.x < to;
+      const there = this.slabsIn.has(b);
+      if (near && !there) keep.push(b);
+      else if (!near && there) {
+        this.matter.world.remove(b);
+        this.slabsIn.delete(b);
+      }
+    }
+    if (keep.length) this.matter.world.add(keep);
+    for (const b of keep) this.slabsIn.add(b);
+  }
+
+  private truck() {
+    const t = TRUCK;
+    const ax = TRUCK_X;
+    const ay = GROUND - t.wheelR - t.wheels[0].y;
+    const part = (x: number, y: number, w: number, h: number, density = 0.0015) => M.Bodies.rectangle(ax + x + w / 2, ay + y + h / 2, w, h, { density });
+    const parts = [
+      part(t.bed.x, 0, t.bed.w, t.bed.t),
+      part(t.tailgate.x, -t.tailgate.h, t.tailgate.w, t.tailgate.h + t.bed.t),
+      part(t.cab.x, t.cab.top, t.cab.w, 26 - t.cab.top),
+      part(t.hood.x, t.hood.top, t.hood.w, 26 - t.hood.top),
+      part(t.frame.x, t.frame.y, t.frame.w, t.frame.h, 0.03),
+    ];
+    const filter = { group: TRUCK_GROUP };
+    this.chassis = M.Body.create({ parts, friction: 0.9, frictionStatic: 1.6, collisionFilter: filter, label: 'truck', sleepThreshold: Infinity });
+    this.anchor = { x: ax - this.chassis.position.x, y: ay - this.chassis.position.y };
+    this.matter.world.add(this.chassis);
+
+    for (const w of t.wheels) {
+      const wheel = M.Bodies.circle(ax + w.x, ay + w.y, t.wheelR, { friction: 0, frictionStatic: 0, density: 0.02, restitution: 0.05, collisionFilter: filter, label: 'wheel', sleepThreshold: Infinity });
+      const axle = M.Constraint.create({
+        bodyA: this.chassis,
+        pointA: { x: ax + w.x - this.chassis.position.x, y: ay + w.y - this.chassis.position.y },
+        bodyB: wheel,
+        length: 0,
+        stiffness: 0.55,
+        damping: 0.35,
+      });
+      // Handbrake: the wheels cannot move until the player sets off.
+      M.Body.setStatic(wheel, true);
+      this.matter.world.add([wheel, axle]);
+      this.wheels.push(wheel);
+      this.wheelImgs.push(this.inked(0, 0, 'wheel').img.setDepth(12));
+    }
+    // While it is being loaded the truck is held perfectly still, so it cannot sag on its springs and tip the load.
+    M.Body.setStatic(this.chassis, true);
+    this.truckImg = this.inked(0, 0, 'truck').img.setOrigin(t.ox / 660, t.oy / 260).setDepth(10);
+    // The bed's side and tailgate, drawn over the load so it sits inside the bed.
+    this.truckFront = this.inked(0, 0, 'truck_front').img.setOrigin(t.ox / 660, t.oy / 260).setDepth(21);
+    this.truckShadow = this.add.image(0, 0, 'shadow').setDepth(2);
+    // The headlight glows from behind the eye.
+    this.headlight = this.add.image(0, 0, 'spark').setDepth(11).setScale(0.52, 0.62).setAlpha(0);
+    this.fx.light(this.headlight, 0xffc457, 0.6, 76, 0.1);
+    this.eye = this.inked(0, 0, 'eye_open');
+    this.eye.img.setDepth(11.5);
+    this.freshener = this.inked(0, 0, 'freshener').img.setOrigin(0.5, 2 / 62).setDepth(10.6);
+    this.aerial = this.inked(0, 0, 'aerial').img.setOrigin(10 / 52, 96 / 100).setDepth(9.5);
+    this.decal = this.add.text(0, 0, 'SHIFT HAPPENS', { fontFamily: TITLE, fontSize: '22px', color: C.terracotta }).setOrigin(0.5).setDepth(21.5);
+    this.decal.setScale(Math.min(1, 176 / this.decal.width));
+  }
+
+  private household() {
+    // Piles on the pavement: each pile is a list of rows, bottom row first. "~" lays a thing on its side.
+    const piles: { cx: number; rows: string[][] }[] = [
+      { cx: 175, rows: [['sofa'], ['mattress'], ['rug'], ['lamp~'], ['box_s', 'jam', 'box_s']] },
+      { cx: 400, rows: [['fridge'], ['cat']] },
+      { cx: 545, rows: [['bookshelf'], ['box_m'], ['plant']] },
+      { cx: 690, rows: [['box_l'], ['box_m'], ['fish']] },
+      { cx: 835, rows: [['suitcase'], ['toolbox'], ['record']] },
+      { cx: 975, rows: [['armchair'], ['guitar~'], ['bird']] },
+      { cx: 1100, rows: [['washer'], ['tv'], ['chair']] },
+      { cx: 1196, rows: [['clock']] },
+    ];
+    for (const pile of piles) {
+      let floor = GROUND;
+      for (const row of pile.rows) {
+        const entries = row.map((name) => {
+          const side = name.endsWith('~');
+          const spec = ITEMS.find((s) => s.key === name.replace('~', ''))!;
+          return { spec, side, w: side ? spec.h : spec.w, h: side ? spec.w : spec.h };
+        });
+        const total = entries.reduce((sum, e) => sum + e.w, 0) + (entries.length - 1) * 8;
+        let x = pile.cx - total / 2;
+        for (const e of entries) {
+          this.addThing(e.spec, x + e.w / 2, floor - e.h / 2 - 1, e.side ? Math.PI / 2 : 0);
+          x += e.w + 8;
+        }
+        floor -= Math.max(...entries.map((e) => e.h)) + 1;
+      }
+    }
+  }
+
+  private addThing(spec: ItemSpec, x: number, y: number, angle: number) {
+    const opts = { density: spec.density, friction: spec.friction, frictionStatic: spec.friction * 1.6, restitution: spec.bounce ?? 0.02, frictionAir: 0.012, angle, label: spec.key };
+    const body = spec.round ? M.Bodies.circle(x, y, spec.w / 2, opts) : M.Bodies.rectangle(x, y, spec.w, spec.h, { ...opts, chamfer: { radius: spec.pet ? 18 : 7 } });
+    this.matter.world.add(body);
+    const ink = this.inked(x, y, spec.pet ? `${spec.key}_calm` : spec.key);
+    const img = ink.img.setDepth(20);
+    const shadow = this.add.image(x, GROUND, 'shadow').setDepth(2);
+    const thing: Thing = { spec, body, img, ink, shadow, aboard: true, broken: false, ghost: false, groundFrames: 0, mood: 'calm', moodUntil: 0 };
+    if (spec.key === 'fish') {
+      const spark = this.add.image(x, y, 'spark').setDepth(21).setScale(0.3, 0.22).setTint(0xffffff).setRotation(-0.7);
+      this.fx.light(spark, 0xffd873, 0.8, 42, 0.3);
+      thing.spark = { img: spark, dx: -spec.w * 0.2, dy: -spec.w * 0.3 };
+    }
+    this.things.push(thing);
+    this.byBody.set(body.id, thing);
+  }
+
+  private button(x: number, y: number, key: string, text: string, size: number, onClick: () => void) {
+    const bg = this.add.image(0, 0, key);
+    const label = this.add.text(0, -6, text, { fontFamily: TITLE, fontSize: `${size}px`, color: C.ink }).setOrigin(0.5);
+    bg.setScrollFactor(0);
+    label.setScrollFactor(0);
+    const box = this.add.container(x, y, [bg, label]).setScrollFactor(0).setDepth(100);
+    bg.setInteractive({ cursor: CURSOR.open });
+    bg.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      onClick();
+    });
+    bg.on('pointerover', () => box.setScale(1.05));
+    bg.on('pointerout', () => box.setScale(1));
+    return { box, label };
+  }
+
+  private hud() {
+    const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
+    this.hint = this.add.text(40, 1006, '', { ...style, fontSize: '32px', backgroundColor: C.cream, padding: { x: 20, y: 10 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
+    this.toast = this.add.text(W / 2, 330, '', { ...style, fontSize: '56px', color: C.terracottaDark, stroke: C.cream, strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
+    this.ropeLines = this.add.graphics().setDepth(25);
+
+    // Top right: the points on the truck, and how far along the road it is.
+    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) => o.setScrollFactor(0).setDepth(100);
+    fixed(this.add.image(W - 8, 4, 'card').setOrigin(1, 0));
+    fixed(this.add.image(W - 530, 64, 'coin').setScale(0.9));
+    this.hudHearts = fixed(this.add.text(W - 500, 64, '', { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0, 0.5));
+    this.hudLabel = fixed(this.add.text(W - 330, 64, '', { ...style, fontSize: '30px', color: C.walnut }).setOrigin(0, 0.5));
+    this.hudBar = fixed(this.add.graphics());
+    this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.075)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.075))];
+    this.hudTruck = fixed(this.add.image(W - 330, 54, 'truck#0').setScale(0.1));
+
+    this.tag = this.add
+      .text(0, 0, '', { fontFamily: TEXT, fontSize: '28px', color: C.ink, align: 'center', backgroundColor: C.cream, padding: { x: 16, y: 8 }, lineSpacing: -2 })
+      .setOrigin(0.5, 1)
+      .setDepth(120)
+      .setVisible(false);
+
+    // The dashboard appears when the truck sets off.
+    this.dash = new Dash(this, () => this.drive);
+    this.dash.create();
+    if (this.fx.available) {
+      this.fxLabel = this.add.text(40, 34, '', { ...style, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
+      this.fxLabel.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation();
+        this.toggleFx();
+      });
+      this.showFx();
+    }
+
+    this.goButton = this.button(W - 210, 990, 'btn', "Let's go!", 50, () => this.go()).box;
+    const rope = this.button(W - 560, 990, 'btn_rope', '', 42, () => this.setRoping(!this.roping));
+    this.ropeButton = rope.box;
+    this.ropeLabel = rope.label;
+    this.setRoping(false);
+  }
+
+  private toggleFx() {
+    this.fx.toggle();
+    this.showFx();
+  }
+
+  private showFx() {
+    this.fxLabel.setText(`Effects: ${this.fx.enabled ? 'on' : 'off'}  (F)`);
+  }
+
+  private valueOf(t: Thing) {
+    return VALUE[t.spec.key] ?? 10;
+  }
+
+  /** Shows a thing's name and worth above it, or hides the tag. */
+  private showTag(t: Thing | null) {
+    this.tagFor = t;
+    if (!t) return this.tag.setVisible(false);
+    const notes = [t.spec.pet ? 'pet' : '', t.spec.fragile ? 'fragile' : ''].filter(Boolean).join(' · ');
+    this.tag.setText(`${t.spec.name}\n★ ${this.valueOf(t)} points${notes ? `  ·  ${notes}` : ''}`).setVisible(true);
+    this.tag.setColor(t.spec.fragile ? C.terracottaDark : C.ink);
+  }
+
+  /** A number that floats up from a point in the world and fades: points won or lost. */
+  private floatText(x: number, y: number, text: string, colour: string) {
+    const t = this.add.text(x, y, text, { fontFamily: TITLE, fontSize: '40px', color: colour, stroke: C.ink, strokeThickness: 7 }).setOrigin(0.5).setDepth(130);
+    this.tweens.add({ targets: t, y: y - 90, alpha: 0, duration: 1400, ease: 'Sine.easeOut', onComplete: () => t.destroy() });
+  }
+
+  /** Sets the mouse pointer, only when it changes. */
+  private pointer(kind: keyof typeof CURSOR) {
+    if (kind === this.cursorNow) return;
+    this.cursorNow = kind;
+    this.input.setDefaultCursor(CURSOR[kind]);
+  }
+
+  /** While packing: a fist while dragging, an open hand over something that can be picked up, a rope coil in rope mode. */
+  private choosePointer() {
+    if (this.phase !== 'pack') {
+      if (this.tagFor) this.showTag(null);
+      return this.pointer('point');
+    }
+    const p = this.input.activePointer;
+    p.updateWorldPoint(this.cameras.main);
+    const hit = M.Query.point(this.things.filter((t) => !t.ghost).map((t) => t.body), { x: p.worldX, y: p.worldY }) as Body[];
+    const over = this.held?.thing ?? this.things.filter((t) => hit.includes(t.body)).pop() ?? null;
+    if (over !== this.tagFor) this.showTag(over);
+    if (over) this.tag.setPosition(over.body.position.x, over.body.bounds.min.y - 12);
+    if (this.held) return this.pointer('grab');
+    if (this.roping) return this.pointer('rope');
+    this.pointer(over ? 'open' : 'point');
+  }
+
+  /** Rope mode: the next click ties a thing down, or unties it. */
+  private setRoping(on: boolean) {
+    this.roping = on && this.phase === 'pack';
+    this.ropeLabel.setText(`Rope × ${this.ropesLeft}`).setColor(this.roping ? C.terracottaDark : C.ink);
+    if (this.phase !== 'pack') return;
+    this.hint.setText(this.roping ? 'Click a thing on the truck to tie it down.   Click a tied thing to untie it.' : 'Drag things on to the truck.   Scroll or Q / E to turn them.   R for rope.');
+    this.pointer(this.roping ? 'rope' : 'point');
+  }
+
+  private controls() {
+    const kb = this.input.keyboard!;
+    this.keys = {
+      left: kb.addKey('LEFT'),
+      right: kb.addKey('RIGHT'),
+      a: kb.addKey('A'),
+      d: kb.addKey('D'),
+      q: kb.addKey('Q'),
+      e: kb.addKey('E'),
+      r: kb.addKey('R'),
+      f: kb.addKey('F'),
+      shift: kb.addKey('SHIFT'),
+      ctrl: kb.addKey('CTRL'),
+      up: kb.addKey('UP'),
+      down: kb.addKey('DOWN'),
+      n: kb.addKey('N'),
+      one: kb.addKey('ONE'),
+      two: kb.addKey('TWO'),
+      three: kb.addKey('THREE'),
+      four: kb.addKey('FOUR'),
+    };
+    this.input.mouse?.disableContextMenu();
+    const turn = (by: number) => {
+      if (this.held) this.held.angle += by;
+    };
+    this.keys.q.on('down', () => (this.phase === 'drive' ? this.gearShift(-1) : turn(-Math.PI / 12)));
+    this.keys.e.on('down', () => (this.phase === 'drive' ? this.gearShift(1) : turn(Math.PI / 12)));
+    this.keys.shift.on('down', () => this.gearShift(1));
+    this.keys.up.on('down', () => this.gearShift(1));
+    this.keys.ctrl.on('down', () => this.gearShift(-1));
+    this.keys.down.on('down', () => this.gearShift(-1));
+    const pick: [Phaser.Input.Keyboard.Key, Gear][] = [[this.keys.one, 1], [this.keys.two, 2], [this.keys.three, 3], [this.keys.four, 4], [this.keys.n, 'N']];
+    for (const [key, gear] of pick) key.on('down', () => this.gearTo(gear));
+    this.keys.r.on('down', () => (this.phase === 'drive' ? this.gearTo('R') : this.setRoping(!this.roping)));
+    this.keys.f.on('down', () => this.fx.available && this.toggleFx());
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => turn(Math.sign(dy) * (Math.PI / 12)));
+
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.phase !== 'pack') return;
+      if (this.held && p.rightButtonDown()) return turn(Math.PI / 2);
+      const hit = M.Query.point(this.things.map((t) => t.body), { x: p.worldX, y: p.worldY }) as Body[];
+      if (!hit.length) return;
+      const thing = this.things.filter((t) => hit.includes(t.body)).pop()!;
+      if (this.roping) {
+        if (thing.rope) this.untie(thing, true);
+        else this.tie(thing);
+        return;
+      }
+      if (thing.rope) this.untie(thing, true);
+      const snap = Math.PI / 12;
+      this.held = { thing, dx: p.worldX - thing.body.position.x, dy: p.worldY - thing.body.position.y, angle: Math.round(thing.body.angle / snap) * snap };
+      thing.img.setDepth(30);
+      this.fx.pulse(thing.img, 0xffc24d, 0.85, 650);
+      play('pick');
+    });
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (!this.held || p.rightButtonReleased()) return;
+      const b = this.held.thing.body;
+      M.Body.setVelocity(b, { x: b.velocity.x * 0.25, y: b.velocity.y * 0.25 });
+      this.held.thing.img.setDepth(20);
+      const dropped = this.held.thing;
+      this.held = null;
+      play('drop');
+      this.time.delayedCall(450, () => {
+        if (this.phase === 'pack' && this.onTruck(dropped)) this.floatText(dropped.body.position.x, dropped.body.bounds.min.y - 20, `+${this.valueOf(dropped)}`, C.mustard);
+      });
+    });
+  }
+
+  private say(text: string) {
+    this.toast.setText(text).setAlpha(1).setY(330);
+    this.tweens.killTweensOf(this.toast);
+    this.tweens.add({ targets: this.toast, alpha: 0, y: 290, delay: 1100, duration: 500 });
+  }
+
+  /** Where the middle of the top of the truck bed is. */
+  private bed() {
+    const c = this.chassis;
+    const cos = Math.cos(c.angle);
+    const sin = Math.sin(c.angle);
+    return { x: c.position.x + this.anchor.x * cos - this.anchor.y * sin, y: c.position.y + this.anchor.x * sin + this.anchor.y * cos, cos, sin };
+  }
+
+  /** True when a thing is resting on the road and not on the truck. */
+  private onRoad(t: Thing): boolean {
+    return t.body.bounds.max.y > groundY(t.body.position.x) - 10;
+  }
+
+  /** True when a thing is sitting on the truck, or on something that is. */
+  private onTruck(t: Thing): boolean {
+    const dx = t.body.position.x - this.bed().x;
+    return !this.onRoad(t) && dx > TRUCK.bed.x - 40 && dx < TRUCK.cab.x + 60;
+  }
+
+  private tie(t: Thing) {
+    if (!this.onTruck(t)) return this.say('Rope only holds things that are on the truck.');
+    if (this.ropesLeft < 1) return this.say('No rope left. Untie something first.');
+    const bed = this.bed();
+    const lo = TRUCK.bed.x + TRUCK.tailgate.w + 6;
+    const hi = TRUCK.cab.x - 6;
+    const b = t.body;
+    const half = (b.bounds.max.x - b.bounds.min.x) / 2 + 16;
+    const mid = Phaser.Math.Clamp(b.position.x - bed.x, lo, hi);
+    const onBed = (along: number) => ({ x: bed.x + along * bed.cos, y: bed.y + along * bed.sin });
+    const hookL = onBed(Phaser.Math.Clamp(mid - half, lo, hi));
+    const hookR = onBed(Phaser.Math.Clamp(mid + half, lo, hi));
+    // Lay the rope from one ring, up and over the top of the thing (and anything stacked on it), down to the other.
+    const top = b.bounds.min.y - 8;
+    const path = [hookL, { x: b.bounds.min.x - 4, y: top }, { x: b.bounds.max.x + 4, y: top }, hookR];
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i];
+      const c = path[i + 1];
+      const n = Math.max(1, Math.round(Math.hypot(c.x - a.x, c.y - a.y) / ROPE_LINK));
+      for (let k = 0; k < n; k++) pts.push({ x: a.x + ((c.x - a.x) * k) / n, y: a.y + ((c.y - a.y) * k) / n });
+    }
+    pts.push(hookR);
+    let laid = 0;
+    for (let i = 1; i < pts.length; i++) laid += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    // Each link is a little shorter than the gap it was laid in, so the whole rope pulls tight.
+    const gap = (laid / (pts.length - 1)) * 0.93;
+    const links: Body[] = pts.map((p) =>
+      M.Bodies.circle(p.x, p.y, 4.5, {
+        density: 0.004,
+        friction: 0.9,
+        frictionAir: 0.04,
+        collisionFilter: { group: TRUCK_GROUP, category: ROPE_CATEGORY, mask: 0x0001 },
+        label: 'rope',
+      }),
+    );
+    const joins: any[] = [];
+    for (let i = 1; i < links.length; i++) {
+      joins.push(M.Constraint.create({ bodyA: links[i - 1], bodyB: links[i], length: gap, stiffness: 0.95, damping: 0.08 }));
+    }
+    // The two ends are tied to rings on the bed.
+    for (const [link, hook] of [[links[0], hookL], [links[links.length - 1], hookR]] as const) {
+      joins.push(M.Constraint.create({ bodyA: this.chassis, pointA: { x: hook.x - this.chassis.position.x, y: hook.y - this.chassis.position.y }, bodyB: link, length: 0, stiffness: 1, damping: 0.1 }));
+    }
+    this.matter.world.add([...links, ...joins]);
+    t.rope = { links, joins };
+    this.ropesLeft--;
+    this.fx.pulse(t.img, 0xff9a3c, 0.95, 750);
+    play('tie');
+    this.setRoping(false);
+  }
+
+  private untie(t: Thing, giveBack: boolean) {
+    if (!t.rope) return;
+    for (const j of t.rope.joins) this.matter.world.remove(j);
+    for (const l of t.rope.links) this.matter.world.remove(l);
+    t.rope = undefined;
+    if (giveBack) {
+      this.ropesLeft++;
+      play('untie');
+    }
+    this.setRoping(false);
+  }
+
+  private go() {
+    if (this.phase !== 'pack') return;
+    if (this.held) {
+      this.held.thing.img.setDepth(20);
+      this.held = null;
+    }
+    if (!this.things.some((t) => this.onTruck(t))) return this.say('Put something on the truck first!');
+    for (const t of this.things) {
+      if (!this.onTruck(t)) this.leave(t);
+      else t.packed = true;
+    }
+    this.setRoping(false);
+    this.phase = 'drive';
+    M.Body.setStatic(this.chassis, false);
+    for (const w of this.wheels) M.Body.setStatic(w, false);
+    // Everything on board stays awake from now on, so it moves with the truck.
+    for (const t of this.things) {
+      if (!t.aboard) continue;
+      t.body.sleepThreshold = Infinity;
+      M.Sleeping.set(t.body, false);
+    }
+    this.goButton.setVisible(false);
+    this.ropeButton.setVisible(false);
+    this.pointer('point');
+    this.hint.setPosition(580, 1028).setFontSize(28).setText('D gas    A brake    SHIFT gear up    CTRL gear down    1 2 3 4 R N pick a gear');
+    this.dash.show(true);
+    this.say("You're in 1st. Hold D, and press SHIFT when the gear number turns red. Try not to stall.");
+    play('honk');
+    this.engine.start();
+  }
+
+  /** The truck's speed along its own length, forwards positive. */
+  private forwardSpeed() {
+    const c = this.chassis;
+    return c.velocity.x * Math.cos(c.angle) + c.velocity.y * Math.sin(c.angle);
+  }
+
+  private gearShift(dir: 1 | -1) {
+    if (this.phase !== 'drive') return;
+    this.shifted(this.drive.shift(dir, this.forwardSpeed()));
+  }
+
+  /** Moves the lever straight to a gear: from a number key, or a click on the gate. */
+  private gearTo(gear: Gear) {
+    if (this.phase !== 'drive') return;
+    this.shifted(this.drive.shiftTo(gear, this.forwardSpeed()));
+  }
+
+  private shifted(result: { ok: boolean; why?: string }) {
+    if (result.ok) {
+      play('clunk');
+      return;
+    }
+    if (!result.why) return;
+    play('grind');
+    this.say(result.why);
+    this.cameras.main.shake(160, 0.003);
+    this.lookStartled(500);
+  }
+
+  private lookStartled(ms: number) {
+    this.eyeMood = 'wide';
+    this.eyeUntil = this.time.now + ms;
+  }
+
+  /** A clutch biting on a mismatch: the truck lurches, the load slides, and the eye pops. */
+  private jolted(jolt: number) {
+    const size = Math.abs(jolt);
+    if (size < 0.25) return;
+    this.cameras.main.shake(140, Math.min(0.007, size * 0.004));
+    thud(size * 4);
+    this.lookStartled(450);
+    if (jolt > 0.3) this.backfire();
+    if (size > 0.7 && !this.joltTip) {
+      this.joltTip = true;
+      this.say(jolt > 0 ? 'Lurch! Ease off the gas before you shift.' : 'Clunk! Too slow for that gear: rev a little first.');
+    }
+  }
+
+  /** Puts something at a point on the truck, given in the truck's own coordinates. */
+  private onTruckAt(lx: number, ly: number) {
+    const b = this.bed();
+    return { x: b.x + lx * b.cos - ly * b.sin, y: b.y + lx * b.sin + ly * b.cos };
+  }
+
+  /** A puff from the exhaust pipe: grey smoke, drifting back and up. */
+  private exhaust(big = false) {
+    const p = this.onTruckAt(PIPE_AT.x, PIPE_AT.y);
+    const puff = this.add.image(p.x, p.y, 'puff').setDepth(9).setTint(0xb5a998).setAlpha(big ? 0.85 : 0.6).setScale(big ? 0.5 : 0.3);
+    this.tweens.add({ targets: puff, x: p.x - 50 - Math.random() * 30, y: p.y - 26 - Math.random() * 20, scale: big ? 1.3 : 0.8, alpha: 0, duration: big ? 900 : 650, onComplete: () => puff.destroy() });
+  }
+
+  /** A pop from the exhaust when the clutch shoves the truck forward: a flash and a bang. */
+  private backfire() {
+    const p = this.onTruckAt(PIPE_AT.x, PIPE_AT.y);
+    const flash = this.add.image(p.x - 10, p.y, 'spark').setDepth(9.2).setTint(0xff9a3c).setScale(0.9, 0.7);
+    this.tweens.add({ targets: flash, scale: 0, alpha: 0, duration: 220, onComplete: () => flash.destroy() });
+    this.exhaust(true);
+    play('bang');
+  }
+
+  /** The eye, the air freshener and the aerial follow the truck, and react to how it is driven. */
+  private truckLife(forward: number) {
+    const angle = this.chassis.angle;
+    const accel = forward - this.lastForward;
+    this.lastForward = forward;
+
+    const e = this.onTruckAt(EYE_AT.x, EYE_AT.y);
+    this.eye.img.setPosition(e.x, e.y).setRotation(angle);
+    let mood = 'open';
+    const now = this.time.now;
+    if (this.phase === 'arrived' || this.phase === 'done') mood = 'happy';
+    else if (now < this.eyeUntil) mood = this.eyeMood;
+    else if (this.phase === 'drive' && this.drive.rpm > REDLINE - 400 && this.drive.throttle > 0.5) mood = 'squint';
+    else if (now > this.nextBlink) {
+      mood = 'blink';
+      if (now > this.nextBlink + 130) this.nextBlink = now + 2400 + Math.random() * 2800;
+    }
+    if (`eye_${mood}` !== this.eye.base) this.redraw(this.eye, `eye_${mood}`);
+
+    // The air freshener hangs from the roof and swings like a pendulum: gravity pulls it straight down,
+    // and when the truck speeds up it is left behind, so it swings back (and forward when braking).
+    const s = this.swing;
+    s.fv += -0.035 * Math.sin(s.fa) - 0.06 * s.fv + accel * 0.11;
+    s.fa += s.fv;
+    const f = this.onTruckAt(FRESHENER_AT.x, FRESHENER_AT.y);
+    this.freshener.setPosition(f.x, f.y).setRotation(s.fa);
+
+    // The aerial is a springy whip: the wind bends it back with speed, and jolts set it wobbling.
+    const lean = -Math.max(-1, Math.min(1, forward / 10)) * 0.5;
+    s.av += (lean - s.aa) * 0.12 - s.av * 0.1 - accel * 0.06;
+    s.aa += s.av;
+    const a = this.onTruckAt(AERIAL_AT.x, AERIAL_AT.y);
+    this.aerial.setPosition(a.x, a.y).setRotation(angle + s.aa);
+    const d = this.onTruckAt(0, -7);
+    this.decal.setPosition(d.x, d.y).setRotation(angle);
+
+    // The driver whistles out of the window while cruising, and stops dead when the engine screams.
+    const cruising = this.phase === 'drive' && Math.abs(forward) > 2 && this.drive.rpm < REDLINE - 900 && now > this.eyeUntil;
+    if (cruising && this.frame % 64 === 0) {
+      const w = this.onTruckAt(250, -120);
+      const note = this.add
+        .text(w.x, w.y, Math.random() < 0.5 ? '♪' : '♫', { fontFamily: TEXT, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 })
+        .setOrigin(0.5)
+        .setDepth(30)
+        .setRotation((Math.random() - 0.5) * 0.5);
+      this.tweens.add({ targets: note, x: w.x - 120 - Math.random() * 60, y: w.y - 110, alpha: 0, scale: 1.4, duration: 1700, ease: 'Sine.easeOut', onComplete: () => note.destroy() });
+      this.tweens.add({ targets: note, angle: { from: -14, to: 14 }, yoyo: true, repeat: 2, duration: 280 });
+    }
+  }
+
+  /** The card at the top right: hearts, and either what is on the truck or how far along the road it is. */
+  private updateHud(onTruck: number, points: number, pct: number) {
+    this.hudHearts.setText(String(points));
+    const packing = this.phase === 'pack' || this.phase === 'intro';
+    this.hudLabel.setVisible(packing).setText(`${onTruck} of ${this.things.length} on the truck`);
+    this.hudTruck.setVisible(!packing);
+    for (const h of this.hudHomes) h.setVisible(!packing);
+    const g = this.hudBar.clear();
+    if (packing) return;
+    const x0 = W - 330;
+    const x1 = W - 96;
+    g.lineStyle(14, Phaser.Display.Color.HexStringToColor(C.ink).color).lineBetween(x0, 70, x1, 70);
+    g.lineStyle(8, Phaser.Display.Color.HexStringToColor(C.creamShade).color).lineBetween(x0, 70, x1, 70);
+    g.lineStyle(8, Phaser.Display.Color.HexStringToColor(C.sage).color).lineBetween(x0, 70, x0 + (x1 - x0) * pct, 70);
+    this.hudTruck.setX(x0 + (x1 - x0) * pct);
+  }
+
+  /** Smoke from the chimneys: plain puffs from the old house, little hearts from the new one. */
+  private chimneySmoke() {
+    if (this.frame % 24 !== 0) return;
+    const cam = this.cameras.main;
+    for (const c of this.chimneys) {
+      if (c.x < cam.scrollX - 300 || c.x > cam.scrollX + W + 300) continue;
+      c.n++;
+      const heart = c.kind === 'new' && c.n % 2 === 0;
+      const puff = this.add.image(c.x, c.y, heart ? 'heart' : 'puff').setDepth(-11).setTint(heart ? 0xffd9cf : 0xe8dfcf).setAlpha(0.85).setScale(heart ? 0.35 : 0.45);
+      this.tweens.add({ targets: puff, y: c.y - 200, x: c.x + 50 + Math.random() * 30, scale: heart ? 0.7 : 1.4, alpha: 0, angle: heart ? 0 : 40, duration: 2800, onComplete: () => puff.destroy() });
+    }
+  }
+
+  /** Takes a left-behind thing out of the physics world for good, once it is far behind. */
+  private forget(t: Thing) {
+    if (t.gone) return;
+    t.gone = true;
+    this.matter.world.remove(t.body);
+    t.img.setVisible(false);
+    t.shadow.setVisible(false);
+    t.spark?.img.setVisible(false);
+  }
+
+  /** A thing that is no longer coming along. The truck drives through it, so it cannot wedge under a wheel. */
+  private leave(t: Thing) {
+    this.untie(t, false);
+    t.aboard = false;
+    t.ghost = true;
+    t.img.setAlpha(0.6).setDepth(5);
+    t.body.collisionFilter = { ...t.body.collisionFilter, group: TRUCK_GROUP };
+  }
+
+  private name(t: Thing): string {
+    return t.spec.pet || /^Goldie/.test(t.spec.name) ? t.spec.name : `the ${t.spec.name.toLowerCase()}`;
+  }
+
+  private lose(t: Thing) {
+    this.leave(t);
+    t.lost = true;
+    this.floatText(t.body.position.x, t.body.position.y - 40, 'Lost!', C.cream);
+    this.say(t.spec.pet ? `${t.spec.name} fell off!` : `Oh no, ${this.name(t)}!`);
+    play('lost');
+    this.cameras.main.shake(140, 0.004);
+  }
+
+  /** A fragile thing breaks. It stays where it is, as dead weight. */
+  private shatter(t: Thing) {
+    const wasAboard = t.aboard;
+    t.broken = true;
+    t.aboard = false;
+    this.redraw(t.ink, `${t.spec.key}_broken`);
+    if (!wasAboard) return;
+    this.say(`Crack! That was ${this.name(t)}.`);
+    for (let i = 0; i < 12; i++) {
+      const { x, y } = t.body.position;
+      const shard = this.add.image(x, y, 'bit').setDepth(24).setScale(0.3 + Math.random() * 0.5, 0.25).setTint(i % 2 ? 0xfff2da : 0xb9bccb).setRotation(Math.random() * 6);
+      const a = Math.random() * Math.PI * 2;
+      const d = 60 + Math.random() * 90;
+      this.tweens.add({ targets: shard, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 40, angle: 540, alpha: 0, duration: 600, ease: 'Quad.easeOut', onComplete: () => shard.destroy() });
+    }
+    this.floatText(t.body.position.x, t.body.position.y - 40, `−${Math.round(this.valueOf(t) / 2)}`, C.terracotta);
+    play('crack');
+    this.cameras.main.shake(160, 0.005);
+  }
+
+  private moodOf(t: Thing): Mood {
+    if (this.held?.thing === t) return 'panic';
+    if (t.ghost) return 'grumpy';
+    if (this.phase === 'arrived' || this.phase === 'done') return 'happy';
+    if (this.phase !== 'drive') return 'calm';
+    const c = this.chassis;
+    const slip = Math.hypot(t.body.velocity.x - c.velocity.x, t.body.velocity.y - c.velocity.y);
+    const tipped = Math.abs(Phaser.Math.Angle.Wrap(t.body.angle)) > 0.6;
+    if (slip > 2.2 || tipped || Math.abs(t.body.angularVelocity) > 0.04) return 'panic';
+    if (slip > 0.8 || Math.abs(c.velocity.x) > 4.5 || Math.abs(c.angle) > 0.12) return 'worried';
+    return 'calm';
+  }
+
+  private faces() {
+    const rank: Record<Mood, number> = { calm: 0, happy: 0, grumpy: 0, worried: 1, panic: 2 };
+    for (const t of this.things) {
+      if (!t.spec.pet) continue;
+      const mood = this.moodOf(t);
+      // A fright lingers for a moment, so faces do not flicker.
+      if (rank[mood] < rank[t.mood] && this.time.now < t.moodUntil) continue;
+      if (rank[mood] > 0) t.moodUntil = this.time.now + 600;
+      if (mood === t.mood) continue;
+      t.mood = mood;
+      this.redraw(t.ink, `${t.spec.key}_${mood}`);
+    }
+  }
+
+  private drawRopes() {
+    const g = this.ropeLines.clear();
+    const colour = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
+    for (const t of this.things) {
+      if (!t.rope) continue;
+      const links = t.rope.links.map((l: Body) => ({ x: l.position.x, y: l.position.y }));
+      // A smooth curve through the links, so the rope bends rather than kinks.
+      const curve = new Phaser.Curves.Spline(links.map((p: { x: number; y: number }) => new Phaser.Math.Vector2(p.x, p.y)));
+      const pts = curve.getPoints(links.length * 3);
+      const ends = [links[0], links[links.length - 1]];
+      for (const h of ends) g.fillStyle(colour('#B9BCCB')).fillCircle(h.x, h.y + 2, 8).lineStyle(3.5, colour(C.ink)).strokeCircle(h.x, h.y + 2, 8);
+      g.lineStyle(9.5, colour(C.ink)).strokePoints(pts);
+      g.lineStyle(5.5, colour('#E8C48A')).strokePoints(pts);
+      g.lineStyle(1.5, colour('#FFF1D0'), 0.7).strokePoints(pts.map((p) => new Phaser.Math.Vector2(p.x - 0.8, p.y - 1.4)));
+      // The twist of the fibres: short slanted strokes all along it.
+      g.lineStyle(2, colour('#A07040'));
+      let carry = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len < 0.01) continue;
+        const tx = (b.x - a.x) / len;
+        const ty = (b.y - a.y) / len;
+        let d = 7 - carry;
+        while (d < len) {
+          const x = a.x + tx * d;
+          const y = a.y + ty * d;
+          g.lineBetween(x - tx * 2.4 - ty * 2.8, y - ty * 2.4 + tx * 2.8, x + tx * 2.4 + ty * 2.8, y + ty * 2.4 - tx * 2.8);
+          d += 7;
+        }
+        carry = (carry + len) % 7;
+      }
+      for (const h of ends) g.fillStyle(colour('#E8C48A')).fillCircle(h.x, h.y, 5).lineStyle(3, colour(C.ink)).strokeCircle(h.x, h.y, 5);
+    }
+  }
+
+  /** Moves the parked truck (body and wheels) sideways, without the physics: for the opening only. */
+  private slideTruck(dx: number) {
+    M.Body.setPosition(this.chassis, { x: this.chassis.position.x + dx, y: this.chassis.position.y });
+    for (const w of this.wheels) {
+      M.Body.setPosition(w, { x: w.position.x + dx, y: w.position.y });
+      M.Body.setAngle(w, w.angle + dx / TRUCK.wheelR);
+    }
+  }
+
+  /** The truck backing up to the house, slowing as it arrives; then loading can start. */
+  private reverseIn(delta: number) {
+    this.introTime += delta / 1000;
+    const duration = 3.2;
+    const k = Math.min(1, this.introTime / duration);
+    const eased = 1 - Math.pow(1 - k, 3);
+    const want = this.introFrom * (1 - eased);
+    this.slideTruck(want - this.introLeft);
+    this.introLeft = want;
+    this.engine.rev(1100 + 1400 * (1 - k), 0.4 * (1 - k));
+    if (Math.floor(this.introTime / 0.45) !== Math.floor((this.introTime - delta / 1000) / 0.45) && k < 0.95) play('beep');
+    if (k >= 1) {
+      this.phase = 'pack';
+      this.engine.stop();
+      this.engine = new Engine();
+      this.goButton.setVisible(true);
+      this.ropeButton.setVisible(true);
+      this.hint.setVisible(true);
+      this.setRoping(false);
+      play('honk');
+      this.say('Load up! Drag things on to the truck.');
+    }
+  }
+
+  /** Keeps the bright shapes on the things they belong to. */
+  private syncGlows(time: number) {
+    const bed = this.bed();
+    const lx = 402;
+    const ly = -28;
+    this.headlight.setPosition(bed.x + lx * bed.cos - ly * bed.sin, bed.y + lx * bed.sin + ly * bed.cos).setRotation(this.chassis.angle);
+    this.fx.brighten(this.headlight, this.phase === 'drive' ? 1 : 0.6);
+    for (const t of this.things) {
+      if (!t.spark) continue;
+      const cos = Math.cos(t.body.angle);
+      const sin = Math.sin(t.body.angle);
+      t.spark.img.setPosition(t.body.position.x + t.spark.dx * cos - t.spark.dy * sin, t.body.position.y + t.spark.dx * sin + t.spark.dy * cos).setRotation(t.body.angle - 0.7);
+      t.spark.img.setVisible(!t.broken).setAlpha(t.ghost ? 0.5 : 1);
+    }
+    this.fx.update(time);
+  }
+
+  /** Soft shadows on the road, under the truck and under anything resting on or falling towards it. */
+  private shadows() {
+    const bed = this.bed();
+    for (const t of this.things) {
+      const b = t.body;
+      const road = groundY(b.position.x);
+      const gap = road - b.bounds.max.y;
+      const dx = b.position.x - bed.x;
+      const overTruck = dx > TRUCK.bed.x - 10 && dx < TRUCK.hood.x + TRUCK.hood.w && b.bounds.max.y < bed.y + 40;
+      // Things stacked on other things cast no shadow of their own, or a pile would sit in a black pool.
+      const show = !overTruck && gap > -40 && (gap < 14 || (gap < 320 && b.speed > 1.5));
+      t.shadow.setVisible(show);
+      if (!show) continue;
+      const near = 1 - Math.max(0, gap) / 320;
+      t.shadow.setPosition(b.position.x, road + 6).setAlpha(near * (t.ghost ? 0.5 : 0.9)).setScale(((b.bounds.max.x - b.bounds.min.x) / 256) * (1.3 - near * 0.15), 0.9);
+    }
+    const mid = bed.x + 105 * bed.cos;
+    this.truckShadow.setPosition(mid, groundY(mid) + 8).setScale(680 / 256, 1.3);
+  }
+
+  private dust(x: number, y: number) {
+    const puff = this.add.image(x, y, 'puff').setDepth(8).setScale(0.4).setAlpha(0.6).setRotation(Math.random() * 6);
+    this.tweens.add({ targets: puff, scale: 1.1, alpha: 0, y: y - 34, x: x - 30, duration: 520, onComplete: () => puff.destroy() });
+  }
+
+  private finish() {
+    this.phase = 'done';
+    this.engine.stop();
+    play('win');
+    const packed = this.things.filter((t) => t.packed);
+    const delivered = packed.filter((t) => t.aboard && !t.broken);
+    const broken = packed.filter((t) => t.broken);
+    const lost = packed.filter((t) => t.lost && !t.broken);
+    const earned = delivered.reduce((n, t) => n + this.valueOf(t), 0);
+    const penalty = broken.reduce((n, t) => n + Math.round(this.valueOf(t) / 2), 0);
+    const bonus = broken.length === 0 && lost.length === 0 && delivered.length > 0 ? 100 : 0;
+    const score = Math.max(0, earned - penalty + bonus);
+    const stars = score >= 900 ? 3 : score >= 600 ? 2 : score >= 300 ? 1 : 0;
+    const catLeft = !this.things.find((t) => t.spec.key === 'cat')?.aboard;
+    const verdict = catLeft
+      ? 'Biscuit is walking home. Biscuit will not forget this.'
+      : stars === 3
+        ? 'A perfect move. The neighbours are impressed.'
+        : stars === 2
+          ? 'Most of it made it. Good enough!'
+          : stars === 1
+            ? 'We can buy a new fridge. Probably.'
+            : 'We are minimalists now.';
+
+    const cx = W / 2;
+    const cy = H / 2;
+    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 201) => o.setScrollFactor(0).setDepth(d);
+    const shown: Phaser.GameObjects.GameObject[] = [];
+    const keep = <T extends Phaser.GameObjects.GameObject>(o: T) => (shown.push(o), o);
+    keep(fixed(this.add.rectangle(cx, cy, W, H, 0x2a2140, 0.45), 199));
+    keep(fixed(this.add.image(cx, cy, 'panel'), 200));
+    keep(fixed(this.add.text(cx, cy - 290, 'Home sweet home!', { fontFamily: TITLE, fontSize: '72px', color: C.terracotta, stroke: C.ink, strokeThickness: 8 }).setOrigin(0.5)));
+
+    // Stars, popping in one by one.
+    for (let i = 0; i < 3; i++) {
+      const star = keep(fixed(this.add.text(cx + (i - 1) * 96, cy - 196, '★', { fontFamily: TITLE, fontSize: '92px', color: i < stars ? C.mustard : C.creamShade, stroke: C.ink, strokeThickness: 8 }).setOrigin(0.5).setScale(0), 202));
+      this.tweens.add({ targets: star, scale: 1, delay: 500 + i * 260, duration: 320, ease: 'Back.easeOut', onStart: () => i < stars && play('tie') });
+    }
+
+    // What arrived, as a row of little pictures with their points.
+    const row = delivered.slice().sort((a, b) => this.valueOf(b) - this.valueOf(a)).slice(0, 9);
+    row.forEach((t, i) => {
+      const x = cx + (i - (row.length - 1) / 2) * 98;
+      const img = keep(fixed(this.add.image(x, cy - 96, t.img.texture.key), 202));
+      img.setScale(Math.min(64 / img.height, 80 / img.width));
+      keep(fixed(this.add.text(x, cy - 46, String(this.valueOf(t)), { fontFamily: TITLE, fontSize: '22px', color: C.walnut }).setOrigin(0.5), 202));
+    });
+
+    // The sums.
+    const lines: [string, string, string][] = [
+      [`Delivered safely (${delivered.length})`, `+${earned}`, C.ink],
+      [`Broken (${broken.length})`, broken.length ? `−${penalty}` : '0', broken.length ? C.terracottaDark : C.walnut],
+      [`Fell off on the way (${lost.length})`, '0', C.walnut],
+      ['Careful driver bonus', bonus ? `+${bonus}` : '—', bonus ? C.sageDark : C.walnut],
+    ];
+    lines.forEach(([label, value, colour], i) => {
+      const y = cy + 4 + i * 40;
+      keep(fixed(this.add.text(cx - 300, y, label, { fontFamily: TEXT, fontSize: '34px', color: colour }).setOrigin(0, 0.5)));
+      keep(fixed(this.add.text(cx + 300, y, value, { fontFamily: TITLE, fontSize: '32px', color: colour }).setOrigin(1, 0.5)));
+    });
+    keep(fixed(this.add.rectangle(cx, cy + 160, 620, 4, 0x2a2140)));
+    keep(fixed(this.add.text(cx - 300, cy + 196, 'Score', { fontFamily: TITLE, fontSize: '44px', color: C.ink }).setOrigin(0, 0.5)));
+    const total = keep(fixed(this.add.text(cx + 300, cy + 196, '0', { fontFamily: TITLE, fontSize: '52px', color: C.terracotta, stroke: C.ink, strokeThickness: 6 }).setOrigin(1, 0.5)));
+    const count = { v: 0 };
+    this.tweens.add({ targets: count, v: score, delay: 700, duration: 1300, ease: 'Cubic.easeOut', onUpdate: () => total.setText(String(Math.round(count.v))) });
+    keep(fixed(this.add.text(cx, cy + 242, verdict, { fontFamily: TEXT, fontSize: '30px', color: C.walnut }).setOrigin(0.5)));
+    const again = this.button(cx, cy + 296, 'btn', 'Shift again', 46, () => this.scene.restart({ intro: false })).box.setDepth(203);
+    shown.push(again);
+    for (const o of shown) {
+      const a = o as unknown as Phaser.GameObjects.Components.Alpha;
+      const target = a.alpha;
+      a.setAlpha(0);
+      this.tweens.add({ targets: o, alpha: target, duration: 350 });
+    }
+  }
+
+  update(time: number, delta: number) {
+    const cam = this.cameras.main;
+    this.frame++;
+    if (this.phase === 'intro') this.reverseIn(delta);
+
+    // Carry the held thing towards the pointer, and keep it at the angle the player chose.
+    if (this.held && this.phase === 'pack') {
+      const p = this.input.activePointer;
+      p.updateWorldPoint(cam);
+      const b = this.held.thing.body;
+      let vx = (p.worldX - this.held.dx - b.position.x) * 0.3;
+      let vy = (p.worldY - this.held.dy - b.position.y) * 0.3;
+      const v = Math.hypot(vx, vy);
+      if (v > 34) {
+        vx *= 34 / v;
+        vy *= 34 / v;
+      }
+      M.Sleeping.set(b, false);
+      M.Body.setVelocity(b, { x: vx, y: vy });
+      const turn = Phaser.Math.Angle.Wrap(this.held.angle - b.angle);
+      M.Body.setAngularVelocity(b, turn * 0.25);
+    }
+
+    // Driving. The engine, clutch and gearbox work out how hard the wheels push (see drivetrain.ts),
+    // and that push is applied to the truck along the way it is facing, while a wheel is on the road.
+    // The wheels themselves slide freely and only turn for show.
+    let forward = 0;
+    if (this.phase !== 'pack' && this.phase !== 'intro') {
+      const right = this.keys.right.isDown || this.keys.d.isDown;
+      const left = this.keys.left.isDown || this.keys.a.isDown;
+      const c = this.chassis;
+      const dir = { x: Math.cos(c.angle), y: Math.sin(c.angle) };
+      forward = c.velocity.x * dir.x + c.velocity.y * dir.y;
+      const grounded = this.wheels.some((w) => w.position.y + TRUCK.wheelR > groundY(w.position.x) - 6);
+      const pedal = this.phase === 'drive' && right ? 1 : 0;
+      const out = this.drive.step(Math.min(0.05, delta / 1000), forward, pedal);
+      let dv = out.accel;
+      if (this.phase !== 'drive') dv = -forward * 0.07;
+      else if (left) dv += Math.abs(forward) > BRAKE ? -BRAKE * Math.sign(forward) : -forward;
+      else if (!pedal && Math.abs(forward) < 0.15) dv = -forward * 0.5;
+      if (grounded) {
+        const kick = dv + out.jolt;
+        M.Body.setVelocity(c, { x: c.velocity.x + dir.x * kick, y: c.velocity.y + dir.y * kick });
+      }
+      if (out.jolt) this.jolted(out.jolt);
+      for (const w of this.wheels) M.Body.setAngularVelocity(w, forward / TRUCK.wheelR);
+      this.engine.rev(this.drive.rpm, this.drive.throttle, this.drive.limiting);
+      if (grounded && Math.abs(forward) > 2.5 && this.frame % 9 === 0) {
+        const rear = this.wheels[0].position;
+        this.dust(rear.x - 20, rear.y + TRUCK.wheelR - 14);
+      }
+      if (this.phase === 'drive' && this.frame % (pedal ? 7 : 20) === 0) this.exhaust();
+      if (this.phase === 'drive') {
+        this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), 1 - 0.85 * Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1));
+      }
+    }
+
+    if (this.phase !== 'pack' && this.phase !== 'intro') this.nearRoad(this.chassis.position.x);
+    if (this.phase === 'drive') {
+      this.driveTime += delta / 1000;
+      const cx = this.chassis.position.x;
+      for (const t of this.things) {
+        if (t.ghost) {
+          if (t.body.position.x < cx - 1600) this.forget(t);
+          continue;
+        }
+        t.groundFrames = this.onRoad(t) ? t.groundFrames + 1 : 0;
+        if (t.groundFrames <= 40 && t.body.position.x > cx - 1100) continue;
+        if (t.aboard) this.lose(t);
+        else this.leave(t);
+      }
+      if (cx > FINISH) {
+        this.phase = 'arrived';
+        this.dash.show(false);
+        this.hint.setVisible(false);
+        this.arrivedAt = this.time.now;
+        this.hint.setText('');
+        this.confetti();
+        play('honk');
+      }
+    } else if (this.phase === 'arrived' && this.time.now - this.arrivedAt > 1600) {
+      this.finish();
+    }
+
+    // Pictures follow the physics.
+    const bed = this.bed();
+    this.truckImg.setPosition(bed.x, bed.y).setRotation(this.chassis.angle);
+    this.truckFront.setPosition(bed.x, bed.y).setRotation(this.chassis.angle);
+    this.wheels.forEach((w, i) => this.wheelImgs[i].setPosition(w.position.x, w.position.y).setRotation(w.angle));
+    for (const t of this.things) t.img.setPosition(t.body.position.x, t.body.position.y).setRotation(t.body.angle);
+    this.faces();
+    this.drawRopes();
+    this.choosePointer();
+    this.shadows();
+    this.syncGlows(time);
+    this.truckLife(forward);
+    this.speedLines(forward);
+    for (const s of this.scenery2.sails) s.rotation += delta * 0.0009;
+    for (const c of this.scenery2.clouds) c.img.x += delta * c.speed;
+    this.chimneySmoke();
+
+    // The camera holds still on the house while loading and during the opening; it follows the truck on the road.
+    if (this.phase !== 'pack' && this.phase !== 'intro') {
+      const ahead = this.chassis.velocity.x * 14;
+      const want = Math.max(0, this.chassis.position.x - 760 + ahead);
+      cam.scrollX += (Math.min(want, WORLD_END - W) - cam.scrollX) * 0.07;
+    }
+
+    const aboard = this.things.filter((t) => t.aboard && ((this.phase !== 'pack' && this.phase !== 'intro') || this.onTruck(t)));
+    const points = aboard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
+    const pct = Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1);
+    if (this.phase === 'drive') {
+      const marks: [number, string][] = [[0.25, 'A quarter of the way! The cat is not impressed.'], [0.5, 'Halfway! Everything still attached? Ish?'], [0.75, 'Nearly home! Do not get cocky.']];
+      if (this.milestone < marks.length && pct >= marks[this.milestone][0]) this.say(marks[this.milestone++][1]);
+    }
+    this.updateHud(aboard.length, points, pct);
+  }
+}

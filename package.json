@@ -1,0 +1,23 @@
+{
+  "name": "shifting-day",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5210 --strictPort --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@fontsource/cherry-bomb-one": "^5.3.0",
+    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/karla": "^5.3.0",
+    "@fontsource/patrick-hand": "^5.3.0",
+    "perfect-freehand": "^1.2.3",
+    "phaser": "^4.2.1",
+    "zzfx": "^1.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  }
+}
