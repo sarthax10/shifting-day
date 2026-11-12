@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shifting Day: AAA look sample</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #07060c;
+      }
+      canvas {
+        display: block;
+      }
+      #card {
+        position: fixed;
+        left: 50%;
+        top: 6%;
+        transform: translate(-50%, -160%);
+        transition: transform 0.7s cubic-bezier(0.2, 1.4, 0.4, 1);
+        padding: 14px 36px 16px;
+        background: rgba(10, 9, 20, 0.72);
+        border: 1px solid rgba(255, 180, 110, 0.6);
+        color: #fff4e4;
+        text-align: center;
+        font-family: 'Fraunces', serif;
+        backdrop-filter: blur(6px);
+        letter-spacing: 0.02em;
+      }
+      #card.show {
+        transform: translate(-50%, 0);
+      }
+      #card small {
+        display: block;
+        font-family: 'Karla', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: 0.3em;
+        color: #ffb36b;
+      }
+      #card b {
+        font-size: 30px;
+        font-weight: 900;
+      }
+      #tag {
+        position: fixed;
+        left: 18px;
+        bottom: 14px;
+        color: rgba(230, 220, 255, 0.55);
+        font: 700 12px 'Karla', sans-serif;
+        letter-spacing: 0.25em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="card"><small>CHECKPOINT · PROGRESS SAVED</small><b>Pinecrest Fuel &amp; Pie</b></div>
+    <div id="tag">SHIFTING DAY · LOOK DEVELOPMENT · DUSK FUEL STOP</div>
+    <script type="module" src="/src/aaa/main.ts"></script>
+  </body>
+</html>
