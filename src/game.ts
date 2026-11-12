@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { zzfx } from 'zzfx';
-import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood } from './art';
-import { Dash } from './dash';
+import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood } from './art';
+import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
 import { Fx } from './fx';
 import { buildBackdrop } from './backdrop';
@@ -1184,7 +1184,7 @@ export class PlayScene extends Phaser.Scene {
     this.goButton.setVisible(false);
     this.ropeButton.setVisible(false);
     this.pointer('point');
-    this.hint.setPosition(640, 1028).setFontSize(26).setText('D gas    A brake    P handbrake    SHIFT gear up    CTRL gear down    1 2 3 4 R N');
+    this.hint.setPosition(DASH_RIGHT + 24, 1046).setFontSize(24).setText('D gas    A brake    P handbrake    SHIFT gear up    CTRL gear down    1 2 3 4 R N');
     this.dash.show(true);
     this.handbrake = true;
     this.say("Handbrake's on. Press P to let it off, then hold D. Change up with SHIFT when the gear goes red.");
@@ -1562,26 +1562,53 @@ export class PlayScene extends Phaser.Scene {
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 201) => o.setScrollFactor(0).setDepth(d);
     const shown: Phaser.GameObjects.GameObject[] = [];
     const keep = <T extends Phaser.GameObjects.GameObject>(o: T) => (shown.push(o), o);
-    keep(fixed(this.add.rectangle(cx, cy, W, H, 0x2a2140, 0.45), 199));
-    keep(fixed(this.add.image(cx, cy, 'panel'), 200));
-    keep(fixed(this.add.text(cx, cy - 290, 'Home sweet home!', { fontFamily: TITLE, fontSize: '72px', color: C.terracotta, stroke: C.ink, strokeThickness: 8 }).setOrigin(0.5)));
+    keep(fixed(this.add.rectangle(cx, cy, W, H, 0x2a2140, 0.55), 199));
+    // A delivery note from the moving company, taped up, with a ribbon across the top.
+    const paperY = cy - 10;
+    const top = paperY - RECEIPT.h / 2;
+    const left = cx - RECEIPT.w / 2 + 110;
+    const paper = keep(fixed(this.add.image(cx, paperY, 'receipt'), 200));
+    this.tweens.add({ targets: paper, y: { from: paperY + 60, to: paperY }, duration: 420, ease: 'Back.easeOut' });
+    keep(fixed(this.add.image(cx, top - 6, 'ribbon'), 202));
+    keep(fixed(this.add.text(cx, top - 18, 'Home sweet home!', { fontFamily: TITLE, fontSize: '62px', color: C.cream, stroke: C.terracottaDark, strokeThickness: 4 }).setOrigin(0.5), 203));
+    keep(fixed(this.add.text(left, top + 104, 'SHIFT HAPPENS MOVING CO.', { fontFamily: TITLE, fontSize: '28px', color: C.ink }).setOrigin(0, 0.5), 202));
+    keep(fixed(this.add.text(left, top + 136, `Delivery note No. ${String(1000 + (score % 9000)).padStart(4, '0')}  ·  ${this.driveTime >= 60 ? `${Math.floor(this.driveTime / 60)} min ` : ''}${Math.round(this.driveTime % 60)} s on the road`, { fontFamily: TEXT, fontSize: '20px', color: C.walnut }).setOrigin(0, 0.5), 202));
+    const ink = this.add.graphics();
+    keep(fixed(ink, 202));
+    const dashed = (y: number, x0: number, x1: number) => {
+      ink.fillStyle(0x2a2140, 0.55);
+      for (let x = x0; x < x1; x += 18) ink.fillRect(x, y - 1.5, 10, 3);
+    };
+    dashed(top + 166, left, cx + RECEIPT.w / 2 - 50);
 
-    // Stars, popping in one by one.
-    for (let i = 0; i < 3; i++) {
-      const star = keep(fixed(this.add.text(cx + (i - 1) * 96, cy - 196, '★', { fontFamily: TITLE, fontSize: '92px', color: i < stars ? C.mustard : C.creamShade, stroke: C.ink, strokeThickness: 8 }).setOrigin(0.5).setScale(0), 202));
-      this.tweens.add({ targets: star, scale: 1, delay: 500 + i * 260, duration: 320, ease: 'Back.easeOut', onStart: () => i < stars && play('tie') });
-    }
-
-    // What arrived, as a row of little pictures with their points.
-    const row = delivered.slice().sort((a, b) => this.valueOf(b) - this.valueOf(a)).slice(0, 9);
-    row.forEach((t, i) => {
-      const x = cx + (i - (row.length - 1) / 2) * 98;
-      const img = keep(fixed(this.add.image(x, cy - 96, t.img.texture.key), 202));
-      img.setScale(Math.min(64 / img.height, 80 / img.width));
-      keep(fixed(this.add.text(x, cy - 46, String(this.valueOf(t)), { fontFamily: TITLE, fontSize: '22px', color: C.walnut }).setOrigin(0.5), 202));
+    // What came off the truck: little tags with each thing and its points. Broken things are crossed out.
+    const tagged = [...delivered.slice().sort((a, b) => this.valueOf(b) - this.valueOf(a)), ...broken].slice(0, 9);
+    const rowY = top + 236;
+    tagged.forEach((t, i) => {
+      const x = cx + 20 + (i - (tagged.length - 1) / 2) * 100;
+      const isBroken = t.broken;
+      const tag = this.add.graphics();
+      tag.fillStyle(0x2a2140, 0.25).fillRoundedRect(x - 40, rowY - 44, 88, 108, 12);
+      tag.fillStyle(isBroken ? 0xf2dcd6 : 0xfff2da).fillRoundedRect(x - 44, rowY - 50, 88, 108, 12);
+      tag.lineStyle(3, 0x2a2140).strokeRoundedRect(x - 44, rowY - 50, 88, 108, 12);
+      tag.fillStyle(0x2a2140).fillCircle(x, rowY - 40, 4);
+      keep(fixed(tag, 202));
+      const img = keep(fixed(this.add.image(x, rowY - 2, t.img.texture.key), 203));
+      img.setScale(Math.min(62 / img.height, 70 / img.width));
+      const value = isBroken ? `−${Math.round(this.valueOf(t) / 2)}` : String(this.valueOf(t));
+      keep(fixed(this.add.text(x, rowY + 40, value, { fontFamily: TITLE, fontSize: '20px', color: isBroken ? C.terracottaDark : C.walnut }).setOrigin(0.5), 203));
+      if (isBroken) {
+        const x2 = this.add.graphics().lineStyle(4, 0xb8403f).lineBetween(x - 28, rowY - 30, x + 28, rowY + 24).lineBetween(x + 28, rowY - 30, x - 28, rowY + 24);
+        keep(fixed(x2, 204));
+      }
+      img.setScale(0);
+      this.tweens.add({ targets: img, scale: Math.min(62 / img.height, 70 / img.width), delay: 300 + i * 70, duration: 260, ease: 'Back.easeOut' });
     });
+    if (!tagged.length) keep(fixed(this.add.text(cx, rowY, 'Nothing. Not one thing.', { fontFamily: TITLE, fontSize: '30px', color: C.walnut }).setOrigin(0.5), 202));
+    dashed(top + 318, left, cx + RECEIPT.w / 2 - 50);
 
-    // The sums.
+    // The bill, line by line, with dotted leaders to the numbers.
+    const right = cx + 120;
     const lines: [string, string, string][] = [
       [`Delivered safely (${delivered.length})`, `+${earned}`, C.ink],
       [`Broken (${broken.length})`, broken.length ? `−${penalty}` : '0', broken.length ? C.terracottaDark : C.walnut],
@@ -1590,17 +1617,46 @@ export class PlayScene extends Phaser.Scene {
       [this.parkBonus >= 90 ? 'Parking: perfect!' : 'Parking', `+${this.parkBonus}`, C.sageDark],
     ];
     lines.forEach(([label, value, colour], i) => {
-      const y = cy - 6 + i * 36;
-      keep(fixed(this.add.text(cx - 300, y, label, { fontFamily: TEXT, fontSize: '34px', color: colour }).setOrigin(0, 0.5)));
-      keep(fixed(this.add.text(cx + 300, y, value, { fontFamily: TITLE, fontSize: '32px', color: colour }).setOrigin(1, 0.5)));
+      const y = top + 358 + i * 42;
+      const l = keep(fixed(this.add.text(left, y, label, { fontFamily: TEXT, fontSize: '27px', color: colour }).setOrigin(0, 0.5), 202));
+      const v = keep(fixed(this.add.text(right, y, value, { fontFamily: TITLE, fontSize: '28px', color: colour }).setOrigin(1, 0.5), 202));
+      ink.fillStyle(0x2a2140, 0.35);
+      for (let x = left + l.width + 12; x < right - v.width - 12; x += 10) ink.fillCircle(x, y + 8, 1.8);
     });
-    keep(fixed(this.add.rectangle(cx, cy + 150, 620, 4, 0x2a2140)));
-    keep(fixed(this.add.text(cx - 300, cy + 184, 'Score', { fontFamily: TITLE, fontSize: '44px', color: C.ink }).setOrigin(0, 0.5)));
-    const total = keep(fixed(this.add.text(cx + 300, cy + 184, '0', { fontFamily: TITLE, fontSize: '52px', color: C.terracotta, stroke: C.ink, strokeThickness: 6 }).setOrigin(1, 0.5)));
+    const sumY = top + 358 + lines.length * 42 + 6;
+    ink.fillStyle(0x2a2140).fillRect(left, sumY - 18, right - left, 3).fillRect(left, sumY - 11, right - left, 3);
+    keep(fixed(this.add.text(left, sumY + 30, 'TOTAL', { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0, 0.5), 202));
+    const total = keep(fixed(this.add.text(right, sumY + 28, '0', { fontFamily: TITLE, fontSize: '62px', color: C.terracotta, stroke: C.ink, strokeThickness: 5 }).setOrigin(1, 0.5), 202));
     const count = { v: 0 };
     this.tweens.add({ targets: count, v: score, delay: 700, duration: 1300, ease: 'Cubic.easeOut', onUpdate: () => total.setText(String(Math.round(count.v))) });
-    keep(fixed(this.add.text(cx, cy + 232, verdict, { fontFamily: TEXT, fontSize: '30px', color: C.walnut }).setOrigin(0.5)));
-    const again = this.button(cx, cy + 296, 'btn', 'Shift again', 46, () => this.scene.restart({ intro: false })).box.setDepth(203);
+
+    // The rating, stamped on in red ink once the total has counted up.
+    const sx = cx + 300;
+    const sy = top + 470;
+    const words = stars === 3 ? 'WITH CARE' : stars === 2 ? 'MOSTLY' : stars === 1 ? 'SORT OF' : 'BARELY';
+    const stamp = this.add.container(sx, sy).setScrollFactor(0).setDepth(204).setRotation(-0.22);
+    stamp.add(this.add.image(0, 0, 'stamp').setScrollFactor(0));
+    stamp.add(this.add.text(0, 0, 'DELIVERED', { fontFamily: TITLE, fontSize: '32px', color: '#FFF6E6' }).setOrigin(0.5).setScrollFactor(0));
+    stamp.add(this.add.text(0, -62, '★'.repeat(stars) + '☆'.repeat(3 - stars), { fontFamily: TITLE, fontSize: '58px', color: C.terracottaDark }).setOrigin(0.5).setScrollFactor(0));
+    stamp.add(this.add.text(0, 58, words, { fontFamily: TITLE, fontSize: '26px', color: C.terracottaDark }).setOrigin(0.5).setScrollFactor(0));
+    stamp.setAlpha(0).setScale(2.2);
+    this.tweens.add({
+      targets: stamp,
+      scale: 1,
+      alpha: 0.92,
+      delay: 2100,
+      duration: 180,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        thud(6);
+        this.cameras.main.shake(90, 0.002);
+        for (let i = 0; i < stars; i++) this.time.delayedCall(120 + i * 140, () => play('tie'));
+      },
+    });
+
+    // A note scribbled at the bottom, and the button to go again.
+    keep(fixed(this.add.text(left, top + RECEIPT.h - 92, `“${verdict}”`, { fontFamily: TEXT, fontSize: '26px', color: C.walnut, fontStyle: 'italic' }).setOrigin(0, 0.5), 202));
+    const again = this.button(cx, top + RECEIPT.h + 46, 'btn', 'Shift again', 46, () => this.scene.restart({ intro: false })).box.setDepth(205);
     shown.push(again);
     for (const o of shown) {
       const a = o as unknown as Phaser.GameObjects.Components.Alpha;
@@ -1718,7 +1774,7 @@ export class PlayScene extends Phaser.Scene {
     // The camera holds still on the house while loading and during the opening; it follows the truck on the road.
     if (this.phase !== 'pack' && this.phase !== 'intro') {
       const ahead = this.chassis.velocity.x * 14;
-      const want = Math.max(0, this.chassis.position.x - 760 + ahead);
+      const want = Math.max(0, this.chassis.position.x - 900 + ahead);
       cam.scrollX += (Math.min(want, WORLD_END - W) - cam.scrollX) * 0.07;
     }
 

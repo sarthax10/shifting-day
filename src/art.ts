@@ -1141,9 +1141,124 @@ export function homeSignArt(): Art {
   return { key: 'sign_home', svg: p.svg(224, 254), w: 224, h: 254 };
 }
 
-/** The dashboard's card. */
+/** The dashboard's size, and where its parts sit inside it (in the picture's own pixels). */
+export const DASH = { w: 740, h: 262, speedo: { x: 170, y: 150 }, gear: { x: 418, y: 126 }, lamp: { x: 622, y: 74 }, slot: { x: 622, top: 132, bottom: 232 } };
+
+/**
+ * The dashboard, as one piece of a 1950s pickup: a teal painted steel fascia (the truck's own colour) with a
+ * chrome rim, a cream pinstripe, rivets, recessed wells for the speedometer and gear gauge, and on the right the
+ * handbrake: a chrome-ringed warning lamp above a slot for the pull handle.
+ */
 export function dashArt(): Art {
-  return panelArt('dash', 500, 262);
+  const p = pen('dash');
+  p.plain = true;
+  const { w, h } = DASH;
+  const BODY = C.teal;
+  const SHADE = '#22707F';
+  // Drop shadow, chrome rim, painted face.
+  p.rect(8, 12, w - 8, h - 12, { fill: C.ink, r: 40, stroke: null, opacity: 0.35 });
+  p.rect(0, 0, w - 8, h - 12, { fill: CHROME_SHADE, r: 40, width: 5, shade: [{ pts: [[0, 0], [w, 0], [w, 40], [0, 60]], color: '#F4F4F0' }] });
+  p.rect(10, 10, w - 28, h - 32, { fill: BODY, r: 32, width: 4, shade: [{ pts: [[0, h * 0.62], [w, h * 0.5], [w, h], [0, h]], color: SHADE }] });
+  // A soft shine across the top of the paint.
+  p.rect(36, 18, w - 80, 16, { fill: '#FFFFFF', r: 8, stroke: null, opacity: 0.14 });
+  // The cream pinstripe, inset.
+  p.rect(22, 22, w - 52, h - 56, { r: 24, width: 2.4, stroke: C.cream });
+  // Rivets round the edge.
+  for (let x = 60; x < w - 60; x += 80) {
+    for (const y of [16, h - 26]) {
+      p.dot(x, y, 3.2, SHADE);
+      p.dot(x - 1, y - 1, 1.2, '#BFEFF2');
+    }
+  }
+  // Wells behind the two gauges, so they sit into the panel.
+  p.ellipse(DASH.speedo.x, DASH.speedo.y - 18, 140, 128, { fill: '#1C5560', stroke: null, opacity: 0.9 });
+  p.ellipse(DASH.gear.x, DASH.gear.y, 92, 92, { fill: '#1C5560', stroke: null, opacity: 0.9 });
+  // The handbrake: a lamp in a chrome ring, and a slot for the handle with a chrome surround.
+  const { lamp, slot } = DASH;
+  p.ellipse(lamp.x, lamp.y, 46, 46, { fill: CHROME_SHADE, width: 4.5, shade: [{ pts: [[lamp.x - 60, lamp.y - 60], [lamp.x + 30, lamp.y - 60], [lamp.x - 60, lamp.y + 30]], color: '#F7F6EF' }] });
+  p.ellipse(lamp.x, lamp.y, 36, 36, { fill: '#3A1F2A', width: 3 });
+  p.rect(slot.x - 26, slot.top - 10, 52, slot.bottom - slot.top + 20, { fill: CHROME_SHADE, r: 18, width: 4.5, shade: [{ pts: [[slot.x - 40, slot.top - 20], [slot.x + 40, slot.top - 20], [slot.x + 40, slot.top + 20], [slot.x - 40, slot.top + 40]], color: '#F7F6EF' }] });
+  p.rect(slot.x - 10, slot.top, 20, slot.bottom - slot.top, { fill: '#14323A', r: 10, width: 3 });
+  // ON / OFF marks beside the slot.
+  p.line([[slot.x + 36, slot.top + 14], [slot.x + 48, slot.top + 14]], { width: 4, color: C.terracotta, raw: true });
+  p.line([[slot.x + 36, slot.bottom - 14], [slot.x + 48, slot.bottom - 14]], { width: 4, color: C.cream, raw: true });
+  return { key: 'dash', svg: p.svg(w, h), w, h };
+}
+
+/** The handbrake's pull handle: a red T-grip on a chrome shaft. */
+export function hbHandleArt(): Art {
+  const p = pen('hb_handle');
+  p.plain = true;
+  p.rect(32, 30, 12, 46, { fill: CHROME, width: 3.5, r: 5 });
+  p.rect(4, 6, 68, 30, { fill: C.terracotta, r: 14, width: 4.5, shade: [{ pts: [[0, 24], [80, 22], [80, 40], [0, 40]], color: C.terracottaDark }] });
+  p.rect(14, 12, 40, 6, { fill: '#FFFFFF', r: 3, stroke: null, opacity: 0.35 });
+  return { key: 'hb_handle', svg: p.svg(76, 80), w: 76, h: 80 };
+}
+
+/** The results screen's paper: a delivery note with a torn bottom edge, faint rules and two strips of tape. */
+export const RECEIPT = { w: 1000, h: 780 };
+export function receiptArt(): Art {
+  const p = pen('receipt');
+  p.plain = true;
+  const { w, h } = RECEIPT;
+  const PAPER = '#FFF6E6';
+  // The torn edge: a zigzag along the bottom.
+  const edge: Pt[] = [];
+  for (let x = w - 20; x >= 20; x -= 25) edge.push([x, h - 30 - ((x / 25) % 2 ? 14 : 0)]);
+  const outline: Pt[] = [[20, 20], [w - 20, 20], [w - 20, h - 30], ...edge, [20, h - 30]];
+  p.shape(outline.map(([x, y]) => [x + 10, y + 14] as Pt), { fill: C.ink, stroke: null, raw: true, opacity: 0.35, wobble: 0 });
+  p.shape(outline, { fill: PAPER, raw: true, width: 5, wobble: 0.6, stroke: C.ink });
+  // Faint blue rules, and a red margin line.
+  for (let y = 190; y < h - 60; y += 42) p.line([[40, y], [w - 40, y]], { width: 1.6, color: '#BFD2E6', raw: true, wobble: 0 });
+  p.line([[84, 30], [84, h - 50]], { width: 2, color: '#F2A7A0', raw: true, wobble: 0 });
+  // A coffee ring, because it has been in the truck.
+  p.ellipse(w - 130, 250, 64, 60, { stroke: '#C98552', width: 5, wobble: 2, opacity: 0.25 });
+  p.ellipse(w - 130, 250, 56, 52, { stroke: '#C98552', width: 2, wobble: 2, opacity: 0.18 });
+  // Tape at the top corners.
+  for (const [x, a] of [[70, -0.5], [w - 70, 0.5]] as const) {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const pts: Pt[] = [[-60, -18], [60, -18], [60, 18], [-60, 18]].map(([px, py]) => [x + px * c - py * s, 26 + px * s + py * c] as Pt);
+    p.shape(pts, { fill: '#F2E3B8', stroke: null, raw: true, opacity: 0.85, wobble: 1.5 });
+  }
+  return { key: 'receipt', svg: p.svg(w + 12, h + 16), w: w + 12, h: h + 16 };
+}
+
+/** A ribbon banner with folded tails, for the title on the results screen. */
+export function ribbonArt(): Art {
+  const p = pen('ribbon');
+  p.plain = true;
+  const w = 820;
+  const h = 170;
+  // Tails behind, with their folds in shadow.
+  for (const s of [-1, 1]) {
+    const x = s < 0 ? 70 : w - 70;
+    p.shape([[x, 60], [x - s * 70, 60], [x - s * 40, 100], [x - s * 70, 140], [x, 140]], { fill: C.terracottaDark, raw: true, width: 5 });
+    p.shape([[x, 140], [x + s * 50, 140], [x, 116]], { fill: '#7E2A33', raw: true, width: 4 });
+  }
+  p.shape([[60, 30], [w - 60, 30], [w - 50, 116], [w / 2, 126], [50, 116]], { fill: C.terracotta, width: 6, shade: [{ pts: [[0, 92], [w, 88], [w, 140], [0, 140]], color: C.terracottaDark }] });
+  p.line([[90, 46], [w - 90, 46]], { width: 2.4, color: '#FFD3C4', raw: true, opacity: 0.8 });
+  p.line([[86, 100], [w / 2, 108], [w - 86, 100]], { width: 2.4, color: '#FFD3C4', opacity: 0.6 });
+  return { key: 'ribbon', svg: p.svg(w, h), w, h };
+}
+
+/** A rubber stamp's ring: two rough circles in red ink, the words and stars go inside in the game. */
+export function stampArt(): Art {
+  const p = pen('stamp');
+  p.plain = true;
+  const s = 280;
+  const c = s / 2;
+  p.ellipse(c, c, 124, 124, { stroke: C.terracottaDark, width: 10, wobble: 2.2 });
+  p.ellipse(c, c, 104, 104, { stroke: C.terracottaDark, width: 4, wobble: 1.8 });
+  // The band across the middle for the word DELIVERED.
+  p.rect(c - 132, c - 26, 264, 52, { fill: C.terracottaDark, r: 6, stroke: null, wobble: 1.4 });
+  // Ink speckle, as rubber stamps never print evenly.
+  for (let i = 0; i < 40; i++) {
+    const a = (i * 2.4) % (Math.PI * 2);
+    const r = 20 + ((i * 37) % 100);
+    p.dot(c + Math.cos(a) * r, c + Math.sin(a) * r, 1.4 + (i % 3), '#FFF6E6');
+  }
+  return { key: 'stamp', svg: p.svg(s, s), w: s, h: s };
 }
 
 /** The speedometer's geometry, shared by the drawing and the dashboard that moves its needle. */

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SPEEDO as DIAL } from './art';
+import { DASH, SPEEDO as DIAL } from './art';
 import { Drivetrain, REDLINE, gearName } from './drivetrain';
 import { C } from './ink';
 
@@ -10,10 +10,19 @@ const hex = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
 /** Where the dashboard sits on screen, and where its two gauges sit inside it. */
 const X0 = 20;
 const Y0 = 758;
-const SPD = { x: 190, y: 908 };
-const GEAR = { x: 438, y: 884 };
-/** The handbrake warning lamp, beside the dashboard. */
-const LAMP = { x: 608, y: 846 };
+const SPD = { x: X0 + DASH.speedo.x, y: Y0 + DASH.speedo.y };
+const GEAR = { x: X0 + DASH.gear.x, y: Y0 + DASH.gear.y };
+/** The handbrake: its warning lamp, and the slot its handle slides in. */
+const LAMP = { x: X0 + DASH.lamp.x, y: Y0 + DASH.lamp.y };
+const SLOT = { x: X0 + DASH.slot.x, on: Y0 + DASH.slot.top - 4, off: Y0 + DASH.slot.bottom - 50 };
+/**
+ * The dashboard is laid out at full size, then shrunk into the bottom-left corner as one piece,
+ * so it stays out of the way of the truck.
+ */
+export const DASH_SCALE = 0.68;
+const CORNER = { x: 14, y: 1068 };
+/** Where the dashboard's right edge ends up on screen, for things placed beside it. */
+export const DASH_RIGHT = CORNER.x + (DASH.w - 8) * DASH_SCALE;
 /** Game speed (pixels a frame) to the number shown on the speedometer. */
 export const KMH = 5.6;
 
@@ -23,6 +32,7 @@ export const KMH = 5.6;
  */
 export class Dash {
   private all: Phaser.GameObjects.GameObject[] = [];
+  private box!: Phaser.GameObjects.Container;
   private needle!: Phaser.GameObjects.Graphics;
   private odo: Phaser.GameObjects.Text[] = [];
   private gearText!: Phaser.GameObjects.Text;
@@ -30,6 +40,8 @@ export class Dash {
   private lampGlow!: Phaser.GameObjects.Image;
   private lampText!: Phaser.GameObjects.Text;
   private stallText!: Phaser.GameObjects.Text;
+  private handle!: Phaser.GameObjects.Image;
+  private braked = true;
   private shown = '1';
   /** The needle eases towards the speed rather than jumping, as a real one does. */
   private shownSpeed = 0;
@@ -77,18 +89,21 @@ export class Dash {
     // The gear gauge.
     this.keep(s.add.image(GEAR.x, GEAR.y, 'gear_badge'));
     this.gearText = this.keep(s.add.text(GEAR.x, GEAR.y + 2, '1', { fontFamily: TITLE, fontSize: '70px', color: C.ink }).setOrigin(0.5));
-    this.keep(s.add.text(GEAR.x, GEAR.y + 96, 'GEAR', { fontFamily: TITLE, fontSize: '22px', color: C.walnut }).setOrigin(0.5));
-    this.keep(s.add.text(GEAR.x, GEAR.y + 124, 'SHIFT ▲   CTRL ▼', { fontFamily: TEXT, fontSize: '20px', color: C.walnut }).setOrigin(0.5));
+    this.keep(s.add.text(GEAR.x, GEAR.y + 84, 'GEAR', { fontFamily: TITLE, fontSize: '20px', color: C.cream }).setOrigin(0.5));
+    this.keep(s.add.text(GEAR.x, GEAR.y + 106, 'SHIFT ▲   CTRL ▼', { fontFamily: TEXT, fontSize: '17px', color: '#CDEFF0' }).setOrigin(0.5));
     this.stallText = this.keep(s.add.text(GEAR.x, GEAR.y - 62, 'STALLED', { fontFamily: TITLE, fontSize: '20px', color: C.cream, backgroundColor: C.terracottaDark, padding: { x: 8, y: 2 } }).setOrigin(0.5));
 
     // The handbrake lamp: a round red warning light with a (P) on it, lit while the handbrake is on.
-    this.keep(s.add.circle(LAMP.x, LAMP.y, 58, hex(C.ink)));
-    this.keep(s.add.circle(LAMP.x, LAMP.y, 50, hex('#E6E8DF')).setStrokeStyle(4, hex(C.walnut)));
-    this.lampGlow = this.keep(s.add.image(LAMP.x, LAMP.y, 'halo').setDisplaySize(220, 220).setTint(0xff5a3c));
-    this.lamp = this.keep(s.add.circle(LAMP.x, LAMP.y, 40, hex(C.terracotta)).setStrokeStyle(4, hex(C.ink)));
-    this.lampText = this.keep(s.add.text(LAMP.x, LAMP.y + 1, '(P)', { fontFamily: TITLE, fontSize: '34px', color: C.cream }).setOrigin(0.5));
-    this.keep(s.add.text(LAMP.x, LAMP.y + 86, 'HANDBRAKE', { fontFamily: TITLE, fontSize: '20px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5));
-    this.keep(s.add.text(LAMP.x, LAMP.y + 112, 'P / SPACE', { fontFamily: TEXT, fontSize: '18px', color: C.cream, stroke: C.ink, strokeThickness: 4 }).setOrigin(0.5));
+    // The lamp sits in the dashboard's chrome ring; the handle slides up its slot when pulled on.
+    this.lampGlow = this.keep(s.add.image(LAMP.x, LAMP.y, 'halo').setDisplaySize(190, 190).setTint(0xff5a3c));
+    this.lamp = this.keep(s.add.circle(LAMP.x, LAMP.y, 31, hex(C.terracotta)));
+    this.keep(s.add.ellipse(LAMP.x - 10, LAMP.y - 12, 22, 12, 0xffffff, 0.35));
+    this.lampText = this.keep(s.add.text(LAMP.x, LAMP.y + 1, '(P)', { fontFamily: TITLE, fontSize: '28px', color: C.cream }).setOrigin(0.5));
+    this.handle = this.keep(s.add.image(SLOT.x, SLOT.on, 'hb_handle').setOrigin(0.5, 0.2));
+    this.keep(s.add.text(SLOT.x - 46, Y0 + (DASH.slot.top + DASH.slot.bottom) / 2, 'HANDBRAKE · P', { fontFamily: TITLE, fontSize: '16px', color: C.cream }).setOrigin(0.5).setRotation(-Math.PI / 2));
+    // Everything goes into one container, scaled about the panel's bottom-left corner.
+    const bottom = Y0 + DASH.h - 12;
+    this.box = s.add.container(CORNER.x - X0 * DASH_SCALE, CORNER.y - bottom * DASH_SCALE, this.all).setScale(DASH_SCALE).setScrollFactor(0).setDepth(100);
     this.show(false);
   }
 
@@ -139,5 +154,9 @@ export class Dash {
     this.lamp.setFillStyle(hex(handbrake ? C.terracotta : '#7A5E66'), handbrake ? flash : 1);
     this.lampGlow.setVisible(handbrake).setAlpha(0.55 * flash);
     this.lampText.setColor(handbrake ? C.cream : '#B9A9AE');
+    if (handbrake !== this.braked) {
+      this.braked = handbrake;
+      this.scene.tweens.add({ targets: this.handle, y: handbrake ? SLOT.on : SLOT.off, duration: 180, ease: 'Back.easeOut' });
+    }
   }
 }
