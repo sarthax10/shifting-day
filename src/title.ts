@@ -8,6 +8,7 @@ import { GROUND, H, W } from './terrain';
 import { CHUNK_TOP, prepareLeg } from './prepare';
 import { LEGS, clearTrip, loadTrip, type Trip } from './legs';
 import { ambience, audio, music, play } from './audio';
+import { applyTitleFX } from './postfx';
 
 const TITLE = '"Fraunces", serif';
 const TEXT = '"Karla", sans-serif';
@@ -60,43 +61,58 @@ export class TitleScene extends Phaser.Scene {
   private cat!: Phaser.GameObjects.Image;
   private flies: { img: Phaser.GameObjects.Image; x: number; y: number; t: number }[] = [];
   private leaving = false;
+  /** A few background layers that drift a little with the pointer, for a soft sense of depth. */
+  private parallaxLayers: { img: Phaser.GameObjects.Image | Phaser.GameObjects.Arc; baseX: number; baseY: number; amount: number }[] = [];
+  private parallax = { x: 0, y: 0 };
 
   constructor() {
     super('title');
   }
 
   create() {
+    applyTitleFX(this.cameras.main);
     music.play('title');
     ambience.birds(true);
-    // A sound toggle in the corner; M works everywhere.
-    const soundLabel = this.add.text(30, 30, '', { fontFamily: '"Karla", sans-serif', fontSize: '28px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setDepth(40).setInteractive({ cursor: CURSOR.open });
-    const show = () => soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
-    soundLabel.on('pointerdown', () => {
+    // A sound toggle in the corner, on its own little chip so it reads clearly over the sky; M works everywhere.
+    const soundPill = this.add.rectangle(30, 30, 200, 46, 0x2a2140, 0.4).setOrigin(0, 0.5).setStrokeStyle(2, 0xfff2da, 0.3).setDepth(39);
+    const soundLabel = this.add.text(50, 30, '', { fontFamily: '"Karla", sans-serif', fontSize: '26px', color: C.cream }).setOrigin(0, 0.5).setDepth(40);
+    soundPill.setInteractive({ cursor: CURSOR.open });
+    const show = () => {
+      soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
+      soundPill.setSize(soundLabel.width + 40, 46);
+    };
+    soundPill.on('pointerdown', () => {
       audio.unlock();
       audio.toggleMute();
       show();
     });
+    soundPill.on('pointerover', () => soundPill.setFillStyle(0x2a2140, 0.6));
+    soundPill.on('pointerout', () => soundPill.setFillStyle(0x2a2140, 0.4));
     this.input.keyboard!.on('keydown-M', show);
     show();
     this.leaving = false;
     this.letters = [];
     this.wheels = [];
     this.flies = [];
+    this.parallaxLayers = [];
+    this.parallax = { x: 0, y: 0 };
     this.input.setDefaultCursor(CURSOR.point);
 
-    // Sky and sun, at the very back.
+    // Sky and sun, at the very back. The halo and core drift a touch with the pointer, for depth.
     this.add.image(0, 0, 'title_sky').setOrigin(0).setDisplaySize(W, H).setDepth(-60);
     this.rays = this.add.graphics().setDepth(-55);
-    this.add.image(1330, 470, 'halo').setDisplaySize(900, 900).setTint(0xffb867).setAlpha(0.75).setDepth(-54);
-    this.add.image(1330, 470, 'halo').setDisplaySize(420, 420).setTint(0xfff0b0).setAlpha(0.9).setDepth(-53);
-    this.add.circle(1330, 470, 120, 0xffd27a).setStrokeStyle(6, 0xff9e5e).setDepth(-52);
+    const haloFar = this.add.image(1330, 470, 'halo').setDisplaySize(900, 900).setTint(0xffb867).setAlpha(0.75).setDepth(-54);
+    const haloNear = this.add.image(1330, 470, 'halo').setDisplaySize(420, 420).setTint(0xfff0b0).setAlpha(0.9).setDepth(-53);
+    const sunCore = this.add.circle(1330, 470, 120, 0xffd27a).setStrokeStyle(6, 0xff9e5e).setDepth(-52);
+    this.parallaxLayers.push({ img: haloFar, baseX: 1330, baseY: 470, amount: 10 }, { img: haloNear, baseX: 1330, baseY: 470, amount: 18 }, { img: sunCore, baseX: 1330, baseY: 470, amount: 22 });
 
     // Mountains, forest and farmland in layers of haze, with clouds, birds, windmills, pollen and leaves.
     this.scenery = buildBackdrop(this, { reach: 0, horizon: 870, width: W, height: H, parallax: false });
 
     // The hill with the new house on it, trees, the road, and tall grass in front.
     this.add.image(1360, 652, 'house_new#0').setOrigin(0.5, HOUSE.ground / HOUSE.h).setScale(0.36).setDepth(-21);
-    this.add.image(0, 0, 't_hill').setOrigin(0).setDepth(-20);
+    const hill = this.add.image(0, 0, 't_hill').setOrigin(0).setDepth(-20);
+    this.parallaxLayers.push({ img: hill, baseX: 0, baseY: 0, amount: 6 });
     for (const [x, kind, s] of [[180, 1, 1.25], [330, 0, 1.05], [1700, 2, 1.2], [1830, 3, 1.0]] as const) {
       this.add.image(x, 900, `tree_${kind}#0`).setOrigin(0.5, 392 / 406).setScale(s).setDepth(-15);
     }
@@ -134,30 +150,38 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0, 0.5)
       .setDepth(31);
 
-    // Play button.
+    // Play button: a warm glow breathing behind it draws the eye, with a little play-triangle on the label.
+    const glow = this.add.image(0, 0, 'halo').setDisplaySize(300, 300).setTint(0xffd27a).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD);
     const bg = this.add.image(0, 0, 'btn').setScale(1.15);
-    const label = this.add.text(0, -6, 'Play', { fontFamily: TITLE, fontSize: '60px', color: C.ink }).setOrigin(0.5);
-    const play = this.add.container(370, 450, [bg, label]).setDepth(31);
+    const icon = this.add.triangle(-86, 0, 0, -15, 0, 15, 24, 0, 0xb8403f).setStrokeStyle(2, 0x2a2140);
+    const label = this.add.text(8, -6, 'Play', { fontFamily: TITLE, fontSize: '60px', color: C.ink }).setOrigin(0.5);
+    const play = this.add.container(370, 450, [glow, bg, icon, label]).setDepth(31);
     bg.setInteractive({ cursor: CURSOR.open });
     bg.on('pointerover', () => play.setScale(1.06));
     bg.on('pointerout', () => play.setScale(1));
     bg.on('pointerdown', () => this.start(null));
     this.tweens.add({ targets: play, scale: 1.04, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: glow, alpha: { from: 0.3, to: 0.58 }, scaleX: { from: 0.9, to: 1.08 }, scaleY: { from: 0.9, to: 1.08 }, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     const saved = loadTrip();
     if (saved) {
-      label.setText('New trip');
+      label.setText('New trip').setPosition(0, -6);
+      icon.setVisible(false);
+      const cglow = this.add.image(0, 0, 'halo').setDisplaySize(280, 180).setTint(0xfff0b0).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
       const cbg = this.add.image(0, 0, 'btn').setScale(1.15, 1);
       const clabel = this.add.text(0, -6, `Continue · Leg ${saved.leg}`, { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0.5);
-      const cont = this.add.container(370, 590, [cbg, clabel]).setDepth(31);
+      const cont = this.add.container(370, 590, [cglow, cbg, clabel]).setDepth(31);
       cbg.setInteractive({ cursor: CURSOR.open });
       cbg.on('pointerover', () => cont.setScale(1.06));
       cbg.on('pointerout', () => cont.setScale(1));
       cbg.on('pointerdown', () => this.start(saved));
+      this.tweens.add({ targets: cglow, alpha: { from: 0.2, to: 0.4 }, duration: 1700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       this.add.text(370, 668, `${LEGS[saved.leg - 1].title}  ·  Enter to continue`, { fontFamily: TEXT, fontSize: '26px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
     } else {
       this.add.text(370, 540, 'or press Enter', { fontFamily: TEXT, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
     }
-    this.add.text(W - 30, H - 22, 'Made for GitHub Game Off 2026  ·  theme: SHIFT', { fontFamily: TEXT, fontSize: '26px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(1, 1).setDepth(31);
+    const credit = this.add.text(0, 0, 'Made for GitHub Game Off 2026  ·  theme: SHIFT', { fontFamily: TEXT, fontSize: '24px', color: C.cream }).setOrigin(1, 0.5).setDepth(40);
+    const creditPill = this.add.rectangle(W - 30, H - 32, credit.width + 36, 42, 0x2a2140, 0.35).setOrigin(1, 0.5).setStrokeStyle(2, 0xfff2da, 0.25).setDepth(39);
+    credit.setPosition(W - 48, H - 32);
 
     this.input.keyboard!.on('keydown-ENTER', () => this.start(saved));
     this.input.keyboard!.on('keydown-SPACE', () => this.start(saved));
@@ -228,6 +252,13 @@ export class TitleScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    // The sun and the hill drift a little with the pointer, for a soft sense of depth.
+    const p = this.input.activePointer;
+    const tx = Phaser.Math.Clamp((p.x - W / 2) / (W / 2), -1, 1);
+    const ty = Phaser.Math.Clamp((p.y - H / 2) / (H / 2), -1, 1);
+    this.parallax.x = Phaser.Math.Linear(this.parallax.x, tx, 0.04);
+    this.parallax.y = Phaser.Math.Linear(this.parallax.y, ty, 0.04);
+    for (const l of this.parallaxLayers) l.img.setPosition(l.baseX + this.parallax.x * l.amount, l.baseY + this.parallax.y * l.amount * 0.6);
     // The title's letters bob in a wave.
     this.letters.forEach((t, i) => {
       const dy = Math.sin(time / 420 + i * 0.55) * 8;

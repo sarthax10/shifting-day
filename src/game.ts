@@ -17,6 +17,7 @@ import type { BiomeKey } from './legs';
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from './prepare';
 import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg } from './prepare';
+import { applyBiomeFX } from './postfx';
 
 // The physics library that ships inside Phaser. Its own types are loose, so bodies are `any` here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -725,7 +726,7 @@ export class PlayScene extends Phaser.Scene {
       const dy = t.body.position.y - b.y;
       return { key: t.spec.key, broken: t.broken, dx: dx * cos - dy * sin, dy: dx * sin + dy * cos, angle: t.body.angle - this.chassis.angle, tied: !!t.rope };
     });
-    const lostNow = this.things.filter((t) => t.packed && (t.lost || t.ghost) && !onBoard.includes(t)).map((t) => t.spec.key);
+    const lostNow = this.things.filter((t) => t.packed && !onBoard.includes(t)).map((t) => t.spec.key);
     const brokeNow = this.things.filter((t) => t.packed && t.broken && !t.wasBroken).map((t) => t.spec.key);
     this.extras.stop();
     this.crossbow.stop();
@@ -735,55 +736,91 @@ export class PlayScene extends Phaser.Scene {
     const worth = onBoard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
     this.time.delayedCall(900, () => {
       this.checkpointCard(trip, lostNow.length, brokeNow.length, worth);
-      this.lostAndFound(trip, lostNow);
+      this.lostAndFound(trip);
     });
   }
 
   /**
-   * The stop's Lost & Found, beside the checkpoint card. Locals bring in what fell off the truck on this leg,
-   * and the stop has tape for broken things. Getting a thing back costs a few coins; the cat always finds
-   * its own way back, for free. Whatever is fixed or found goes back on the truck for the next leg.
+   * The stop's Lost & Found: a counter at every checkpoint, beside the receipt. Locals bring in whatever fell
+   * off the truck on the trip so far, and the stop has tape for broken things. Getting a thing back costs a
+   * few rolls of bubble wrap; pets always find their own way back, for free. Whatever is found or fixed goes
+   * back on the truck for the next leg.
    */
-  private lostAndFound(trip: Trip, lostNow: string[]) {
-    const broken = trip.cargo.filter((c) => c.broken);
-    if (!lostNow.length && !broken.length) return;
-    const x = W - 250;
-    const y0 = H / 2 - 230;
-    const rows = Math.min(4, lostNow.length) + Math.min(2, broken.length);
-    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 201) => o.setScrollFactor(0).setDepth(d);
-    fixed(this.add.rectangle(x, y0 + 60 + rows * 46, 420, 170 + rows * 92, 0xfff4e0).setStrokeStyle(6, 0x2a2140), 200);
-    fixed(this.add.text(x, y0, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '38px', color: C.terracottaDark }).setOrigin(0.5), 202);
-    const purse = fixed(this.add.text(x, y0 + 44, '', { fontFamily: TEXT, fontSize: '24px', color: C.walnut }).setOrigin(0.5), 202);
+  private lostAndFound(trip: Trip) {
+    const x = W - 268;
+    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 202) => o.setScrollFactor(0).setDepth(d);
+    const nameOf = (key: string) => ITEMS.find((i) => i.key === key)?.name ?? key;
+    const isPet = (key: string) => !!ITEMS.find((i) => i.key === key)?.pet;
+    const lost = trip.lost.slice(0, 5);
+    const broken = trip.cargo.filter((c) => c.broken).slice(0, 3);
+    const rows = lost.length + broken.length;
+    const rowH = 84;
+    const h = 200 + Math.max(1, rows) * rowH;
+    const top = H / 2 - h / 2 - 20;
     const coins = () => trip.coins ?? 0;
+    // The counter: a wooden board with a paper sign, slid in from the side.
+    const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(201);
+    const board = this.add.rectangle(x, top + h / 2, 470, h, 0x7a4a2e).setStrokeStyle(6, 0x2a2140);
+    const paper = this.add.rectangle(x, top + h / 2 + 8, 430, h - 60, 0xfff4e0).setStrokeStyle(4, 0x2a2140);
+    const sign = this.add.rectangle(x, top + 4, 330, 64, 0xd8572a).setStrokeStyle(5, 0x2a2140).setAngle(-2);
+    const title = this.add.text(x, top, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '40px', color: C.cream }).setOrigin(0.5).setAngle(-2);
+    const purse = this.add.text(x, top + 66, '', { fontFamily: TEXT, fontSize: '23px', color: C.walnut }).setOrigin(0.5);
+    panel.add([board, paper, sign, title, purse]);
+    for (const [px, py] of [[x - 200, top + 46], [x + 200, top + 46], [x - 200, top + h - 24], [x + 200, top + h - 24]]) panel.add(this.add.circle(px, py, 7, 0xc9a24a).setStrokeStyle(3, 0x2a2140));
     const showPurse = () => purse.setText(`You have ${coins()} roll${coins() === 1 ? '' : 's'} of bubble wrap`);
     showPurse();
-    const nameOf = (key: string) => ITEMS.find((i) => i.key === key)?.name ?? key;
-    let y = y0 + 110;
-    const row = (label: string, cost: number, act: () => void) => {
-      fixed(this.add.text(x - 190, y, label, { fontFamily: TEXT, fontSize: '24px', color: C.ink, wordWrap: { width: 200 } }).setOrigin(0, 0.5), 202);
-      const b = this.button(x + 100, y, 'btn_rope', cost ? `${cost} roll${cost === 1 ? '' : 's'}` : 'Free', 30, () => {
-        if (b.label.text === 'Done!') return;
-        if (coins() < cost) return this.say('Not enough bubble wrap. It lies where the road gets tricky.');
+    this.tweens.add({ targets: panel, x: { from: 560, to: 0 }, duration: 520, delay: 150, ease: 'Back.easeOut' });
+    if (!rows) {
+      panel.add(this.add.text(x, top + 150, 'Nothing handed in.\nEverything made it!', { fontFamily: TEXT, fontSize: '26px', color: C.sageDark, align: 'center' }).setOrigin(0.5));
+      return;
+    }
+    let y = top + 124;
+    const row = (key: string, label: string, cost: number, act: () => void) => {
+      const tex = isPet(key) ? `${key}_calm` : key;
+      const frame = this.textures.exists(`${tex}#0`) ? `${tex}#0` : tex;
+      if (this.textures.exists(frame)) {
+        const icon = this.add.image(x - 170, y, frame);
+        icon.setScale(Math.min(60 / icon.width, 60 / icon.height));
+        panel.add(icon);
+      }
+      const text = this.add.text(x - 128, y, label, { fontFamily: TEXT, fontSize: '22px', color: C.ink, wordWrap: { width: 170 } }).setOrigin(0, 0.5);
+      // A price tag to click: it reads the cost, then "Back!" once paid.
+      const tag = this.add.rectangle(x + 140, y, 120, 50, cost ? 0xf2c14e : 0x9cc58a).setStrokeStyle(4, 0x2a2140);
+      const price = this.add.text(x + 140, y - 2, cost ? `${cost} rolls` : 'Free', { fontFamily: TITLE, fontSize: '26px', color: C.ink }).setOrigin(0.5);
+      panel.add([text, tag, price]);
+      let done = false;
+      tag.setInteractive({ cursor: CURSOR.open });
+      tag.on('pointerover', () => !done && tag.setScale(1.06));
+      tag.on('pointerout', () => tag.setScale(1));
+      tag.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (done) return;
+        if (coins() < cost) {
+          play('click');
+          this.tweens.add({ targets: [tag, price], x: '+=8', duration: 50, yoyo: true, repeat: 3 });
+          return this.say('Not enough bubble wrap. It lies where the road gets tricky.');
+        }
+        done = true;
         trip.coins = coins() - cost;
         act();
         saveTrip(trip);
         showPurse();
-        b.label.setText('Done!');
         play('stamp');
+        tag.setFillStyle(0xd7e8c8).setScale(1);
+        price.setText('Back!').setColor(C.sageDark);
+        text.setColor(C.sageDark);
       });
-      b.box.setDepth(205).setScale(0.62);
-      y += 92;
+      y += rowH;
     };
-    lostNow.slice(0, 4).forEach((key, i) => {
-      const pet = ITEMS.find((t) => t.key === key)?.pet;
-      row(`Found: ${nameOf(key)}`, pet ? 0 : 3, () => {
+    lost.forEach((key, i) => {
+      row(key, nameOf(key), isPet(key) ? 0 : 3, () => {
         trip.cargo.push({ key, broken: false, dx: -150 + i * 80, dy: -110, angle: 0, tied: false });
         const at = trip.lost.indexOf(key);
         if (at >= 0) trip.lost.splice(at, 1);
       });
     });
-    broken.slice(0, 2).forEach((c) => {
-      row(`Wrap up: ${nameOf(c.key)}`, 2, () => {
+    broken.forEach((c) => {
+      row(c.key, `Tape up the ${nameOf(c.key).toLowerCase()}`, 2, () => {
         c.broken = false;
         const at = trip.broken.indexOf(c.key);
         if (at >= 0) trip.broken.splice(at, 1);
@@ -892,6 +929,7 @@ export class PlayScene extends Phaser.Scene {
     this.worlds.push(this.buildWorld(this.leg.biome, tunnel ? [TUNNEL.to + 300, FINISH] : [-1000, FINISH], false));
     this.world = this.worlds[this.worlds.length - 1].built;
     this.tunnel = before && tunnel ? buildTunnel(this, before, this.leg.biome, groundY) : undefined;
+    applyBiomeFX(this.cameras.main, this.leg.biome);
     const tun = (x: number) => inTunnel(x, tunnel);
     if (meadow) {
       const sun = this.add.image(1480, 250, 'sun').setScrollFactor(0.04).setDepth(-45);
