@@ -41,6 +41,9 @@ export class Dash {
   private lampText!: Phaser.GameObjects.Text;
   private stallText!: Phaser.GameObjects.Text;
   private handle!: Phaser.GameObjects.Image;
+  /** Shift lights: a row of LEDs over the gear that fills green, amber, red with the revs. */
+  private leds: { dot: Phaser.GameObjects.Arc; glow: Phaser.GameObjects.Image; colour: number }[] = [];
+  private cue!: Phaser.GameObjects.Text;
   private braked = true;
   private shown = '1';
   /** The needle eases towards the speed rather than jumping, as a real one does. */
@@ -91,6 +94,17 @@ export class Dash {
     this.gearText = this.keep(s.add.text(GEAR.x, GEAR.y + 2, '1', { fontFamily: TITLE, fontSize: '70px', color: C.ink }).setOrigin(0.5));
     this.keep(s.add.text(GEAR.x, GEAR.y + 84, 'GEAR', { fontFamily: TITLE, fontSize: '20px', color: C.cream }).setOrigin(0.5));
     this.keep(s.add.text(GEAR.x, GEAR.y + 106, 'SHIFT ▲   CTRL ▼', { fontFamily: TEXT, fontSize: '17px', color: '#CDEFF0' }).setOrigin(0.5));
+    // The shift lights, in an arc over the gear gauge, and a cue that says which way to change.
+    for (let i = 0; i < 9; i++) {
+      const a = Math.PI * (1.18 + (i / 8) * 0.64);
+      const colour = i < 5 ? 0x5aff8a : i < 7 ? 0xffc43a : 0xff4a3a;
+      const x = GEAR.x + Math.cos(a) * 92;
+      const y = GEAR.y + 6 + Math.sin(a) * 92;
+      const glow = this.keep(s.add.image(x, y, 'halo').setDisplaySize(44, 44).setTint(colour).setAlpha(0));
+      const dot = this.keep(s.add.circle(x, y, 8, 0x2a2238).setStrokeStyle(3, hex(C.ink)));
+      this.leds.push({ dot, glow, colour });
+    }
+    this.cue = this.keep(s.add.text(GEAR.x, GEAR.y - 128, '', { fontFamily: TITLE, fontSize: '22px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setOrigin(0.5));
     this.stallText = this.keep(s.add.text(GEAR.x, GEAR.y - 62, 'STALLED', { fontFamily: TITLE, fontSize: '20px', color: C.cream, backgroundColor: C.terracottaDark, padding: { x: 8, y: 2 } }).setOrigin(0.5));
 
     // The handbrake lamp: a round red warning light with a (P) on it, lit while the handbrake is on.
@@ -148,6 +162,20 @@ export class Dash {
     const high = typeof d.gear === 'number' && d.gear < 4 && d.rpm > REDLINE - 400;
     this.gearText.setText(label).setColor(high ? C.terracotta : d.shifting ? C.walnut : C.ink);
     this.stallText.setVisible(d.stalled);
+
+    // Shift lights: lit in proportion to the revs; all flashing red at the limit, time to change up.
+    const k = Math.max(0, Math.min(1, d.rpm / REDLINE));
+    const lit = Math.round(k * this.leds.length);
+    const limit = k > 0.93 && Math.floor(this.scene.time.now / 120) % 2 === 0;
+    this.leds.forEach((l, i) => {
+      const on = d.stalled ? false : limit ? true : i < lit;
+      const c = limit ? 0xff4a3a : l.colour;
+      l.dot.setFillStyle(on ? c : 0x2a2238);
+      l.glow.setAlpha(on ? 0.55 : 0).setTint(c);
+    });
+    const up = typeof d.gear === 'number' && d.gear < 4 && d.rpm > REDLINE - 400 && !d.stalled;
+    const down = typeof d.gear === 'number' && d.gear > 1 && d.lugging > 0.3 && !d.stalled;
+    this.cue.setText(up ? '▲ SHIFT UP' : down ? '▼ SHIFT DOWN' : '').setColor(up ? '#9CFFB8' : '#FFD27A');
 
     // The lamp glows while the handbrake is on, and flashes if you try to drive against it.
     const flash = handbrake && d.throttle > 0.5 ? (Math.floor(this.scene.time.now / 160) % 2 === 0 ? 1 : 0.35) : 1;

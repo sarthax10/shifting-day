@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Engine, ambience, audio, chime, music, play, thud } from './audio';
-import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood } from './art';
+import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, TOLL_SKINS, CANOPY, RAIL_SIGNAL } from './art';
 import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
 import { Fx } from './fx';
@@ -9,7 +9,10 @@ import { Drivetrain, REDLINE, type Gear } from './drivetrain';
 import { C } from './ink';
 import { FINISH, GROUND, H, W, WORLD_END, WORLD_START, groundY, setRoad } from './terrain';
 import { LEGS, clearTrip, saveTrip, type Leg, type Trip } from './legs';
-import { BIOMES, STOP, type Built } from './biomes';
+import { BIOMES, blendAt, type Built } from './biomes';
+import { STOP_LOOKS, placeStop } from './stops';
+import { MEADOW_TREES } from './trees';
+import type { BiomeKey } from './legs';
 
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from './prepare';
@@ -27,6 +30,8 @@ const BRAKE = 0.3;
 const hexOf = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
 /** Where things sit on the truck, in its own coordinates: the headlight eye, the air freshener's hook, the aerial's foot, the exhaust. */
 const EYE_AT = { x: 401, y: -28 };
+/** Where the driver's head sits in the cab window, in the truck's own coordinates. */
+export const DRIVER_AT = { x: 258, y: -96 };
 const FRESHENER_AT = { x: 300, y: -138 };
 const AERIAL_AT = { x: 354, y: -64 };
 const PIPE_AT = { x: -210, y: 37 };
@@ -81,10 +86,19 @@ interface Gate {
   still: number;
   snore: number;
   booth: { x: number; y: number };
+  /** Its lights: a traffic light's red and green and the booth's beacon, or a crossing's two red lamps. */
+  red?: Phaser.GameObjects.Image;
+  green?: Phaser.GameObjects.Image;
+  beacon?: Phaser.GameObjects.Image;
+  flashers: Phaser.GameObjects.Image[];
 }
 
 /** Where the bay outside the new house starts and ends, in the world. */
 const bay = () => ({ from: FINISH + 80, to: FINISH + 900 });
+import { TUNNEL, buildTunnel, type Tunnel } from './tunnel';
+/** Where the last biome's roadside ends and this one's begins, around the blend. */
+/** True where the tunnel's rock hides the roadside, so nothing is put there. */
+const inTunnel = (x: number, on: boolean) => on && x > TUNNEL.from - 300 && x < TUNNEL.to + 300;
 /** How far the truck reaches behind and in front of its middle (tailgate to bumper). */
 const TRUCK_BACK = 194;
 const TRUCK_NOSE = 448;
@@ -137,6 +151,11 @@ export class PlayScene extends Phaser.Scene {
   private headlight!: Phaser.GameObjects.Image;
   private drive = new Drivetrain();
   private eye!: Inked;
+  private driver!: Inked;
+  /** The driver's head on a spring: it lags behind bumps and jolts. */
+  private headBob = { y: 0, v: 0 };
+  private whistleUntil = 0;
+  private driverBlink = 0;
   private eyeMood = 'open';
   private eyeUntil = 0;
   private nextBlink = 0;
@@ -177,6 +196,11 @@ export class PlayScene extends Phaser.Scene {
   private engine = new Engine();
   private driveTime = 0;
   private arrivedAt = 0;
+  private camLead = 0;
+  /** When a wheel last touched the road: the engine keeps driving through a brief hop over a bump. */
+  private groundedAt = 0;
+  private stopAnims: ((time: number, delta: number) => void)[] = [];
+  private tunnel?: Tunnel;
   /** The handbrake (the parking brake): on when the truck sets off, P or Space pulls it on or lets it off. */
   private handbrake = true;
   private brakeNagged = 0;
@@ -190,6 +214,9 @@ export class PlayScene extends Phaser.Scene {
   private leg: Leg = LEGS[0];
   private trip!: Trip;
   private world!: Built;
+  /** The worlds on screen: this leg's own and, at its start, the last leg's, each split into depth bands that fade. */
+  private worlds: { built: Built; layers: Phaser.GameObjects.Layer[]; prev: boolean }[] = [];
+  private grassBands: { strips: Phaser.GameObjects.Image[]; prev: boolean }[] = [];
   private lastSlam = 0;
   private lastThud = 0;
   private frame = 0;
@@ -414,13 +441,62 @@ export class PlayScene extends Phaser.Scene {
     this.exhaust(true);
   }
 
-  /** The toll gates: a booth, a striped barrier, and a sleepy attendant who wants to see that handbrake on. */
+  /**
+   * The gates. A toll plaza: a canopy over the road with its downlights, a booth on a chevron island with a
+   * sleepy attendant and an amber beacon, a traffic light, and the barrier. In town, a level crossing:
+   * rails across the road, the crossbuck signal with its two red lamps flashing in turn, and the barrier.
+   * Either way, the attendant (or the rules) want to see the handbrake on.
+   */
   private buildGates() {
     this.gates = [];
+    const rail = this.leg.gateKind === 'rail';
+    const skin = this.leg.biome in TOLL_SKINS ? this.leg.biome : 'meadow';
+    const glow = (x: number, y: number, w: number, h: number, tint: number, depth: number, alpha = 0) =>
+      this.add.image(x, y, 'halo').setDisplaySize(w, h).setTint(tint).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(depth);
     for (const x of this.leg.gates) {
       const y = groundY(x);
-      this.add.image(x + 30, y + 8, 'toll_booth').setOrigin(0.15, 1).setDepth(-6);
-      const arm = this.add.image(x, y - 150, 'toll_arm').setOrigin(1, 0.5).setDepth(22);
+      let red: Phaser.GameObjects.Image | undefined;
+      let green: Phaser.GameObjects.Image | undefined;
+      let beacon: Phaser.GameObjects.Image | undefined;
+      const flashers: Phaser.GameObjects.Image[] = [];
+      if (rail) {
+        // Rails set into the road, with their sleepers in the ground beneath.
+        const r = this.add.graphics().setDepth(0.6);
+        for (const dx of [-80, 40]) {
+          r.fillStyle(0x2a2238, 1).fillRect(x + dx - 8, groundY(x + dx) + 8, 56, 12);
+          r.fillStyle(0x9a9ab8, 1).fillRect(x + dx, groundY(x + dx) - 4, 40, 7);
+          r.fillStyle(0xe8e8ff, 1).fillRect(x + dx, groundY(x + dx) - 4, 40, 2);
+        }
+        const sx = x + 70;
+        this.add.image(sx, y + 8, 'rail_signal').setOrigin(0.5, 1).setDepth(-6);
+        const top = y + 8 - RAIL_SIGNAL.h;
+        for (const [lx, ly] of RAIL_SIGNAL.lamps) {
+          const lamp = this.add.circle(sx - RAIL_SIGNAL.w / 2 + lx, top + ly, 18, 0xff3a2a).setDepth(-5.85).setAlpha(0);
+          flashers.push(lamp as unknown as Phaser.GameObjects.Image, glow(sx - RAIL_SIGNAL.w / 2 + lx, top + ly, 140, 140, 0xff3a2a, -5.8));
+        }
+      } else {
+        // The canopy, its downlights and the pools of light they throw on the road.
+        this.add.image(x + 60, y + 20, `toll_canopy_${skin}`).setOrigin(0.5, 1).setDepth(-6.5);
+        const top = y + 20 - CANOPY.h;
+        this.add.text(x + 60, top + CANOPY.slab + 35, 'TOLL', { fontFamily: TITLE, fontSize: '34px', color: C.ink }).setOrigin(0.5).setDepth(-6.4);
+        for (const lx of CANOPY.lights) {
+          const gx = x + 60 - CANOPY.w / 2 + lx;
+          glow(gx, top + CANOPY.slab + 84, 170, 60, 0xfff0c0, -6.3, 0.7);
+          glow(gx, groundY(gx) + 6, 280, 46, 0xfff0c0, 0.7, 0.4);
+        }
+        this.add.image(x, y + 8, skin === 'meadow' ? 'toll_booth' : `toll_booth_${skin}`).setOrigin(31 / 260, 1).setDepth(-6);
+        beacon = glow(x - 31 + 154, y + 8 - 360 + 74, 90, 90, 0xffb43a, -5.9);
+        // The traffic light before the barrier: red until you are let through.
+        const tx = x - 90;
+        this.add.rectangle(tx, groundY(tx) + 8, 12, 300, 0x3a3e4a).setOrigin(0.5, 1).setDepth(-6).setStrokeStyle(3, 0x2a2140);
+        this.add.rectangle(tx, groundY(tx) - 296, 40, 74, 0x1e1a24).setOrigin(0.5, 0).setDepth(-6).setStrokeStyle(3, 0x2a2140);
+        this.add.circle(tx, groundY(tx) - 276, 12, 0x4a1a1a).setDepth(-5.95);
+        this.add.circle(tx, groundY(tx) - 242, 12, 0x1a3a24).setDepth(-5.95);
+        red = this.add.circle(tx, groundY(tx) - 276, 12, 0xff3a2a).setDepth(-5.9) as unknown as Phaser.GameObjects.Image;
+        green = this.add.circle(tx, groundY(tx) - 242, 12, 0x3aff8a).setDepth(-5.9).setAlpha(0) as unknown as Phaser.GameObjects.Image;
+        flashers.push(glow(tx, groundY(tx) - 276, 80, 80, 0xff3a2a, -5.85, 0.6), glow(tx, groundY(tx) - 242, 80, 80, 0x3aff8a, -5.85, 0));
+      }
+      const arm = this.add.image(x, y - 150, 'toll_arm').setOrigin((420 - 37) / 420, 0.5).setDepth(22);
       // Where the barrier is, the road is blocked.
       const body = M.Bodies.rectangle(x + 10, y - 150, 26, 300, { isStatic: true, label: 'gate', friction: 0.2 });
       this.matter.world.add(body);
@@ -433,15 +509,21 @@ export class PlayScene extends Phaser.Scene {
       this.add.image(sx, groundY(sx) + 10, 'sign_plank').setOrigin(0.5, 1).setDepth(-6).setScale(0.8).setRotation(tilt);
       const words = this.add.text(sx, groundY(sx) + 10 - (PLANK.h - PLANK.text.y) * 0.8, this.leg.gateKind === 'rail' ? 'RAIL CROSSING.\nSTOP. HANDBRAKE ON.\nTRAINS DO NOT BRAKE.' : 'TOLL AHEAD.\nSTOP. HANDBRAKE ON.\nNO EXCEPTIONS.', { fontFamily: TITLE, fontSize: '26px', color: C.terracottaDark, align: 'center', lineSpacing: -2 }).setOrigin(0.5).setDepth(-5.9).setRotation(tilt);
       words.setScale(Math.min(1, (PLANK.text.w * 0.8) / words.width, (PLANK.text.h * 0.8) / words.height));
-      this.gates.push({ x, body, arm, state: 'closed', timer: 0, announced: false, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 70, y: y - 200 } });
+      this.gates.push({ x, body, arm, state: 'closed', timer: 0, announced: false, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 100, y: y - 180 }, red, green, beacon, flashers });
     }
   }
 
   private updateGates(forward: number, delta: number) {
     const front = this.onTruckAt(TRUCK_NOSE, 0).x;
     const dt = delta / 1000;
+    const now = this.time.now;
     for (const g of this.gates) {
       if (g.state === 'open') continue;
+      // Lights: the crossing's lamps flash in turn; the booth's beacon pulses.
+      if (this.leg.gateKind === 'rail') {
+        const on = Math.floor(now / 420) % 2;
+        g.flashers.forEach((l, i) => l.setAlpha(Math.floor(i / 2) === on ? (i % 2 ? 0.75 : 1) : 0));
+      } else g.beacon?.setAlpha(0.35 + Math.max(0, Math.sin(now / 160)) * 0.6);
       const gap = g.x - front;
       // The attendant snores until somebody turns up.
       g.snore += dt;
@@ -452,7 +534,7 @@ export class PlayScene extends Phaser.Scene {
       }
       if (!g.announced && gap < 900 && gap > 0) {
         g.announced = true;
-        this.say('Toll gate! Stop at the line and put the handbrake on (P).');
+        this.say(this.leg.gateKind === 'rail' ? 'Level crossing! Stop at the line and put the handbrake on (P).' : 'Toll gate! Stop at the line and put the handbrake on (P).');
       }
       const stopped = gap > -10 && gap < 340 && Math.abs(forward) < 0.15;
       g.still = stopped ? g.still + dt : 0;
@@ -475,6 +557,17 @@ export class PlayScene extends Phaser.Scene {
           this.matter.world.remove(g.body);
           play('ratchet');
           this.tweens.add({ targets: g.arm, rotation: Math.PI / 2, duration: 700, ease: 'Back.easeOut' });
+          // Once it swings up it stands beside the road, so the truck drives past in front of it.
+          g.arm.setDepth(-5.7);
+          // Lights change: green for go, the crossing goes dark, the beacon rests.
+          g.red?.setAlpha(0);
+          g.green?.setAlpha(1);
+          if (this.leg.gateKind === 'rail') g.flashers.forEach((l) => l.setAlpha(0));
+          else {
+            g.flashers[0]?.setAlpha(0);
+            g.flashers[1]?.setAlpha(0.6);
+          }
+          g.beacon?.setAlpha(0);
           this.floatText(g.booth.x, g.booth.y - 20, 'Off you go!', C.cream);
           const quips = ['Mind the hill. Low gear.', 'Lovely handbrake work.', 'Pull away in 1st, or you will stall.'];
           this.say(`"${quips[this.leg.gates.indexOf(g.x) % quips.length]}" Handbrake off (P), then go.`);
@@ -498,10 +591,6 @@ export class PlayScene extends Phaser.Scene {
       cone.fillStyle(0xfff2da).fillRect(x - 10, y - 30, 20, 9);
       cone.fillStyle(0x2a2140).fillRect(x - 28, y, 56, 8);
     }
-    const px = bay().from + 30;
-    this.add.rectangle(px, groundY(px) - 90, 10, 190, hexOf(C.walnut)).setOrigin(0.5, 0).setDepth(-6);
-    this.add.circle(px, groundY(px) - 210, 40, hexOf(C.sky)).setStrokeStyle(6, hexOf(C.ink)).setDepth(-6);
-    this.add.text(px, groundY(px) - 210, 'P', { fontFamily: TITLE, fontSize: '50px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(-5.9);
   }
 
   /** Parking: the truck must stop wholly inside the bay with the handbrake on. Neat parking earns a bonus. */
@@ -538,15 +627,34 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Builds a biome and gathers everything it made into four layers by depth (far scenery, roadside,
+   * road-level effects, and weather in front), so the whole biome can be faded in or out as one.
+   */
+  private buildWorld(key: BiomeKey, range: [number, number], prev: boolean) {
+    const before = new Set(this.children.list);
+    const built = BIOMES[key].build(this, { reach: WORLD_END, horizon: GROUND - 40, groundY, finish: FINISH, range, busy: [...this.leg.gates.flatMap((x) => [x - 900, x]), ...this.leg.jokes.map(([x]) => x)] });
+    const made = this.children.list.filter((o) => !before.has(o));
+    const bands: [number, number, number][] = [
+      [-Infinity, -12, -12],
+      [-12, 0, -8.5],
+      [0, 30, 0.7],
+      [30, Infinity, 56],
+    ];
+    const layers = bands.map(([, , d]) => this.add.layer().setDepth(d - (prev ? 0.01 : 0)));
+    for (const o of made) {
+      const d = (o as unknown as { depth: number }).depth ?? 0;
+      const i = bands.findIndex(([lo, hi]) => d >= lo && d < hi);
+      layers[i].add(o);
+    }
+    return { built, layers, prev };
+  }
+
   /** A roadside stop: the shop and the canopy over the pumps, its name on the board, its lights. */
-  private stopAt(x: number, stop: { name: string; palette: number }) {
-    const y = GROUND + 6;
-    this.add.image(x, y, `stop_${stop.palette}`).setOrigin(0, 1).setDepth(-10);
-    const name = this.add.text(x + STOP.sign.x, y - (STOP.h - STOP.sign.y), stop.name.toUpperCase(), { fontFamily: TITLE, fontSize: '34px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(-9.9);
-    name.setScale(Math.min(1, 300 / name.width));
-    // Light from under the canopy and from the shop windows.
-    for (const lx of [500, 610, 720]) this.fx.light(this.add.image(x + lx, y - (STOP.h - 196), 'spark').setDepth(-9.8).setScale(0.5, 0.2).setTint(0xfff6d8), 0xfff2c8, 0.6, 90, 0.15);
-    for (const wx of [120, 290]) this.add.image(x + wx, y - (STOP.h - 305), 'halo').setDepth(-9.8).setDisplaySize(220, 160).setTint(0xffc860).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
+  /** A checkpoint stop, its building standing so that its canopy or porch is over the bay centred on mid. */
+  private stopAt(mid: number, stop: { name: string; palette: number }) {
+    const look = STOP_LOOKS[stop.palette];
+    this.stopAnims.push(placeStop(this, stop.palette, mid - look.bay, GROUND + 6, stop.name, () => undefined));
   }
 
   /** Loads the truck as it was left at the last stop: the same things, where they sat, broken or not, tied or not. */
@@ -686,7 +794,16 @@ export class PlayScene extends Phaser.Scene {
     const rnd = seeded(11);
     const meadow = this.leg.biome === 'meadow';
     // The biome: sky, layered scenery with haze between, weather, and its own roadside.
-    this.world = BIOMES[this.leg.biome].build(this, { reach: WORLD_END, horizon: GROUND - 40, groundY, finish: FINISH, busy: [...this.leg.gates.flatMap((x) => [x - 900, x]), ...this.leg.jokes.map(([x]) => x)] });
+    // The world: this leg's biome and, where the leg begins, the last leg's, which it slowly turns into.
+    this.worlds = [];
+    const before = this.leg.n > 1 ? LEGS[this.leg.n - 2].biome : null;
+    // Between the two, a tunnel: the last place's scenery up to its entrance, this one's from its exit.
+    const tunnel = !!before && before !== this.leg.biome;
+    if (before && tunnel) this.worlds.push(this.buildWorld(before, [-1000, TUNNEL.from - 300], true));
+    this.worlds.push(this.buildWorld(this.leg.biome, tunnel ? [TUNNEL.to + 300, FINISH] : [-1000, FINISH], false));
+    this.world = this.worlds[this.worlds.length - 1].built;
+    this.tunnel = before && tunnel ? buildTunnel(this, before, this.leg.biome, groundY) : undefined;
+    const tun = (x: number) => inTunnel(x, tunnel);
     if (meadow) {
       const sun = this.add.image(1480, 250, 'sun').setScrollFactor(0.04).setDepth(-45);
       this.fx.light(sun, 0xffc65a, 0.75, 250, 0.12);
@@ -722,10 +839,12 @@ export class PlayScene extends Phaser.Scene {
       this.chimneys.push({ x: x0 + HOUSE.chimney.x * k, y: groundY0 - (HOUSE.ground - HOUSE.chimney.y) * k, kind: key === 'house_old' ? 'old' : 'new', n: 0 });
     }
     // The stops: the one this leg starts from, and the one it ends at.
-    if (this.leg.n > 1) this.stopAt(480, LEGS[this.leg.n - 2].stop!);
-    if (this.leg.stop) this.stopAt(FINISH + 80, this.leg.stop);
+    this.stopAnims = [];
+    if (this.leg.n > 1) this.stopAt(TRUCK_X + 120, LEGS[this.leg.n - 2].stop!);
+    if (this.leg.stop) this.stopAt(FINISH + 490, this.leg.stop);
     for (let x = 2200, i = 0; meadow && x < FINISH - 200; x += 520 + ((i * 173) % 300), i++) {
-      this.inked(x, groundY(x) + 6, `tree_${(i * 7) % TREE_KINDS}`).img.setOrigin(0.5, 392 / 406).setDepth(-9).setScale(0.9 + ((i * 37) % 30) / 100).setFlipX(i % 2 === 1);
+      if (tun(x)) continue;
+      this.add.image(x, groundY(x) + 10, MEADOW_TREES[(i * 7) % MEADOW_TREES.length]).setOrigin(0.5, 1).setDepth(-9).setScale(0.85 + ((i * 37) % 30) / 100).setFlipX(i % 2 === 1);
     }
     // Warning signs before each run of bumps and each big hill, worked out from the road itself.
     const bumps = this.leg.features
@@ -738,6 +857,7 @@ export class PlayScene extends Phaser.Scene {
     for (const x of bumps) this.add.image(x, groundY(x) + 8, 'sign_bump').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
     for (const x of hills.filter((h) => this.leg.gates.every((g) => Math.abs(g - h) > 400))) this.add.image(x, groundY(x) + 8, 'sign_hill').setOrigin(0.5, 1).setDepth(-6).setScale(0.8);
     for (let x = 4600; x < FINISH - 1500; x += 4000) {
+      if (tun(x)) continue;
       const km = Math.round((FINISH - x) / 1000);
       this.add.image(x, groundY(x) + 10, 'milestone').setOrigin(0.5, 1).setDepth(-6).setScale(0.75);
       this.add.text(x, groundY(x) - 34, `${km} km`, { fontFamily: TITLE, fontSize: '22px', color: C.ink }).setOrigin(0.5).setDepth(-5.9);
@@ -762,6 +882,7 @@ export class PlayScene extends Phaser.Scene {
     this.buildBay();
     this.add.image(FINISH - 700, groundY(FINISH - 700) + 8, 'sign_home').setOrigin(0.5, 1).setDepth(-6).setScale(0.85);
     for (let x = 1960; BIOMES[this.leg.biome].lamps && x < FINISH + 300; x += 1250 + rnd() * 500) {
+      if (tun(x)) continue;
       this.add.image(x, groundY(x) + 6, 'lamppost').setOrigin(47 / 140, 396 / 400).setDepth(-8);
       // The lantern is a separate bright shape, so the glow does not spill over the dark post.
       const lamp = this.add.image(x + 57, groundY(x) - 352, 'spark').setDepth(-7).setScale(0.62, 0.5).setTint(0xfff0b4);
@@ -769,10 +890,12 @@ export class PlayScene extends Phaser.Scene {
     }
     const growing = !['snow', 'town'].includes(this.leg.biome);
     for (let x = 820; growing && x < WORLD_END; x += 380 + rnd() * 620) {
+      if (tun(x)) continue;
       this.add.image(x, groundY(x) + 16, `bush_${Math.floor(rnd() * 2)}`).setOrigin(0.5, 1).setDepth(-7).setScale(0.7 + rnd() * 0.4);
     }
     for (let x = WORLD_START + 80; growing && x < WORLD_END; x += 70 + rnd() * 170) {
       const key = rnd() < 0.22 ? `flower_${Math.floor(rnd() * 2)}` : `tuft_${Math.floor(rnd() * 2)}`;
+      if (tun(x)) continue;
       this.add.image(x, groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-1).setFlipX(rnd() < 0.5);
     }
     // Stones and cracks in the earth under the road.
@@ -781,8 +904,12 @@ export class PlayScene extends Phaser.Scene {
     }
     // Close to the camera: a strip of tall grass and wildflowers, sliding by faster than the road.
     const near = 1.3;
-    for (let x = -200; x < W + WORLD_END * near; x += 1200) {
-      this.add.image(x, H + 40, grassKey(this.leg.n)).setOrigin(0, 1).setScrollFactor(near, 1).setDepth(60);
+    this.grassBands = [];
+    const legsGrass = this.worlds.length > 1 ? [this.leg.n - 1, this.leg.n] : [this.leg.n];
+    for (const n of legsGrass) {
+      const strips: Phaser.GameObjects.Image[] = [];
+      for (let x = -200; x < W + WORLD_END * near; x += 1200) strips.push(this.add.image(x, H + 40, LEGS[n - 1].biome === 'town' ? 'town_wet' : LEGS[n - 1].biome === 'snow' ? 'snow_near' : grassKey(n)).setOrigin(0, 1).setScrollFactor(near, 1).setDepth(n === this.leg.n ? 60.1 : 60));
+      this.grassBands.push({ strips, prev: n !== this.leg.n });
     }
 
     if (this.leg.n === 1) this.add.text(960, 70, 'Shifting Day', { fontFamily: TITLE, fontSize: '120px', color: C.terracotta, stroke: C.ink, strokeThickness: 12 }).setOrigin(0.5, 0).setDepth(-5);
@@ -798,14 +925,23 @@ export class PlayScene extends Phaser.Scene {
     const thick = 80;
     const slabs: Body[] = [];
     for (let x = WORLD_START; x < WORLD_END; x += step) {
+      // Each piece is a four-sided block whose top edge runs exactly along the road from x to x + step,
+      // so neighbouring pieces share their edges and the wheels roll over the joins without a bump.
       const y1 = groundY(x);
       const y2 = groundY(x + step);
-      const angle = Math.atan2(y2 - y1, step);
-      const len = Math.hypot(step, y2 - y1) + 2;
-      // Push the slab down along its own normal, so its top edge is the road.
-      const cx = x + step / 2 - Math.sin(angle) * (thick / 2);
-      const cy = (y1 + y2) / 2 + Math.cos(angle) * (thick / 2);
-      slabs.push(M.Bodies.rectangle(cx, cy, len, thick, { isStatic: true, angle, friction: 1, frictionStatic: 2, label: 'road' }));
+      const quad = [
+        { x, y: y1 },
+        { x: x + step, y: y2 },
+        { x: x + step, y: y2 + thick },
+        { x, y: y1 + thick },
+      ];
+      const cx = quad.reduce((n, p) => n + p.x, 0) / 4;
+      const cy = quad.reduce((n, p) => n + p.y, 0) / 4;
+      const slab = M.Bodies.fromVertices(cx, cy, [quad], { isStatic: true, friction: 1, frictionStatic: 2, label: 'road' });
+      // fromVertices centres the shape on its centre of mass; put its top edge back exactly on the road.
+      const top = slab.vertices.reduce((m: number, v: { y: number }) => Math.min(m, v.y), Infinity);
+      M.Body.setPosition(slab, { x: slab.position.x + (x + step / 2 - (slab.bounds.min.x + slab.bounds.max.x) / 2), y: slab.position.y + (Math.min(y1, y2) - top) });
+      slabs.push(slab);
     }
     // Walls at both ends of the world.
     slabs.push(M.Bodies.rectangle(WORLD_START - 40, GROUND - 400, 80, 1200, { isStatic: true, label: 'road' }));
@@ -850,19 +986,20 @@ export class PlayScene extends Phaser.Scene {
       part(t.frame.x, t.frame.y, t.frame.w, t.frame.h, 0.03),
     ];
     const filter = { group: TRUCK_GROUP };
-    this.chassis = M.Body.create({ parts, friction: 0.9, frictionStatic: 1.6, collisionFilter: filter, label: 'truck', sleepThreshold: Infinity });
+    // No air friction from the physics engine: the drivetrain models drag itself (counting it twice stole 4th gear).
+    this.chassis = M.Body.create({ parts, friction: 0.9, frictionStatic: 1.6, frictionAir: 0.003, collisionFilter: filter, label: 'truck', sleepThreshold: Infinity });
     this.anchor = { x: ax - this.chassis.position.x, y: ay - this.chassis.position.y };
     this.matter.world.add(this.chassis);
 
     for (const w of t.wheels) {
-      const wheel = M.Bodies.circle(ax + w.x, ay + w.y, t.wheelR, { friction: 0, frictionStatic: 0, density: 0.02, restitution: 0.05, collisionFilter: filter, label: 'wheel', sleepThreshold: Infinity });
+      const wheel = M.Bodies.circle(ax + w.x, ay + w.y, t.wheelR, { friction: 0, frictionStatic: 0, frictionAir: 0, density: 0.02, restitution: 0.05, collisionFilter: filter, label: 'wheel', sleepThreshold: Infinity });
       const axle = M.Constraint.create({
         bodyA: this.chassis,
         pointA: { x: ax + w.x - this.chassis.position.x, y: ay + w.y - this.chassis.position.y },
         bodyB: wheel,
         length: 0,
-        stiffness: 0.55,
-        damping: 0.35,
+        stiffness: 0.75,
+        damping: 0.55,
       });
       // Handbrake: the wheels cannot move until the player sets off.
       M.Body.setStatic(wheel, true);
@@ -872,13 +1009,15 @@ export class PlayScene extends Phaser.Scene {
     }
     // While it is being loaded the truck is held perfectly still, so it cannot sag on its springs and tip the load.
     M.Body.setStatic(this.chassis, true);
-    this.truckImg = this.inked(0, 0, 'truck').img.setOrigin(t.ox / 660, t.oy / 260).setDepth(10);
+    this.truckImg = this.inked(0, 0, 'truck').img.setOrigin(t.ox / t.w, t.oy / t.h).setDepth(10);
     // The bed's side and tailgate, drawn over the load so it sits inside the bed.
-    this.truckFront = this.inked(0, 0, 'truck_front').img.setOrigin(t.ox / 660, t.oy / 260).setDepth(21);
+    this.truckFront = this.inked(0, 0, 'truck_front').img.setOrigin(t.ox / t.w, t.oy / t.h).setDepth(21);
     this.truckShadow = this.add.image(0, 0, 'shadow').setDepth(2);
     // The headlight glows from behind the eye.
     this.headlight = this.add.image(0, 0, 'spark').setDepth(11).setScale(0.52, 0.62).setAlpha(0);
     this.fx.light(this.headlight, 0xffc457, 0.6, 76, 0.1);
+    this.driver = this.inked(0, 0, 'driver_calm');
+    this.driver.img.setOrigin(DRIVER.head.x / DRIVER.w, DRIVER.head.y / DRIVER.h).setDepth(10.3);
     this.eye = this.inked(0, 0, 'eye_open');
     this.eye.img.setDepth(11.5);
     this.freshener = this.inked(0, 0, 'freshener').img.setOrigin(0.5, 2 / 62).setDepth(10.6);
@@ -1350,6 +1489,24 @@ export class PlayScene extends Phaser.Scene {
     }
     if (`eye_${mood}` !== this.eye.base) this.redraw(this.eye, `eye_${mood}`);
 
+    // The driver: their head lags on a spring when the truck jolts, and their face follows the drive.
+    const hb = this.headBob;
+    hb.v += -hb.y * 0.22 - hb.v * 0.28 + this.chassis.velocity.y * 0.35 + accel * 0.2;
+    hb.y = Math.max(-10, Math.min(10, hb.y + hb.v));
+    const dpos = this.onTruckAt(DRIVER_AT.x, DRIVER_AT.y + hb.y);
+    this.driver.img.setPosition(dpos.x, dpos.y).setRotation(angle + hb.v * 0.02);
+    let face: DriverMood = 'calm';
+    if (this.phase === 'arrived' || this.phase === 'done') face = 'happy';
+    else if (now < this.eyeUntil && this.eyeMood === 'wide') face = 'panic';
+    else if (this.phase === 'drive' && this.drive.rpm > REDLINE - 400 && this.drive.throttle > 0.5) face = 'strain';
+    else if (this.phase === 'drive' && (this.drive.lugging > 0.3 || this.drive.stalled)) face = 'worried';
+    else if (now < this.whistleUntil) face = 'whistle';
+    else if (now > this.driverBlink) {
+      face = 'blink';
+      if (now > this.driverBlink + 140) this.driverBlink = now + 2600 + Math.random() * 3000;
+    }
+    if (`driver_${face}` !== this.driver.base) this.redraw(this.driver, `driver_${face}`);
+
     // The air freshener hangs from the roof and swings like a pendulum: gravity pulls it straight down,
     // and when the truck speeds up it is left behind, so it swings back (and forward when braking).
     const s = this.swing;
@@ -1370,7 +1527,8 @@ export class PlayScene extends Phaser.Scene {
     // The driver whistles out of the window while cruising, and stops dead when the engine screams.
     const cruising = this.phase === 'drive' && Math.abs(forward) > 2 && this.drive.rpm < REDLINE - 900 && now > this.eyeUntil;
     if (cruising && this.frame % 64 === 0) {
-      const w = this.onTruckAt(250, -120);
+      this.whistleUntil = now + 900;
+      const w = this.onTruckAt(DRIVER_AT.x + 30, DRIVER_AT.y - 10);
       const note = this.add
         .text(w.x, w.y, Math.random() < 0.5 ? '♪' : '♫', { fontFamily: TEXT, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 })
         .setOrigin(0.5)
@@ -1774,6 +1932,8 @@ export class PlayScene extends Phaser.Scene {
       const dir = { x: Math.cos(c.angle), y: Math.sin(c.angle) };
       forward = c.velocity.x * dir.x + c.velocity.y * dir.y;
       const grounded = this.wheels.some((w) => w.position.y + TRUCK.wheelR > groundY(w.position.x) - 6);
+      if (grounded) this.groundedAt = this.time.now;
+      const traction = this.time.now - this.groundedAt < 180;
       const pedal = this.phase === 'drive' && right ? 1 : 0;
       const out = this.drive.step(Math.min(0.05, delta / 1000), forward, pedal);
       if (out.stalled) this.stalledOut();
@@ -1791,10 +1951,14 @@ export class PlayScene extends Phaser.Scene {
       }
       // On the flat, a truck nearly at rest stays at rest; on a slope it rolls, unless something holds it.
       else if (!pedal && Math.abs(forward) < 0.12 && Math.abs(slope) < 0.03) dv = -forward;
-      if (this.drive.lugging > 0.3 && this.frame % 4 === 0) this.truckShudder(this.drive.lugging);
-      if (grounded) {
+      if (this.drive.lugging > 0.4 && this.frame % 10 === 0) this.truckShudder(this.drive.lugging * 0.6);
+      // Settle the truck's rocking on its springs while it is on the road (a real truck's shock absorbers).
+      if (grounded) M.Body.setAngularVelocity(c, c.angularVelocity * 0.9);
+      if (traction) {
         const kick = dv + out.jolt;
-        M.Body.setVelocity(c, { x: c.velocity.x + dir.x * kick, y: c.velocity.y + dir.y * kick });
+        // The push goes to the whole truck, body and wheels alike: the wheels are heavy bodies of their own, and
+        // pushing only the body let them soak up three quarters of the engine (and of the brakes).
+        for (const b of [c, ...this.wheels]) M.Body.setVelocity(b, { x: b.velocity.x + dir.x * kick, y: b.velocity.y + dir.y * kick });
       }
       if (out.jolt) this.jolted(out.jolt);
       for (const w of this.wheels) M.Body.setAngularVelocity(w, forward / TRUCK.wheelR);
@@ -1850,12 +2014,26 @@ export class PlayScene extends Phaser.Scene {
     this.syncGlows(time);
     this.truckLife(forward);
     this.speedLines(forward);
-    this.world.update(time, delta, cam.scrollX);
+    // The last place's scenery until the middle of the tunnel, where the rock hides the whole screen; this
+    // place's after it. One swap, out of sight: no fading.
+    const k = this.worlds.length > 1 ? blendAt(cam.scrollX + W / 2) : 1;
+    for (const wd of this.worlds) {
+      const on = wd.prev ? k === 0 : k === 1;
+      // Weather (the top band) stays outside: no leaves or snow blowing through the tunnel.
+      const sheltered = (this.tunnel?.inside(cam.scrollX + W / 2) ?? 0) > 0.35;
+      wd.layers.forEach((l, i) => l.setAlpha(1).setVisible(on && !(i === 3 && sheltered)));
+      if (on) wd.built.update(time, delta, cam.scrollX);
+    }
+    this.tunnel?.update(time, cam.scrollX);
+    for (const a of this.stopAnims) a(time, delta);
+    for (const g of this.grassBands) for (const s of g.strips) s.setVisible(g.prev ? k === 0 : this.grassBands.length > 1 ? k === 1 : true);
     this.chimneySmoke();
 
     // The camera holds still on the house while loading and during the opening; it follows the truck on the road.
     if (this.phase !== 'pack' && this.phase !== 'intro') {
-      const ahead = this.chassis.velocity.x * 14;
+      // Lead the truck by its speed, smoothed, so bumps and gear jolts do not jerk the view.
+      this.camLead += (this.chassis.velocity.x * 14 - this.camLead) * 0.04;
+      const ahead = this.camLead;
       const want = Math.max(0, this.chassis.position.x - 900 + ahead);
       cam.scrollX += (Math.min(want, WORLD_END - W) - cam.scrollX) * 0.07;
     }

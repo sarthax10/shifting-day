@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { HOUSE, TRUCK, type Art } from './art';
+import { HOUSE, TRUCK, type Art, DRIVER } from './art';
+import { DRIVER_AT } from './game';
 import { CURSOR } from './cursors';
 import { C, Pen, type Pt } from './ink';
 import { buildBackdrop } from './backdrop';
@@ -171,7 +172,9 @@ export class TitleScene extends Phaser.Scene {
       parts.push(img);
       return img;
     };
-    parts.push(this.add.image(0, 0, 'truck#0').setOrigin(TRUCK.ox / 660, TRUCK.oy / 260));
+    parts.push(this.add.image(0, 0, 'truck#0').setOrigin(TRUCK.ox / TRUCK.w, TRUCK.oy / TRUCK.h));
+    // The driver in the cab, grinning: off on the big move.
+    parts.push(this.add.image(DRIVER_AT.x, DRIVER_AT.y, 'driver_happy#0').setOrigin(DRIVER.head.x / DRIVER.w, DRIVER.head.y / DRIVER.h));
     // The load, stacked as a player might: tall things at the back, the cat riding on top.
     const clock = add('clock#0', -150, bedY + 14);
     add('armchair#0', -50, bedY + 14);
@@ -187,7 +190,7 @@ export class TitleScene extends Phaser.Scene {
       { img: lamp, t: 2.0, amp: 0.07 },
     ];
     clock.setScale(0.95);
-    parts.push(this.add.image(0, 0, 'truck_front#0').setOrigin(TRUCK.ox / 660, TRUCK.oy / 260));
+    parts.push(this.add.image(0, 0, 'truck_front#0').setOrigin(TRUCK.ox / TRUCK.w, TRUCK.oy / TRUCK.h));
     const decal = this.add.text(0, -7, 'SHIFT HAPPENS', { fontFamily: TITLE, fontSize: '22px', color: C.terracotta }).setOrigin(0.5);
     parts.push(decal.setScale(Math.min(1, 176 / decal.width)));
     for (const w of TRUCK.wheels) {

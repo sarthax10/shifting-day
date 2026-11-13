@@ -58,8 +58,6 @@ export const LEGS: Leg[] = [
     biome: 'autumn',
     features: [
       [2600, 60, 600],
-      [4300, 180, 520],
-      [6100, -120, 500],
       [7900, 240, 600],
       [9800, -60, 140],
       [10500, 30, 52],
@@ -76,7 +74,7 @@ export const LEGS: Leg[] = [
     gateKind: 'toll',
     jokes: [
       [2000, 'MAPLE VALLEY.\nPOP. 12.\nAND A BEAR.'],
-      [5200, 'STEEP.\nUSE LOW GEAR.\nOR PRAY.'],
+      [3000, 'TUNNEL AHEAD.\nHONKING IS\nFOR GEESE.'],
       [9200, 'DO NOT FEED\nTHE MOOSE\nYOUR SOFA'],
       [13200, 'SCENIC VIEW.\nEYES ON\nTHE ROAD.'],
       [17000, 'PIE IN 3 KM.\nWORTH IT.'],
@@ -89,8 +87,6 @@ export const LEGS: Leg[] = [
     biome: 'snow',
     features: [
       ...washboard(2200, 7),
-      [5000, -80, 260],
-      [6300, -90, 280],
       [8700, 230, 560],
       [11000, -55, 90],
       [11400, -55, 90],
@@ -104,7 +100,7 @@ export const LEGS: Leg[] = [
     gateKind: 'toll',
     jokes: [
       [1800, 'ICY ROAD.\nBRAKE EARLY.\nTHEN EARLIER.'],
-      [4600, 'ROAD MAY\nCONTAIN\nROAD'],
+      [3100, 'TUNNEL.\nIT IS WARMER\nIN THERE. BRIEFLY.'],
       [9800, 'SNOWMEN HAVE\nRIGHT OF WAY'],
       [14600, 'YES, IT IS\nCOLD. YES, THE\nCAT IS FINE.'],
       [18800, 'SUMMIT LODGE.\nHOT COCOA.\nWARM CAT.'],
@@ -118,7 +114,6 @@ export const LEGS: Leg[] = [
     features: [
       [2800, 26, 50],
       [3000, 26, 50],
-      [5600, -40, 160],
       [7600, 90, 520],
       [9400, 26, 50],
       [9600, 26, 50],
@@ -128,11 +123,11 @@ export const LEGS: Leg[] = [
       [15600, 60, 420],
     ],
     finish: 18200,
-    gates: [4400, 10600, 14600],
+    gates: [7700, 10600, 14600],
     gateKind: 'rail',
     jokes: [
       [1900, 'WELCOME TO\nNEON TOWN.\nMIND THE BUMPS.'],
-      [6600, 'OPEN LATE.\nVERY LATE.\nTOO LATE.'],
+      [9000, 'OPEN LATE.\nVERY LATE.\nTOO LATE.'],
       [11200, 'TRAINS: YES.\nOFTEN: ALSO\nYES.'],
       [16200, 'STARLITE\nDINER. PIE\nNOT INCLUDED.'],
     ],
@@ -144,7 +139,6 @@ export const LEGS: Leg[] = [
     biome: 'coast',
     features: [
       [3000, 120, 600],
-      [5600, -100, 400],
       [8100, 200, 560],
       [10400, -80, 300],
       [12500, 36, 56],
@@ -158,7 +152,7 @@ export const LEGS: Leg[] = [
     gateKind: 'toll',
     jokes: [
       [2000, 'THE SEA.\nIT IS BIG.\nYOU ARE NOT.'],
-      [6400, 'GULLS WILL\nJUDGE YOUR\nPARKING'],
+      [3100, 'THE SEA IS ON\nTHE OTHER SIDE\nOF THIS HILL.'],
       [11600, 'ALMOST HOME.\nNO PRESSURE.'],
       [16600, 'NEW HOUSE\nAHEAD.\nBREATHE.'],
     ],

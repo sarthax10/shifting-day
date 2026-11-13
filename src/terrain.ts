@@ -72,7 +72,11 @@ export function groundY(x: number): number {
 /** The road height at x, for any leg's bumps and hills. */
 export function groundAt(features: [number, number, number][], x: number): number {
   let y = GROUND;
-  for (const [fx, h, w] of features) {
+  for (const [fx, h, w0] of features) {
+    // Dips are widened until their walls are no steeper than about 13°, so the wheels roll through them
+    // instead of slamming into the far side and stopping dead. (The steepest slope of a dip h deep and
+    // w wide is about 0.86·h/w.)
+    const w = h < 0 ? Math.max(w0, (-h * 0.86) / 0.24) : w0;
     const d = (x - fx) / w;
     if (d > -3.2 && d < 3.2) y -= h * Math.exp(-d * d);
   }

@@ -35,16 +35,16 @@ export const LIMIT = 6200;
  */
 const RPM_PER_SPEED = 470;
 /** Speed change per frame, per unit of torque and gear ratio: the final drive, efficiency and the truck's weight. */
-const PULL = 0.104;
+const PULL = 0.112;
 /** Rolling resistance grows with speed; air drag with speed squared. Together they set the top speed. */
 const ROLLING = 0.0032;
 const DRAG = 0.00042;
 /** How hard the engine slows the truck when the throttle is shut and a gear is in. */
-const ENGINE_BRAKE = 0.000011;
+const ENGINE_BRAKE = 0.000006;
 /** Seconds the clutch stays open during a shift. */
-const SHIFT_TIME = 0.32;
+const SHIFT_TIME = 0.22;
 /** Speed change per rpm of mismatch when the clutch bites. */
-const JOLT = 0.00034;
+const JOLT = 0.00012;
 
 /**
  * How much of its best torque the engine makes at each rpm. Weak at idle, strongest in the
@@ -207,7 +207,7 @@ export class Drivetrain {
           // Engine faster than the wheels: it shoves the truck forward. Slower: it drags it back.
           // In reverse the push is the other way.
           const sign = Math.sign(this.ratio);
-          if (Math.abs(speed) > 0.4) out.jolt = Math.max(-1.6, Math.min(1.6, mismatch * JOLT)) * sign;
+          if (Math.abs(speed) > 0.4) out.jolt = Math.max(-0.5, Math.min(0.5, mismatch * JOLT)) * sign;
           this.rpm = target;
         }
       }
@@ -241,23 +241,21 @@ export class Drivetrain {
     }
 
     let gas = this.throttle;
-    if (this.rpm > LIMIT) {
-      this.limitTimer = 0.09;
-      this.limiting = true;
-    }
-    if (this.limiting) gas = 0;
+    const taper = Math.max(0, Math.min(1, (LIMIT - this.rpm) / 400));
+    this.limiting = taper < 0.25 && gas > 0.5;
+    gas *= taper;
 
     // Too few revs for the gear (climbing a hill in 4th, say): the engine labours and loses its pull,
     // so the truck slows, the revs fall further, and it is time to change down.
     let lug = 1;
-    if (!this.slipping && typeof this.gear === 'number' && this.gear >= 2 && this.rpm < 1500) {
-      lug = Math.max(0.15, (this.rpm - IDLE) / (1500 - IDLE));
+    if (!this.slipping && typeof this.gear === 'number' && this.gear >= 2 && this.rpm < 1400) {
+      lug = Math.max(0.5, (this.rpm - IDLE) / (1400 - IDLE));
       this.lugging = gas * (1 - lug);
     }
     // Torque through the gears to the road.
     out.accel += gas * torqueAt(this.rpm) * lug * ratio * PULL;
     // Throttle shut with a gear in: the engine holds the truck back, harder at high revs.
-    if (!this.slipping) out.accel -= (1 - gas) * ENGINE_BRAKE * this.rpm * Math.abs(ratio) * Math.sign(speed);
+    if (!this.slipping) out.accel -= (1 - this.throttle) * ENGINE_BRAKE * this.rpm * Math.abs(ratio) * Math.sign(speed);
 
     return out;
   }

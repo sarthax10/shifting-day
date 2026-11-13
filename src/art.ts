@@ -567,7 +567,10 @@ export const TRUCK = {
   wheelR: 46,
   /** Where (0, 0) sits inside the picture. */
   ox: 190 + PAD + 4,
-  oy: 150 + PAD + 4,
+  oy: 150 + PAD + 4 + 56,
+  /** The truck picture's size. */
+  w: 660,
+  h: 316,
 };
 
 const CHROME = '#EEF0F2';
@@ -631,7 +634,7 @@ export function truckArt(front = false): Art {
     p.rect(X(-100), Y(-24), 200, 34, { fill: ROOF, r: 8, width: 4 });
     p.rect(X(-94), Y(-19), 188, 24, { r: 6, width: 1.6, stroke: C.terracotta });
     p.ellipse(X(-196), Y(-18), 6, 10, { fill: '#B2402C', width: 3.5 });
-    return { key: 'truck_front', svg: p.svg(660, 260), w: 660, h: 260 };
+    return { key: 'truck_front', svg: p.svg(TRUCK.w, TRUCK.h), w: TRUCK.w, h: TRUCK.h };
   }
 
   /** The top half of a circle round a wheel, from its left edge over to its right. */
@@ -678,19 +681,31 @@ export function truckArt(front = false): Art {
   ];
   p.shape(P(cab), { fill: BODY, raw: true, width: 6.5, shade: [{ pts: [[X(180), Y(-200)], [X(440), Y(-200)], [X(440), Y(-114)], [X(180), Y(-114)]], color: ROOF }, { pts: [[X(186), Y(2)], [X(430), Y(-4)], [X(430), Y(40)], [X(186), Y(40)]], color: SHADE }] });
   p.line([[X(192), Y(-114)], [X(326), Y(-114)]], { width: 4, raw: true });
+  p.line(P([[200, -140], [212, -152], [232, -157], [282, -157], [300, -149]]), { width: 3, color: '#FFFFFF', opacity: 0.55 });
   p.line([[X(194), Y(-30)], [X(240), Y(-30)]], { width: 4, color: ROOF, raw: true });
 
-  // The side window, and the driver with an elbow out of it.
+  // On the roof: a rack, and on it a rolled-up rug and a standard lamp, lashed down with rope. Moving day.
+  for (const rx of [204, 300]) p.rect(X(rx), Y(-176), 8, 18, { fill: C.walnut, r: 2, width: 3.5 });
+  p.rect(X(196), Y(-182), 128, 9, { fill: CHROME, r: 4, width: 4, shade: [{ pts: [[X(190), Y(-177)], [X(330), Y(-177)], [X(330), Y(-170)], [X(190), Y(-170)]], color: CHROME_SHADE }] });
+  // The lamp lying along the rack, its shade at the back.
+  p.rect(X(186), Y(-196), 150, 8, { fill: '#8A6A4A', r: 4, width: 3.5 });
+  p.shape(P([[150, -214], [190, -206], [190, -178], [150, -186]]), { fill: C.cream, raw: true, width: 4, shade: [{ pts: [[X(140), Y(-196)], [X(200), Y(-196)], [X(200), Y(-170)], [X(140), Y(-170)]], color: C.creamShade }] });
+  // The rug: a fat roll, striped, with its spiral end towards us.
+  p.rect(X(208), Y(-226), 120, 40, { fill: C.terracotta, r: 20, width: 5, shade: [{ pts: [[X(200), Y(-204)], [X(340), Y(-204)], [X(340), Y(-180)], [X(200), Y(-180)]], color: C.terracottaDark }] });
+  for (const sx of [236, 262, 288]) p.line([[X(sx), Y(-224)], [X(sx - 4), Y(-188)]], { width: 4, color: C.mustard });
+  p.ellipse(X(326), Y(-206), 14, 20, { fill: C.terracottaDark, width: 4.5 });
+  p.line([[X(326), Y(-206)], [X(330), Y(-212)], [X(322), Y(-216)], [X(318), Y(-204)], [X(326), Y(-196)], [X(334), Y(-206)]], { width: 2.4, color: C.cream });
+  // Rope lashings over the rug, down to the rack.
+  for (const lx of [222, 304]) {
+    p.line([[X(lx), Y(-178)], [X(lx + 2), Y(-228)], [X(lx + 6), Y(-178)]], { width: 6.5 });
+    p.line([[X(lx), Y(-178)], [X(lx + 2), Y(-228)], [X(lx + 6), Y(-178)]], { width: 3.5, color: '#E8C48A' });
+  }
+
+  // The side window; the driver sits in it as a sprite of their own.
   const win: Pt[] = [[220, -136], [288, -138], [306, -124], [320, -94], [326, -66], [220, -66]];
   p.shape(P(win), { fill: GLASS, raw: true, width: 6 });
-  p.ellipse(X(254), Y(-92), 29, 25, { fill: C.cream, width: 5, shade: [{ pts: [[X(224), Y(-84)], [X(254), Y(-74)], [X(234), Y(-56)]], color: C.creamShade }] });
-  p.shape(P([[224, -110], [230, -126], [254, -134], [278, -126], [286, -108], [262, -114], [242, -114]]), { fill: C.mustard, width: 4.5 });
-  p.line([[X(278), Y(-110)], [X(296), Y(-106)]], { width: 6, raw: true });
-  p.dot(X(262), Y(-94), 3.5);
-  p.dot(X(278), Y(-94), 3.5);
-  p.line([[X(264), Y(-81)], [X(271), Y(-78)], [X(278), Y(-82)]], { width: 3.5 });
-  p.ellipse(X(304), Y(-66), 18, 11, { fill: C.teal, width: 4.5 });
-  p.ellipse(X(317), Y(-66), 9, 9, { fill: C.cream, width: 4 });
+  // The back of the cab, seen through the window: a dark interior and the seat back.
+  p.shape(P([[224, -100], [236, -100], [236, -66], [224, -66]]), { fill: "#3A2E44", raw: true, stroke: null, opacity: 0.6 });
   p.line([[X(298), Y(-134)], [X(310), Y(-106)]], { width: 3.5, color: C.cream, opacity: 0.85 });
 
   // Door: its seams, a chrome handle, a heart sticker, and a side mirror.
@@ -728,7 +743,7 @@ export function truckArt(front = false): Art {
   p.shape(P([[-212, 4], [-178, 8], [-180, 30], [-214, 26]]), { fill: C.cream, raw: true, width: 3.5 });
   for (const lx of [-206, -199, -192, -185]) p.line([[X(lx), Y(12)], [X(lx + 1), Y(24)]], { width: 2.2, raw: true, color: C.dusk });
   p.dot(X(-204), Y(8), 2, C.ink);
-  return { key: 'truck', svg: p.svg(660, 260), w: 660, h: 260 };
+  return { key: 'truck', svg: p.svg(TRUCK.w, TRUCK.h), w: TRUCK.w, h: TRUCK.h };
 }
 
 /** Whitewall tyres with red hubs and chrome caps, like the old pickups. */
@@ -738,14 +753,15 @@ export function wheelArt(): Art {
   const c = s / 2;
   const p = pen('wheel');
   p.ellipse(c, c, r, r, { fill: TYRE });
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2;
-    p.line([[c + Math.cos(a) * (r - 3), c + Math.sin(a) * (r - 3)], [c + Math.cos(a) * (r - 8), c + Math.sin(a) * (r - 8)]], { width: 3.5, color: '#6B5A4C', raw: true });
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const b = a + 0.12;
+    p.shape([[c + Math.cos(a) * (r + 1), c + Math.sin(a) * (r + 1)], [c + Math.cos(b) * (r + 1), c + Math.sin(b) * (r + 1)], [c + Math.cos(b) * (r - 9), c + Math.sin(b) * (r - 9)], [c + Math.cos(a) * (r - 9), c + Math.sin(a) * (r - 9)]], { fill: '#4A3E44', raw: true, stroke: null });
   }
   p.ellipse(c, c, r * 0.76, r * 0.76, { fill: C.cream, width: 4 });
-  p.ellipse(c, c, r * 0.56, r * 0.56, { fill: C.terracotta, width: 4.5, shade: [{ pts: [[c - r, c + r * 0.08], [c + r, c - r * 0.06], [c + r, c + r], [c - r, c + r]], color: C.terracottaDark }] });
-  p.ellipse(c, c, r * 0.27, r * 0.27, { fill: CHROME, width: 4 });
-  p.dot(c, c, 4);
+  p.ellipse(c, c, r * 0.56, r * 0.56, { fill: C.mustard, width: 4.5, shade: [{ pts: [[c - r, c + r * 0.08], [c + r, c - r * 0.06], [c + r, c + r], [c - r, c + r]], color: '#C98A24' }] });
+  p.ellipse(c, c, r * 0.27, r * 0.27, { fill: CHROME, width: 3.5, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: CHROME_SHADE }] });
+  p.ellipse(c - r * 0.08, c - r * 0.1, r * 0.09, r * 0.06, { fill: '#FFFFFF', stroke: null, opacity: 0.9 });
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2 + 0.3;
     p.dot(c + Math.cos(a) * r * 0.42, c + Math.sin(a) * r * 0.42, 3, C.cream);
@@ -1083,51 +1099,121 @@ export function plankSignArt(): Art {
   return { key: 'sign_plank', svg: p.svg(w, h), w, h };
 }
 
+/** The colours a toll plaza is painted in, per place: booth body and its shade, canopy fascia. */
+export const TOLL_SKINS: Record<string, [string, string, string]> = {
+  meadow: ['#7EC4E0', '#4E96B4', '#2E5E86'],
+  autumn: ['#8EB47A', '#5E8A54', '#3E5E3A'],
+  snow: ['#E05A4A', '#B03A30', '#7A2A2E'],
+  coast: ['#5ECFC0', '#2E9A8E', '#1E6A6A'],
+};
+
 /**
- * A toll booth on a hill: a little striped-roof hut with a sleepy attendant in the window (cap, moustache,
- * eyes shut), and the striped post the barrier hinges on at its left edge.
+ * A toll booth seen from the side, on its concrete island behind the road: the barrier's hinge post with
+ * its pivot cap, the hut with a flat overhanging roof and an amber beacon on top, a big window with the
+ * sleepy attendant in it, a TOLL plate, and the island's kerb painted in yellow and black chevrons.
  */
-export function tollBoothArt(): Art {
-  const p = pen('toll_booth');
-  const w = 220;
-  const h = 330;
-  // The post the barrier swings on.
-  p.rect(18, h - 200, 24, 200, { fill: C.cream, r: 4, width: 4.5 });
-  for (let y = h - 190; y < h - 10; y += 40) p.rect(18, y, 24, 18, { fill: C.terracotta, r: 0, stroke: null });
-  p.ellipse(30, h - 184, 18, 18, { fill: '#9AA0B5', width: 4 });
+export function tollBoothArt(skin = 'meadow'): Art {
+  const [body, shade] = TOLL_SKINS[skin] ?? TOLL_SKINS.meadow;
+  const key = skin === 'meadow' ? 'toll_booth' : `toll_booth_${skin}`;
+  const p = pen(key);
+  const w = 260;
+  const h = 360;
+  // The island and its chevron kerb.
+  p.rect(0, h - 34, w, 34, { fill: '#B8B4C4', r: 2, width: 4.5 });
+  for (let x = 4; x < w - 20; x += 30) p.shape([[x, h - 30], [x + 14, h - 30], [x + 26, h - 4], [x + 12, h - 4]], { fill: '#2A2140', raw: true, stroke: null });
+  for (let x = 18; x < w - 10; x += 30) p.shape([[x, h - 30], [x + 14, h - 30], [x + 26, h - 4], [x + 12, h - 4]], { fill: C.mustard, raw: true, stroke: null });
+  // The hinge post, striped, with its pivot cap where the barrier turns.
+  p.rect(18, h - 200, 26, 170, { fill: C.cream, r: 4, width: 4.5 });
+  for (let y = h - 190; y < h - 40; y += 36) p.rect(18, y, 26, 16, { fill: C.terracotta, r: 0, stroke: null });
+  p.ellipse(31, h - 158, 20, 20, { fill: '#9AA0B5', width: 4.5, shade: [{ pts: [[10, h - 156], [52, h - 160], [52, h - 136], [10, h - 136]], color: '#6E7488' }] });
+  p.dot(31, h - 158, 5, '#4A4E60');
   // The hut.
-  p.rect(64, 130, 140, h - 132, { fill: C.sky, r: 8, width: 6, shade: [{ pts: [[160, 120], [220, 120], [220, h], [164, h]], color: '#4E96B4' }] });
-  for (let y = 150; y < h - 10; y += 22) p.line([[70, y], [198, y]], { width: 2, color: '#00000022', raw: true });
-  // A striped awning.
-  p.shape([[50, 136], [134, 88], [218, 136]], { fill: C.cream, raw: true, width: 6 });
-  for (let i = 0; i < 4; i++) p.shape([[62 + i * 40, 130 - i * 0], [82 + i * 40, 118 - (i < 2 ? i * 12 : (3 - i) * 12) - 6], [102 + i * 40, 130]], { fill: C.terracotta, raw: true, stroke: null });
-  p.rect(48, 130, 172, 14, { fill: C.terracottaDark, r: 4, width: 4 });
-  // The window, with the attendant asleep in it.
-  p.rect(84, 160, 100, 82, { fill: '#FFD98A', r: 6, width: 5 });
-  p.ellipse(134, 222, 30, 26, { fill: C.cream, width: 4 });
-  p.shape([[104, 206], [110, 190], [134, 184], [158, 190], [164, 206]], { fill: C.dusk, width: 4 });
-  p.rect(100, 202, 72, 8, { fill: C.dusk, r: 3, width: 3 });
-  p.line([[120, 222], [128, 225]], { width: 3, raw: true });
-  p.line([[140, 225], [148, 222]], { width: 3, raw: true });
-  p.shape([[124, 232], [134, 228], [144, 232], [140, 238], [128, 238]], { fill: C.walnut, raw: true, width: 2.5 });
-  p.rect(80, 238, 108, 12, { fill: C.walnut, r: 3, width: 4 });
-  // A sign over the window, and a door.
-  p.rect(92, 262, 84, 26, { fill: C.cream, r: 4, width: 3.5 });
-  for (const [x0, x1] of [[100, 118], [124, 142], [148, 168]] as const) p.line([[x0, 275], [x1, 275]], { width: 4, raw: true, color: C.terracottaDark });
-  p.rect(110, 296, 50, h - 296, { fill: C.walnut, r: 4, width: 4 });
-  return { key: 'toll_booth', svg: p.svg(w, h), w, h };
+  p.rect(70, 120, 170, h - 152, { fill: body, r: 6, width: 6, shade: [{ pts: [[190, 110], [250, 110], [250, h], [194, h]], color: shade }] });
+  // Its flat roof, overhanging, with the amber beacon.
+  p.rect(56, 102, 198, 22, { fill: '#E8E4F0', r: 4, width: 5, shade: [{ pts: [[50, 116], [260, 116], [260, 130], [50, 130]], color: '#B8B4C4' }] });
+  p.rect(140, 82, 28, 22, { fill: '#4A4E60', r: 4, width: 4 });
+  p.ellipse(154, 74, 16, 16, { fill: '#FFB43A', width: 4 });
+  p.ellipse(149, 69, 5, 4, { fill: '#FFFFFF', stroke: null, opacity: 0.8 });
+  // The window, with the attendant asleep: cap, closed eyes, moustache.
+  p.rect(90, 146, 120, 92, { fill: '#FFE2A8', r: 6, width: 5 });
+  p.line([[96, 150], [120, 150], [96, 176]], { width: 3, color: '#FFFFFF', raw: true, opacity: 0.6 });
+  p.ellipse(150, 214, 30, 26, { fill: C.cream, width: 4 });
+  p.shape([[120, 198], [126, 182], [150, 176], [174, 182], [180, 198]], { fill: C.dusk, width: 4 });
+  p.rect(116, 194, 72, 8, { fill: C.dusk, r: 3, width: 3 });
+  p.line([[136, 214], [144, 217]], { width: 3, raw: true });
+  p.line([[156, 217], [164, 214]], { width: 3, raw: true });
+  p.shape([[140, 224], [150, 220], [160, 224], [156, 230], [144, 230]], { fill: C.walnut, raw: true, width: 2.5 });
+  p.rect(84, 234, 132, 12, { fill: C.walnut, r: 3, width: 4 });
+  // The TOLL plate and a door.
+  p.rect(98, 256, 104, 30, { fill: '#2E3440', r: 5, width: 3.5 });
+  p.rect(120, 292, 56, h - 326, { fill: shade, r: 4, width: 4 });
+  p.dot(166, 310, 3.5, C.mustard);
+  return { key, svg: p.svg(w, h), w, h };
 }
 
-/** The toll barrier: a long striped pole with a counterweight at the hinged end. */
+/**
+ * The plaza's canopy, behind the road: a deep roof slab on two columns, a fascia in the place's colour
+ * (the game writes TOLL on it and lights the downlights under the slab).
+ */
+export const CANOPY = { w: 780, h: 560, slab: 70, fascia: { x: 390, y: 104 }, lights: [190, 390, 590] };
+export function tollCanopyArt(skin = 'meadow'): Art {
+  const [, , fascia] = TOLL_SKINS[skin] ?? TOLL_SKINS.meadow;
+  const key = `toll_canopy_${skin}`;
+  const p = pen(key);
+  const { w, h, slab } = CANOPY;
+  for (const cx of [40, w - 40]) p.rect(cx - 18, slab + 60, 36, h - slab - 60, { fill: '#C9C6D4', r: 3, width: 4.5, shade: [{ pts: [[cx + 2, 0], [cx + 30, 0], [cx + 30, h], [cx + 4, h]], color: '#9A96A8' }] });
+  p.rect(0, slab, w, 70, { fill: fascia, r: 4, width: 5.5, shade: [{ pts: [[0, slab + 50], [w, slab + 50], [w, slab + 80], [0, slab + 80]], color: mix(fascia, '#000000', 0.3) }] });
+  p.rect(10, slab - 16, w - 20, 18, { fill: '#E8E4F0', r: 3, width: 4 });
+  p.rect(CANOPY.fascia.x - 110, slab + 12, 220, 46, { fill: '#F4F0E6', r: 6, width: 4 });
+  for (const lx of CANOPY.lights) p.rect(lx - 40, slab + 70, 80, 10, { fill: '#FFF6D8', r: 3, width: 3 });
+  return { key, svg: p.svg(w, h), w, h };
+}
+
+/** The barrier: stripes at 45°, little red lamps along it, a red STOP disc at its tip, a counterweight. */
 export function tollArmArt(): Art {
   const p = pen('toll_arm');
-  const w = 400;
-  const h = 44;
-  p.rect(4, 12, w - 50, 20, { fill: C.cream, r: 10, width: 4.5 });
-  for (let x = 20; x < w - 60; x += 56) p.shape([[x, 14], [x + 26, 14], [x + 16, 30], [x - 10, 30]], { fill: C.terracotta, raw: true, stroke: null });
-  p.ellipse(12, 22, 7, 7, { fill: '#FF6B4A', width: 2.5 });
-  p.rect(w - 56, 4, 50, 36, { fill: '#9AA0B5', r: 6, width: 4.5 });
+  const w = 420;
+  const h = 64;
+  p.rect(30, 22, w - 92, 20, { fill: C.cream, r: 10, width: 4.5 });
+  for (let x = 36; x < w - 70; x += 40) p.shape([[x, 24], [x + 18, 24], [x + 4, 40], [x - 14, 40]], { fill: C.terracotta, raw: true, stroke: null });
+  for (let x = 70; x < w - 80; x += 80) p.ellipse(x, 32, 5, 5, { fill: '#FF4A3A', width: 2 });
+  p.ellipse(22, 32, 22, 22, { fill: '#E0402E', width: 4.5 });
+  p.rect(10, 28, 24, 8, { fill: '#FFFFFF', r: 2, stroke: null });
+  p.rect(w - 66, 12, 58, 40, { fill: '#6E7488', r: 6, width: 4.5, shade: [{ pts: [[w - 70, 38], [w, 36], [w, 56], [w - 70, 56]], color: '#4A4E60' }] });
   return { key: 'toll_arm', svg: p.svg(w, h), w, h };
+}
+
+/**
+ * A level crossing signal, side-on: a post with the X crossbuck on top, two red lamps under hoods on a
+ * crossbar (they flash in turn), a bell, and the relay cabinet at its foot.
+ */
+export const RAIL_SIGNAL = { w: 220, h: 460, lamps: [[60, 250], [160, 250]] as [number, number][] };
+export function railSignalArt(): Art {
+  const p = pen('rail_signal');
+  const { w, h } = RAIL_SIGNAL;
+  p.rect(100, 70, 20, h - 70, { fill: '#E8E4F0', r: 3, width: 4.5 });
+  for (let y = 300; y < h - 20; y += 40) p.rect(100, y, 20, 18, { fill: '#2A2140', r: 0, stroke: null });
+  // The crossbuck.
+  for (const a of [0.55, -0.55]) {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const L = 90;
+    const T = 16;
+    p.shape([[110 - c * L - s * T, 90 - s * L + c * T], [110 + c * L - s * T, 90 + s * L + c * T], [110 + c * L + s * T, 90 + s * L - c * T], [110 - c * L + s * T, 90 - s * L - c * T]], { fill: '#F4F0E6', raw: true, width: 4 });
+  }
+  // The crossbar with its two hooded lamps, and the bell above.
+  p.rect(30, 236, 160, 14, { fill: '#2A2140', r: 3, stroke: null });
+  for (const [lx, ly] of RAIL_SIGNAL.lamps) {
+    p.ellipse(lx, ly, 30, 30, { fill: '#1A1626', width: 4 });
+    p.ellipse(lx, ly, 20, 20, { fill: '#5A2020', stroke: null });
+    p.shape([[lx - 32, ly - 22], [lx + 32, ly - 22], [lx + 26, ly - 36], [lx - 26, ly - 36]], { fill: '#1A1626', raw: true, width: 3 });
+  }
+  p.ellipse(110, 186, 24, 18, { fill: '#2A2140', width: 4 });
+  p.ellipse(110, 196, 30, 8, { fill: '#2A2140', width: 3 });
+  // The relay cabinet.
+  p.rect(130, h - 110, 72, 110, { fill: '#9AA0B5', r: 4, width: 4.5, shade: [{ pts: [[180, h - 120], [210, h - 120], [210, h], [182, h]], color: '#6E7488' }] });
+  for (let k = 0; k < 4; k++) p.line([[140, h - 90 + k * 12], [190, h - 90 + k * 12]], { width: 2, color: '#6E7488', raw: true });
+  return { key: 'rail_signal', svg: p.svg(w, h), w, h };
 }
 
 /** A signpost pointing home, with a little house on it. */
@@ -1454,7 +1540,8 @@ export function heartArt(key: string, fill: string): Art {
  * striped speed bumps, over layers of earth with stones, roots and the odd thing somebody buried.
  * x0 is where the stretch starts in the world, so every stretch gets its own stones, and the bumps line up.
  */
-export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, features: [number, number, number][] = FEATURES): Art {
+export type RoadStyle = 'meadow' | 'autumn' | 'snow' | 'town' | 'coast';
+export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, features: [number, number, number][] = FEATURES, style: RoadStyle = 'meadow'): Art {
   const p = pen(key);
   p.plain = true;
   const w = pts[pts.length - 1][0];
@@ -1496,7 +1583,7 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, feature
     p.raw(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(0.8 + r() * 1.8).toFixed(1)}" fill="${r() < 0.5 ? '#3E2433' : '#F2C49A'}" opacity="${(0.12 + r() * 0.22).toFixed(2)}"/>`);
   }
   // Roots hanging down from the verge.
-  for (let n = 0; n < 7; n++) {
+  for (let n = 0; n < (style === 'town' ? 0 : 7); n++) {
     const x = r() * w;
     const y = yAt(x) + 26;
     const len = 30 + r() * 50;
@@ -1521,7 +1608,7 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, feature
     p.ellipse(x - rx * 0.35, y - ry * 0.35, rx * 0.25, ry * 0.18, { fill: '#FFF0DC', stroke: null, wobble: 0.4, opacity: 0.7 });
   }
   // Now and then, something somebody buried: a bone, an old boot, a tin can.
-  if (r() < 0.75) {
+  if (style !== 'town' && r() < 0.75) {
     const x = 200 + r() * (w - 400);
     const y = yAt(x) + 150 + r() * 160;
     const kind = Math.floor(r() * 3);
@@ -1538,23 +1625,100 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, feature
       p.line([[x - 8, y - 22], [x - 8, y + 22]], { width: 2, color: '#FFFFFF', raw: true, opacity: 0.6 });
     }
   }
-  // The road itself: a dark band under the surface, then packed pale gravel on top.
-  p.raw(`<path d="${band(() => 18, () => 34)}" fill="#7A4A44" opacity="0.55"/>`);
-  p.raw(`<path d="${band(() => 0, () => 22)}" fill="#EDB27D"/>`);
-  p.raw(`<path d="${band(() => 0, () => 6)}" fill="#F8CC97"/>`);
-  // Tyre ruts worn into the gravel.
-  for (const [dy, op] of [
-    [9, 0.32],
-    [15, 0.22],
-  ] as const) {
-    p.raw(`<path d="M${path(() => dy)}" fill="none" stroke="#9C5C48" stroke-width="2.4" stroke-dasharray="70 18 140 26" opacity="${op}"/>`);
+  // Under the city: a concrete slab, then the city's insides in cross-section: water mains, cable runs
+  // and now and then a manhole shaft with its ladder.
+  if (style === 'town') {
+    p.raw(`<path d="${band(() => 24, () => 70)}" fill="#3A3650"/>`);
+    for (let k = 0; k < 4; k++) p.raw(`<path d="M${path(() => 36 + k * 9)}" fill="none" stroke="#2A2640" stroke-width="2" opacity="0.6"/>`);
+    for (let n = 0; n < 4; n++) {
+      const x = 80 + r() * (w - 160);
+      const y = yAt(x) + 110 + r() * 160;
+      const rad = 14 + r() * 20;
+      p.raw(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rad.toFixed(1)}" fill="#4A4664" stroke="#1E1A2C" stroke-width="3"/>`);
+      p.raw(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(rad * 0.62).toFixed(1)}" fill="#1E1A2C"/>`);
+      p.raw(`<path d="M${(x - rad * 0.7).toFixed(1)} ${(y - rad * 0.5).toFixed(1)}A${rad * 0.85} ${rad * 0.85} 0 0 1 ${(x + rad * 0.2).toFixed(1)} ${(y - rad * 0.85).toFixed(1)}" fill="none" stroke="#8A86A8" stroke-width="2.4" opacity="0.8"/>`);
+    }
+    const cables = ['#FF3FD0', '#3FF2FF', '#FFB43F'];
+    cables.forEach((c, k) => p.raw(`<path d="M${path((x) => 92 + k * 7 + Math.sin((x + x0) / 160) * 6)}" fill="none" stroke="${c}" stroke-width="3" opacity="0.55"/>`));
+    if (r() < 0.6) {
+      const x = 120 + r() * (w - 240);
+      const y = yAt(x);
+      p.raw(`<rect x="${(x - 26).toFixed(1)}" y="${(y + 24).toFixed(1)}" width="52" height="120" fill="#1A1626"/>`);
+      for (let k = 0; k < 5; k++) p.raw(`<line x1="${(x - 12).toFixed(1)}" y1="${(y + 40 + k * 20).toFixed(1)}" x2="${(x + 12).toFixed(1)}" y2="${(y + 40 + k * 20).toFixed(1)}" stroke="#5A5478" stroke-width="3"/>`);
+      p.raw(`<rect x="${(x - 34).toFixed(1)}" y="${(y + 18).toFixed(1)}" width="68" height="8" fill="#5A5478"/>`);
+    }
   }
-  // Loose gravel on the surface.
-  for (let n = 0; n < 240; n++) {
-    const x = r() * w;
-    const y = yAt(x) + 3 + r() * 17;
-    const tone = ['#B97E5E', '#FFE2BC', '#8C7C88', '#D69A6A'][Math.floor(r() * 4)];
-    p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(1.2 + r() * 2.4).toFixed(1)}" ry="${(0.9 + r() * 1.4).toFixed(1)}" fill="${tone}" opacity="0.8"/>`);
+  // The road itself, in the place's own surface.
+  if (style === 'town' || style === 'coast') {
+    // Asphalt, its edge catching light, with a painted line along it: white dashes in town, yellow on the coast.
+    p.raw(`<path d="${band(() => 0, () => 24)}" fill="${style === 'town' ? '#2C2840' : '#4A4858'}"/>`);
+    p.raw(`<path d="${band(() => 0, () => 4)}" fill="${style === 'town' ? '#6A6290' : '#7A788C'}"/>`);
+    p.raw(`<path d="M${path(() => 13)}" fill="none" stroke="${style === 'town' ? '#E8E4FF' : '#F2C230'}" stroke-width="3.5" stroke-dasharray="60 46" opacity="0.9"/>`);
+    if (style === 'town') {
+      // Wet: streaks of neon reflected in the asphalt.
+      for (let n = 0; n < 26; n++) {
+        const x = r() * w;
+        const y = yAt(x) + 6 + r() * 12;
+        const c = ['#FF3FD0', '#3FF2FF', '#FFB43F', '#B57BFF'][Math.floor(r() * 4)];
+        p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(10 + r() * 30).toFixed(1)}" ry="2" fill="${c}" opacity="${(0.25 + r() * 0.3).toFixed(2)}"/>`);
+      }
+    } else {
+      // Sand blown over the road's edge, and shells.
+      for (let n = 0; n < 30; n++) {
+        const x = r() * w;
+        const y = yAt(x) + 2;
+        p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(14 + r() * 30).toFixed(1)}" ry="${(2 + r() * 3).toFixed(1)}" fill="#F0DCAA" opacity="0.85"/>`);
+      }
+      for (let n = 0; n < 10; n++) {
+        const x = r() * w;
+        const y = yAt(x) + 40 + r() * 120;
+        p.raw(`<path d="M${x.toFixed(1)} ${y.toFixed(1)}l-7 -10a9 9 0 0 1 14 0z" fill="#FFF4E6" stroke="#C9A88A" stroke-width="1.5"/>`);
+      }
+    }
+  } else if (style === 'snow') {
+    // Packed snow over ice, two tyre tracks pressed into it, and banks of snow pushed up along the edge.
+    p.raw(`<path d="${band(() => 18, () => 30)}" fill="#9EC4E8" opacity="0.85"/>`);
+    p.raw(`<path d="${band(() => 0, () => 20)}" fill="#E8EEFA"/>`);
+    for (const dy of [7, 13]) p.raw(`<path d="M${path(() => dy)}" fill="none" stroke="#A8B0DA" stroke-width="3" stroke-dasharray="90 14" opacity="0.8"/>`);
+    for (let x = r() * 40; x < w; x += 50 + r() * 60) {
+      const y = yAt(x);
+      const rx = 26 + r() * 30;
+      const ry = 8 + r() * 8;
+      p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${(y + 1).toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="#B4BCE6"/>`);
+      p.raw(`<ellipse cx="${(x - 2).toFixed(1)}" cy="${(y - 1).toFixed(1)}" rx="${(rx * 0.92).toFixed(1)}" ry="${(ry * 0.7).toFixed(1)}" fill="#F6F9FF"/>`);
+    }
+    for (let n = 0; n < 60; n++) {
+      const x = r() * w;
+      const y = yAt(x) + 2 + r() * 16;
+      p.raw(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.2" fill="#FFFFFF" opacity="0.9"/>`);
+    }
+  } else {
+    // A country lane: a dark band under the surface, then packed pale gravel on top.
+    p.raw(`<path d="${band(() => 18, () => 34)}" fill="#7A4A44" opacity="0.55"/>`);
+    p.raw(`<path d="${band(() => 0, () => 22)}" fill="#EDB27D"/>`);
+    p.raw(`<path d="${band(() => 0, () => 6)}" fill="#F8CC97"/>`);
+    for (const [dy, op] of [
+      [9, 0.32],
+      [15, 0.22],
+    ] as const) {
+      p.raw(`<path d="M${path(() => dy)}" fill="none" stroke="#9C5C48" stroke-width="2.4" stroke-dasharray="70 18 140 26" opacity="${op}"/>`);
+    }
+    for (let n = 0; n < 240; n++) {
+      const x = r() * w;
+      const y = yAt(x) + 3 + r() * 17;
+      const tone = ['#B97E5E', '#FFE2BC', '#8C7C88', '#D69A6A'][Math.floor(r() * 4)];
+      p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(1.2 + r() * 2.4).toFixed(1)}" ry="${(0.9 + r() * 1.4).toFixed(1)}" fill="${tone}" opacity="0.8"/>`);
+    }
+    // In autumn, fallen leaves all over it.
+    if (style === 'autumn') {
+      for (let n = 0; n < 160; n++) {
+        const x = r() * w;
+        const y = yAt(x) + 1 + r() * 10;
+        const c = ['#E8743E', '#D8463A', '#F2B23A', '#B85A2A'][Math.floor(r() * 4)];
+        const a = (r() * 180).toFixed(0);
+        p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(3 + r() * 3).toFixed(1)}" ry="${(1.6 + r() * 1.2).toFixed(1)}" fill="${c}" transform="rotate(${a} ${x.toFixed(1)} ${y.toFixed(1)})"/>`);
+      }
+    }
   }
   // Speed bumps painted with warning stripes, so the driver sees them coming.
   for (const [fx, fh, fw] of features) {
@@ -1569,7 +1733,8 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, feature
     }
   }
   // Potholes: dark puddles of muddy water with a bright glint.
-  for (const [fx, fh, fw] of features) {
+  for (const [fx, fh, fw0] of features) {
+    const fw = Math.max(fw0, (-fh * 0.86) / 0.24);
     if (fh >= 0 || fh < -70) continue;
     const lx = fx - x0;
     if (lx < 0 || lx > w) continue;
@@ -1888,4 +2053,98 @@ export function cursorArt(kind: CursorKind): Art {
     p.dot(24, 24, 3, CUFF);
   }
   return { key, svg: p.svg(48, 48), w: 48, h: 48 };
+}
+
+/**
+ * The driver, a character of their own now rather than a dot in the window: a round face under a mustard
+ * cap, big eyes that look where the trouble is, eyebrows that do most of the acting, and an arm resting on
+ * the door with the elbow out of the window. Head centre is at (70, 66) in the picture.
+ *  - calm: eyes ahead, a small smile;     - blink;
+ *  - whistle: eyes half shut, lips pursed;  - strain: squeezed eyes, teeth gritted (high revs);
+ *  - worried: brows up, eyes glancing back at the load, a wobbly mouth;
+ *  - panic: eyes wide, mouth open, cap jumping off the head, a bead of sweat;
+ *  - happy: eyes shut in a grin (parked well).
+ */
+export type DriverMood = 'calm' | 'blink' | 'whistle' | 'strain' | 'worried' | 'panic' | 'happy';
+export const DRIVER_MOODS: DriverMood[] = ['calm', 'blink', 'whistle', 'strain', 'worried', 'panic', 'happy'];
+export const DRIVER = { w: 150, h: 150, head: { x: 70, y: 66 } };
+export function driverArt(mood: DriverMood): Art {
+  const key = `driver_${mood}`;
+  const p = pen(key);
+  const { x: cx, y: cy } = DRIVER.head;
+  const SKIN = '#FFD8B4';
+  const SKIN_SHADE = '#F2B48E';
+  const SHIRT = C.terracotta;
+  /** A thick rounded limb: an ink stroke with the colour inside, so it reads as one soft shape. */
+  const limb = (pts: Pt[], colour: string, thick: number) => {
+    p.line(pts, { width: thick + 8, raw: true, wobble: 0.4 });
+    p.line(pts, { width: thick, color: colour, raw: true, wobble: 0.4 });
+  };
+  // Shoulders, down to the window sill.
+  p.shape([[cx - 34, cy + 31], [cx - 30, cy + 21], [cx - 12, cy + 15], [cx + 12, cy + 15], [cx + 28, cy + 21], [cx + 32, cy + 31]], { fill: SHIRT, width: 4.5, shade: [{ pts: [[cx + 4, cy + 10], [cx + 40, cy + 10], [cx + 40, cy + 36], [cx + 8, cy + 36]], color: C.terracottaDark }] });
+  // The arm: out along the sill, elbow over the edge, forearm down the door, hand resting on it.
+  limb([[cx + 18, cy + 24], [cx + 44, cy + 27], [cx + 60, cy + 29]], SHIRT, 16);
+  limb([[cx + 61, cy + 32], [cx + 62, cy + 52]], SKIN, 14);
+  p.ellipse(cx + 62, cy + 58, 10, 9, { fill: SKIN, width: 4 });
+  // The head: one round shape, a little shade under the chin.
+  p.ellipse(cx, cy, 30, 29, { fill: SKIN, width: 4.5, shade: [{ pts: [[cx - 40, cy + 14], [cx + 40, cy + 12], [cx + 40, cy + 40], [cx - 40, cy + 40]], color: SKIN_SHADE }] });
+  // The cap: a dome and a brim forward, with a button on top. In a panic it jumps up.
+  const lift = mood === 'panic' ? -14 : 0;
+  p.shape([[cx - 31, cy - 4 + lift], [cx - 28, cy - 21 + lift], [cx - 12, cy - 33 + lift], [cx + 10, cy - 34 + lift], [cx + 27, cy - 22 + lift], [cx + 31, cy - 4 + lift]], { fill: C.mustard, width: 4.5, shade: [{ pts: [[cx + 6, cy - 50], [cx + 40, cy - 50], [cx + 40, cy], [cx + 6, cy]], color: '#D99A2E' }] });
+  p.rect(cx + 12, cy - 11 + lift, 40, 10, { fill: '#D99A2E', r: 5, width: 4 });
+  p.dot(cx - 2, cy - 33 + lift, 4, C.terracotta);
+  // The face looks three-quarters forward, towards the road: eyes and nose set to the right of centre.
+  const ex = [cx + 1, cy + 1];
+  const ex2 = cx + 19;
+  const ey = cy + 1;
+  p.ellipse(cx + 22, cy + 13, 6, 4, { fill: '#F48C86', stroke: null, opacity: 0.7 });
+  p.ellipse(cx - 8, cy + 13, 5, 3.5, { fill: '#F48C86', stroke: null, opacity: 0.7 });
+  const eyes = [ex[0], ex2];
+  if (mood === 'blink' || mood === 'happy' || mood === 'whistle') {
+    // Shut: arcs, up for a grin, down for a blink, flat lids for a contented whistle.
+    for (const x of eyes) {
+      if (mood === 'happy') p.line([[x - 6, ey + 3], [x, ey - 4], [x + 6, ey + 3]], { width: 4 });
+      else if (mood === 'blink') p.line([[x - 6, ey], [x, ey + 3], [x + 6, ey]], { width: 4 });
+      else {
+        p.ellipse(x, ey, 6.5, 7.5, { fill: '#FFFFFF', width: 3.5 });
+        p.dot(x + 2, ey + 2, 3.4);
+        p.shape([[x - 8, ey - 9], [x + 8, ey - 9], [x + 8, ey - 1], [x - 8, ey]], { fill: SKIN, raw: true, width: 3 });
+      }
+    }
+  } else if (mood === 'strain') {
+    // Squeezed shut: > <.
+    p.line([[ex[0] - 6, ey - 5], [ex[0] + 5, ey], [ex[0] - 6, ey + 5]], { width: 4 });
+    p.line([[ex2 + 6, ey - 5], [ex2 - 5, ey], [ex2 + 6, ey + 5]], { width: 4 });
+  } else {
+    // Open: big white ovals and big pupils, looking ahead (or back at the load when worried).
+    const wide = mood === 'panic' ? 1.25 : 1;
+    const look = mood === 'worried' ? -2.5 : 2;
+    for (const x of eyes) {
+      p.ellipse(x, ey, 6.5 * wide, 8 * wide, { fill: '#FFFFFF', width: 3.5 });
+      p.dot(x + look, ey + 1, mood === 'panic' ? 2.6 : 3.8);
+      if (mood !== 'panic') p.dot(x + look + 1.4, ey - 1.6, 1.2, '#FFFFFF');
+    }
+  }
+  // Brows, only when the face needs them.
+  if (mood === 'worried' || mood === 'panic') {
+    p.line([[ex[0] - 6, ey - 10], [ex[0] + 5, ey - 14]], { width: 3.5 });
+    p.line([[ex2 - 5, ey - 14], [ex2 + 6, ey - 10]], { width: 3.5 });
+  } else if (mood === 'strain') {
+    p.line([[ex[0] - 6, ey - 13], [ex[0] + 5, ey - 9]], { width: 3.5 });
+    p.line([[ex2 - 5, ey - 9], [ex2 + 6, ey - 13]], { width: 3.5 });
+  }
+  // A small round nose.
+  p.ellipse(cx + 13, cy + 10, 5, 4.5, { fill: SKIN_SHADE, width: 3 });
+  // The mouth.
+  const mx = cx + 11;
+  const my = cy + 20;
+  if (mood === 'panic') p.ellipse(mx, my + 1, 6, 7, { fill: '#7A2A3A', width: 3.5 });
+  else if (mood === 'whistle') p.ellipse(mx + 2, my, 3.5, 3.5, { fill: '#7A2A3A', width: 3 });
+  else if (mood === 'strain') {
+    p.rect(mx - 8, my - 3, 16, 7, { fill: '#FFFFFF', r: 2, width: 3 });
+    p.line([[mx, my - 3], [mx, my + 4]], { width: 2 });
+  } else if (mood === 'worried') p.line([[mx - 7, my + 1], [mx - 2, my - 1], [mx + 3, my + 1], [mx + 7, my - 1]], { width: 3.5 });
+  else if (mood === 'happy') p.shape([[mx - 9, my - 2], [mx + 9, my - 2], [mx + 5, my + 6], [mx - 5, my + 6]], { fill: '#7A2A3A', width: 3.5 });
+  else p.line([[mx - 6, my], [mx, my + 4], [mx + 6, my]], { width: 3.5 });
+  return { key, svg: p.svg(DRIVER.w, DRIVER.h), w: DRIVER.w, h: DRIVER.h };
 }

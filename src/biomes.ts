@@ -3,6 +3,9 @@ import { pen, type Art } from './art';
 import { C, mix, type Pt } from './ink';
 import { TILE, birdArts, buildBackdrop, cloudBankArt, haze, peaks, plainPen, rnd, wave } from './backdrop';
 import type { BiomeKey } from './legs';
+import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from './falls';
+import { SWITCH, TUNNEL } from './tunnel';
+import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt } from './night';
 
 /**
  * The look of each leg's world. Every biome follows the same rules (see docs/JOURNEY.md):
@@ -30,10 +33,23 @@ export interface Biome {
   /** Pictures this biome needs, loaded before its leg starts. */
   arts(): Art[];
   /** Lays the sky, the scenery behind the road, the weather and the roadside. */
-  build(scene: Phaser.Scene, o: { reach: number; horizon: number; groundY: (x: number) => number; finish: number; busy?: number[] }): Built;
+  build(scene: Phaser.Scene, o: { reach: number; horizon: number; groundY: (x: number) => number; finish: number; busy?: number[]; range?: [number, number] }): Built;
 }
 
 // ---------------------------------------------------------------- Shared helpers
+
+/** The stretch of road a biome's roadside props cover (all of it, unless the leg is blending two biomes). */
+const from = (o: { range?: [number, number] }) => o.range?.[0] ?? -Infinity;
+const to = (o: { range?: [number, number] }) => o.range?.[1] ?? Infinity;
+
+/** Where a leg's world changes from the last biome into its own: a smooth ramp over this stretch of road. */
+export const BLEND = { from: TUNNEL.from, to: TUNNEL.to };
+/** Which biome is showing at x: the last one before the switch inside the tunnel, this one after. */
+export const blendAt = (x: number) => (x < SWITCH ? 0 : 1);
+export const smoothBlendAt = (x: number) => {
+  const t = Math.min(1, Math.max(0, (x - BLEND.from) / (BLEND.to - BLEND.from)));
+  return t * t * (3 - 2 * t);
+};
 
 /** A layer that tiles every TILE pixels, laid across the whole road at a scroll factor. */
 function tiles(scene: Phaser.Scene, key: string, bottom: number, sf: number, depth: number, reach: number, offset = 0) {
@@ -177,7 +193,75 @@ function autumnFarArt(): Art {
   return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 1.4 };
 }
 
-/** Rounded hills covered in autumn canopies, muted by distance. */
+/**
+ * A forest seen from afar, drawn the way painters and stylised games do it: not tree by tree but as one
+ * mass with a scalloped top where the crowns meet the sky. Each crown is a bump in the silhouette, with a
+ * lit cap on its sunny side (the light is from the upper left) and shadow pooled in the dips between
+ * crowns, where one meets the next. Crowns change colour patch by patch, as autumn woods do. The bumps
+ * are laid across exactly one tile and drawn again either side of it, so copies join without a seam.
+ * `haze` mixes every colour towards the sky: far forests are paler and closer to the sky's colour.
+ */
+function canopyBand(p: ReturnType<typeof plainPen>, opts: { at: (x: number) => number; bottom: number; size: number; hues: string[]; base?: string; seed: number; haze: [string, number]; skip?: (x: number) => boolean; rows?: number }) {
+  const { at, bottom, size, hues, seed } = opts;
+  const [sky, k] = opts.haze;
+  const tone = (c: string, toward: string, by: number) => mix(mix(c, toward, by), sky, k);
+  for (let row = 0; row < (opts.rows ?? 2); row++) {
+    // The bumps: widths chosen at random, then scaled so they exactly fill the tile.
+    const widths: number[] = [];
+    for (let i = 0, x = 0; x < TILE; i++) {
+      const w = size * (0.7 + rnd(seed + row * 17, i) * 0.7);
+      widths.push(w);
+      x += w;
+    }
+    const scale = TILE / widths.reduce((a, b) => a + b, 0);
+    const drop = row * size * 0.55;
+    const crowns: { cx: number; w: number; bh: number; hue: string; base: number }[] = [];
+    let x = (row * size) / 2;
+    widths.forEach((w0, i) => {
+      const w = w0 * scale;
+      const cx = x + w / 2;
+      x += w;
+      crowns.push({ cx, w, bh: w * (0.3 + rnd(seed + 9 + row, i) * 0.16), hue: hues[Math.floor(rnd(seed + 5 + row, i) * hues.length)], base: at(cx) + drop });
+    });
+    const shown = crowns.filter((c) => !opts.skip?.(c.cx));
+    for (const shift of [-TILE, 0, TILE]) {
+      // The mass: one shape whose top is the row of crowns, side by side, so the woods read as a whole.
+      // Gaps (where `skip` says) break it into separate runs.
+      let run: Pt[] = [];
+      const flush = () => {
+        if (run.length > 2) p.shape([...run, [run[run.length - 1][0], bottom], [run[0][0], bottom]], { fill: tone(opts.base ?? hues[0], '#3A2030', 0.25 + row * 0.08), stroke: null, raw: true, wobble: 0.4 });
+        run = [];
+      };
+      for (const c of crowns) {
+        if (opts.skip?.(c.cx)) {
+          flush();
+          continue;
+        }
+        for (let a = 0; a <= 6; a++) {
+          const t = Math.PI + (a / 6) * Math.PI;
+          run.push([c.cx + shift + (Math.cos(t) * c.w) / 2, c.base + Math.sin(t) * c.bh]);
+        }
+      }
+      flush();
+      // Each crown's own colour on its upper part, a lit cap towards the sun, and shadow where it meets the next.
+      for (const c of shown) {
+        const bx = c.cx + shift;
+        if (bx < -c.w || bx > TILE + c.w) continue;
+        const pts: Pt[] = [];
+        for (let a = 0; a <= 8; a++) {
+          const t = Math.PI + (a / 8) * Math.PI;
+          pts.push([bx + (Math.cos(t) * c.w) / 2, c.base + Math.sin(t) * c.bh]);
+        }
+        pts.push([bx + c.w * 0.4, c.base + c.bh * 0.35], [bx - c.w * 0.4, c.base + c.bh * 0.35]);
+        p.shape(pts, { fill: tone(c.hue, '#000000', row * 0.06), stroke: null, raw: true, wobble: 0.5 });
+        p.ellipse(bx - c.w * 0.12, c.base - c.bh * 0.55, c.w * 0.26, c.bh * 0.32, { fill: tone(c.hue, '#FFF2C8', 0.34), stroke: null, wobble: 0.6 });
+        p.ellipse(bx + c.w * 0.48, c.base + c.bh * 0.15, c.w * 0.16, c.bh * 0.42, { fill: tone(c.hue, '#3A2030', 0.45), stroke: null, wobble: 0.6, opacity: 0.85 });
+      }
+    }
+  }
+}
+
+/** Rounded hills covered in autumn woods, paled and cooled by the distance. */
 function autumnRidgeArt(): Art {
   const key = 'bd_a_ridge';
   const h = 520;
@@ -186,17 +270,9 @@ function autumnRidgeArt(): Art {
   const at = (x: number) => h - 250 - hill(x);
   const top: Pt[] = [];
   for (let x = 0; x <= TILE; x += 16) top.push([x, at(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: '#B9806A', stroke: null, raw: true, wobble: 0.2 });
-  const tones = ['#E2925E', '#D47452', '#EAB866', '#C9604E', '#D99A5A'];
-  for (let r = 0; r < 4; r++) {
-    for (let i = 0, x = r * 9; x < TILE; i++) {
-      const y = at(x) + r * 30;
-      const s = 0.7 + rnd(r + 61, i) * 0.6;
-      p.ellipse(x, y - 10 * s, 20 * s, 17 * s, { fill: tones[(i + r) % tones.length], stroke: null, wobble: 0.6 });
-      x += 14 + rnd(r + 63, i) * 12;
-    }
-  }
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.9 };
+  p.shape([...top, [TILE, h], [0, h]], { fill: mix('#B9806A', '#C9D6E6', 0.35), stroke: null, raw: true, wobble: 0.2 });
+  canopyBand(p, { at, bottom: h, size: 54, hues: ['#E2925E', '#D47452', '#EAB866', '#C9604E', '#D99A5A', '#8E9A5A'], base: '#C9785A', seed: 61, haze: ['#C9D6E6', 0.38], rows: 3 });
+  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.6 };
 }
 
 /**
@@ -217,12 +293,44 @@ function autumnValleyArt(): Art {
   // Cliff strata and moss.
   for (let k = 1; k < 6; k++) p.line(top.map(([x, y]) => [x, y + 28 * k + Math.sin(x / 70 + k) * 5] as Pt), { width: 2.5, color: '#7A6A62', raw: true, opacity: 0.5, wobble: 0 });
   for (let x = 10; x < TILE; x += 22) p.ellipse(x, at(x) + 4, 16, 6, { fill: '#7E9A5E', stroke: null, wobble: 0.5, opacity: 0.9 });
-  // The river along the bottom, catching the morning sky.
-  p.shape([[0, h - 70], [TILE, h - 76], [TILE, h - 30], [0, h - 26]], { fill: '#8FC0D0', stroke: null, raw: true, wobble: 0.6 });
-  for (let x = 20; x < TILE; x += 46) p.line([[x, h - 54 + Math.sin(x) * 6], [x + 24, h - 54 + Math.sin(x) * 6]], { width: 2.5, color: '#E8F6FA', raw: true, opacity: 0.8, wobble: 0 });
-  // The pool and the rock ledge the falls drop from.
-  p.ellipse(FALLS.x, h - 60, 150, 26, { fill: '#A8D6E0', stroke: null, wobble: 0.5 });
-  p.shape([[FALLS.x - 120, FALLS.top + 10], [FALLS.x + 120, FALLS.top], [FALLS.x + 110, FALLS.top + 30], [FALLS.x - 110, FALLS.top + 36]], { fill: '#6E5E58', stroke: null, raw: true, wobble: 0.6 });
+  // The river along the bottom: it winds, widens and narrows, with a sandy shore on the near side, a deep
+  // channel down the middle, and the blazing trees on its far bank reflected in it. (Every wave has a whole
+  // number of turns across the tile, so copies meet seamlessly.)
+  const turn = (x: number, k: number, ph = 0) => Math.sin((x / TILE) * Math.PI * 2 * k + ph);
+  const far = (x: number) => h - 74 + turn(x, 5) * 7 + turn(x, 13, 1) * 3;
+  const near = (x: number) => h - 26 + turn(x, 4, 2) * 6 + turn(x, 11) * 2;
+  const xs: number[] = [];
+  for (let x = 0; x <= TILE; x += 12) xs.push(x);
+  p.shape([...xs.map((x): Pt => [x, near(x) - 4]), [TILE, h], [0, h]], { fill: '#D8C4A2', stroke: null, raw: true, wobble: 0.2 });
+  p.shape([...xs.map((x): Pt => [x, far(x)]), ...xs.slice().reverse().map((x): Pt => [x, near(x)])], { fill: '#86BCCC', stroke: null, raw: true, wobble: 0.2 });
+  p.shape([...xs.map((x): Pt => [x, (far(x) * 2 + near(x)) / 3]), ...xs.slice().reverse().map((x): Pt => [x, (far(x) + near(x) * 2) / 3])], { fill: '#6CA4BA', stroke: null, raw: true, wobble: 0.2, opacity: 0.8 });
+  // Pebbles along the shore.
+  for (let i = 0, x = 6; x < TILE; i++, x += 18 + rnd(91, i) * 40) p.ellipse(x, near(x) + 4, 5 + rnd(93, i) * 6, 3, { fill: rnd(95, i) < 0.5 ? '#B8A68A' : '#C9B9A0', stroke: null });
+  // The pool the falls drop into: deep and dark under the falls, paler at its rim.
+  p.ellipse(FALLS.x, h - 60, 140, 26, { fill: '#5E9AB0', stroke: null, wobble: 0.5 });
+  p.ellipse(FALLS.x, h - 54, 110, 16, { fill: '#7FB6C8', stroke: null, wobble: 0.5 });
+  // The notch the water has cut into the cliff: dark and wet behind the falls, with a lip at the top.
+  p.shape(
+    [
+      [FALLS.x - 50, FALLS.top + 6],
+      [FALLS.x + 50, FALLS.top + 4],
+      [FALLS.x + 96, h - 70],
+      [FALLS.x - 96, h - 66],
+    ],
+    { fill: '#4A3E46', stroke: null, raw: true, wobble: 0.6 },
+  );
+  for (let i = 0; i < 6; i++) p.line([[FALLS.x - 60 + i * 24, FALLS.top + 20], [FALLS.x - 64 + i * 25, h - 80]], { width: 2, color: '#62586A', raw: true, opacity: 0.6, wobble: 0.4 });
+  p.shape(
+    [
+      [FALLS.x - 60, FALLS.top + 4],
+      [FALLS.x, FALLS.top - 4],
+      [FALLS.x + 60, FALLS.top + 2],
+      [FALLS.x + 56, FALLS.top + 18],
+      [FALLS.x, FALLS.top + 10],
+      [FALLS.x - 56, FALLS.top + 20],
+    ],
+    { fill: '#5E4E52', stroke: null, wobble: 0.5 },
+  );
   // Stone arch bridge.
   const bx = 1750;
   const by = at(bx) + 40;
@@ -231,33 +339,38 @@ function autumnValleyArt(): Art {
   for (let x = bx - 196; x < bx + 196; x += 22) p.rect(x, by - 12, 14, 12, { fill: '#C9B9A8', stroke: null, r: 2 });
   // Maples: clusters of round canopies on the banks and the cliff tops, in blazing colour.
   const blaze = ['#E8743E', '#F2A23A', '#D8463A', '#F2C45A', '#C9502E', '#EE8A44'];
-  for (let i = 0, x = 0; x < TILE; i++) {
-    if (Math.abs(x - FALLS.x) < 70) {
-      x += 80;
-      continue;
-    }
-    const y = at(x) + 6;
-    const s = 0.8 + rnd(71, i) * 0.7;
-    p.rect(x - 3, y - 6, 6, 26 * s, { fill: '#5A3E3A', stroke: null, r: 2 });
-    for (let k = 0; k < 4; k++) p.ellipse(x + (k - 1.5) * 12 * s, y - 20 * s - (k % 2) * 12 * s, 22 * s, 18 * s, { fill: blaze[(i + k) % blaze.length], stroke: null, wobble: 0.7 });
-    x += 34 + rnd(73, i) * 40;
+  // Woods along the cliff tops: one canopy mass, nearer and so richer than the ridge behind, broken where
+  // the falls come over.
+  canopyBand(p, { at: (x) => at(x) + 10, bottom: h - 140, size: 46, hues: blaze, base: '#B8462E', seed: 71, haze: ['#F4DCC6', 0.12], skip: (x) => Math.abs(x - FALLS.x) < 90, rows: 2 });
+  // Their colours, broken and wavering, reflected in the river.
+  for (let i = 0, x = 20; x < TILE; i++, x += 60 + rnd(73, i) * 50) {
+    if (Math.abs(x - FALLS.x) < 160) continue;
+    for (let k = 0; k < 3; k++) p.line([[x - 14 + k * 14, far(x) + 4 + k * 3], [x - 14 + k * 14, far(x) + 18 + k * 4]], { width: 6, color: blaze[(i + k) % blaze.length], raw: true, opacity: 0.3, wobble: 0.6 });
   }
   return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.3 };
 }
 
-/** The waterfall's water: vertical streaks, tiling top to bottom so it can flow. */
-function fallsArt(): Art {
-  const key = 'bd_a_water';
-  const w = FALLS.w;
-  const h = 256;
+/** The valley falls, for the live water: one sheet rolling over the notch's lip into the pool. */
+const VALLEY_FALLS: FallSpec = {
+  canvas: { x: FALLS.x - 120, y: FALLS.top - 16, w: 240, h: 520 - 40 - (FALLS.top - 16) },
+  streams: [{ top: FALLS.top + 8, bottom: 520 - 62, l0: FALLS.x - 40, r0: FALLS.x + 40, l1: FALLS.x - 84, r1: FALLS.x + 84, speed: 0.8, seed: 7, lip: true }],
+  pool: { x: FALLS.x, y: 520 - 58, rx: 120, ry: 18 },
+  rings: [FALLS.x - 24, FALLS.x + 26],
+  scale: 0.55,
+};
+
+/** Glints of light drifting down the river: short white dashes inside the band the river always covers. */
+function riverGlintArt(): Art {
+  const key = 'bd_a_glint';
+  const h = 40;
   const p = plainPen(key);
-  p.rect(0, 0, w, h, { fill: '#BFE6EE', stroke: null, r: 0 });
-  for (let i = 0; i < 22; i++) {
-    const x = 4 + (i / 22) * (w - 8);
-    for (let y = -40; y < h; y += 60) p.line([[x, y + rnd(i, y) * 30], [x + 1, y + 28 + rnd(i, y) * 30]], { width: 2 + rnd(i + 3, y) * 2, color: i % 3 ? '#FFFFFF' : '#8CC8D8', raw: true, opacity: 0.8, wobble: 0 });
+  for (let i = 0, x = 4; x < TILE - 40; i++, x += 30 + rnd(97, i) * 60) {
+    const y = 4 + rnd(99, i) * 30;
+    p.line([[x, y], [x + 10 + rnd(101, i) * 26, y]], { width: 2 + rnd(103, i) * 2, color: '#F4FCFF', raw: true, opacity: 0.85, wobble: 0 });
   }
-  return { key, svg: p.svg(w, h), w, h };
+  return { key, svg: p.svg(TILE, h), w: TILE, h };
 }
+
 
 /** A roadside maple, inked like the rest of the near world. */
 function mapleArt(n: number): Art {
@@ -296,7 +409,7 @@ const AUTUMN: Biome = {
   grass: { '#2F6B55': '#7A5A2E', '#3E8A68': '#B8862E', '#4F9C74': '#C9702E', '#62AE7E': '#D9A84A' },
   grip: 1,
   lamps: false,
-  arts: () => [autumnFarArt(), autumnRidgeArt(), autumnValleyArt(), fallsArt(), mapleArt(0), mapleArt(1), mapleArt(2), birchArt()],
+  arts: () => [autumnFarArt(), autumnRidgeArt(), autumnValleyArt(), riverGlintArt(), fallsSetArt(), gorgeArt(), fallsFrontArt(), fallWaterArt()],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_autumn', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
     // A pale morning sun behind the haze.
@@ -310,21 +423,34 @@ const AUTUMN: Biome = {
     tiles(scene, 'bd_a_ridge', o.horizon - 150, 0.18, -38, o.reach);
     fogs.push(fogBand(scene, fog, o.horizon - 210, 0.2, -37, 0.42, 1.2));
     tiles(scene, 'bd_a_valley', o.horizon + 10, 0.36, -34, o.reach, -400);
-    // Waterfalls flowing in each copy of the valley, with spray at their feet.
-    const falls: Phaser.GameObjects.TileSprite[] = [];
+    // The valley falls in each copy of the valley, all showing one live water picture, with spray at their feet.
+    const valleyWater = new FallsWater(scene, 'falls_valley', VALLEY_FALLS);
+    valleyWater.draw(0, 16);
     const n = Math.ceil((1920 + o.reach * 0.36) / TILE) + 1;
+    const top = o.horizon + 10 - 520;
     for (let i = 0; i < n; i++) {
-      const x = i * TILE - 400 + FALLS.x - FALLS.w / 2;
-      const y = o.horizon + 10 - 520 + FALLS.top + 20;
-      falls.push(scene.add.tileSprite(x, y, FALLS.w, FALLS.bottom - FALLS.top, 'bd_a_water').setOrigin(0, 0).setScrollFactor(0.36, 1).setDepth(-33.5).setAlpha(0.92));
-      scene.add.particles(x + FALLS.w / 2, o.horizon + 10 - 62, 'halo', { lifespan: 1800, speedX: { min: -30, max: 30 }, speedY: { min: -40, max: -10 }, scale: { start: 0.18, end: 0.5 }, alpha: { start: 0.45, end: 0 }, tint: 0xffffff, frequency: 90 }).setScrollFactor(0.36, 1).setDepth(-33);
+      const x0 = i * TILE - 400;
+      scene.add.image(x0 + VALLEY_FALLS.canvas.x, top + VALLEY_FALLS.canvas.y, 'falls_valley').setOrigin(0, 0).setScrollFactor(0.36, 1).setDepth(-33.5);
+      scene.add.particles(x0 + FALLS.x, top + 520 - 66, 'halo', { lifespan: 2000, x: { min: -50, max: 50 }, speedX: { min: -20, max: 20 }, speedY: { min: -30, max: -8 }, scale: { start: 0.15, end: 0.5 }, alpha: { start: 0.3, end: 0 }, tint: 0xffffff, frequency: 110 }).setScrollFactor(0.36, 1).setDepth(-33);
     }
-    fogs.push(fogBand(scene, fog, o.horizon - 60, 0.4, -31, 0.32, 0.9));
+    // Light glinting on the river as it flows, two sets drifting at different speeds.
+    const glints = [0, 1].map((k) =>
+      scene.add
+        .tileSprite(-400, top + 520 - 58, 1920 + o.reach * 0.36 + TILE, 40, 'bd_a_glint')
+        .setOrigin(0, 0)
+        .setScrollFactor(0.36, 1)
+        .setDepth(-33.6)
+        .setAlpha(0.7)
+        .setFlipX(k === 1),
+    );
+    fogs.push(fogBand(scene, fog, o.horizon - 60, 0.4, -31, 0.2, 0.9));
+    // The hero waterfalls, nearer than the valley, each on a stretch of road of its own.
+    const heroes = [5500, 9800].map((x) => placeFalls(scene, x, o.horizon + 60, 0.5, -29.5));
     const shafts = lightShafts(scene, 5, 0xfff0c8, -30);
-    haze(scene, o.horizon - 300, 300, 0xfff0e0, 0.12, -29, 0.3);
+    haze(scene, o.horizon - 300, 300, 0xfff0e0, 0.06, -29, 0.3);
     // Roadside: maples and birches.
     let seed = 1;
-    for (let x = 1900; x < o.finish - 300; x += 380 + rnd(5, seed) * 420, seed++) {
+    for (let x = Math.max(1900, from(o)); x < Math.min(o.finish - 300, to(o)); x += 380 + rnd(5, seed) * 420, seed++) {
       const key = rnd(7, seed) < 0.22 ? 'birch' : `maple_${seed % 3}`;
       scene.add.image(x, o.groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-9).setScale(0.85 + rnd(9, seed) * 0.4).setFlipX(seed % 2 === 0);
     }
@@ -340,7 +466,12 @@ const AUTUMN: Biome = {
     return {
       update(time, delta, scrollX) {
         const dt = delta / 1000;
-        for (const f of falls) f.tilePositionY -= delta * 0.25;
+        valleyWater.draw(time, delta);
+        glints.forEach((g, k) => {
+          g.tilePositionX = -time * (k ? 0.012 : 0.02) + k * 700;
+          g.setAlpha(0.45 + Math.sin(time / (700 + k * 300) + k) * 0.3);
+        });
+        for (const h of heroes) h.update(time, delta, scrollX);
         for (const c of clouds) c.x += dt * 4;
         for (const fb of fogs) fb.tilePositionX = scrollX * (fb.getData('sf') as number) + time * 0.006;
         shafts.forEach((s, i) => s.setAlpha(0.22 + Math.sin(time / 2400 + i * 1.7) * 0.12));
@@ -425,26 +556,79 @@ function snowLakeArt(): Art {
   return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.4 };
 }
 
-/** The aurora: a soft vertical curtain, green at its foot fading through teal into violet. */
-function auroraTexture(scene: Phaser.Scene) {
-  if (scene.textures.exists('aurora')) return 'aurora';
-  const w = 512;
-  const h = 360;
-  const t = scene.textures.createCanvas('aurora', w, h)!;
-  const ctx = t.context;
-  for (let x = 0; x < w; x += 2) {
-    const k = 0.5 + 0.5 * Math.sin((x / w) * Math.PI * 6) * Math.sin((x / w) * Math.PI * 2 + 1);
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, 'rgba(160,90,255,0)');
-    g.addColorStop(0.35, `rgba(150,100,255,${0.25 * k})`);
-    g.addColorStop(0.7, `rgba(80,255,190,${0.75 * k})`);
-    g.addColorStop(0.92, `rgba(120,255,170,${0.7 * k})`);
-    g.addColorStop(1, 'rgba(120,255,170,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x, 0, 2, h);
+/**
+ * The aurora, drawn live: a ribbon whose lower hem folds back and forth across the sky. From every point
+ * of the hem a ray rises, bright green at the hem, teal above, fading to violet and then nothing. Where the
+ * ribbon folds we look along it edge-on, so the rays there are brighter and longer, as in photographs.
+ * A second, fainter violet ribbon hangs higher and further back. The whole thing ripples and shimmers.
+ */
+class Aurora {
+  readonly key: string;
+  private readonly tex: Phaser.Textures.CanvasTexture;
+  private readonly strips: HTMLCanvasElement[];
+  private readonly seeds: number[];
+  private last = -1;
+  constructor(scene: Phaser.Scene, key: string, private readonly w = 1024, private readonly h = 340) {
+    this.key = key;
+    this.tex = scene.textures.exists(key) ? (scene.textures.get(key) as Phaser.Textures.CanvasTexture) : scene.textures.createCanvas(key, w, h)!;
+    // One column of colour per ribbon, stretched to each ray's height when drawn.
+    const strip = (stops: [number, string][]) => {
+      const c = document.createElement('canvas');
+      c.width = 1;
+      c.height = 256;
+      const g = c.getContext('2d')!;
+      const gr = g.createLinearGradient(0, 0, 0, 256);
+      for (const [k, col] of stops) gr.addColorStop(k, col);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 1, 256);
+      return c;
+    };
+    this.strips = [
+      strip([[0, 'rgba(150,90,255,0)'], [0.3, 'rgba(140,100,255,0.35)'], [0.6, 'rgba(60,230,200,0.7)'], [0.86, 'rgba(110,255,160,1)'], [0.95, 'rgba(220,255,220,1)'], [1, 'rgba(255,120,200,0.5)']]),
+      strip([[0, 'rgba(190,90,255,0)'], [0.5, 'rgba(170,90,255,0.45)'], [0.9, 'rgba(120,160,255,0.7)'], [1, 'rgba(255,140,220,0.3)']]),
+    ];
+    this.seeds = Array.from({ length: w }, () => Math.random());
   }
-  t.refresh();
-  return 'aurora';
+  /** Redraws the ribbons for this moment, about twenty times a second. */
+  draw(time: number) {
+    if (this.last >= 0 && time - this.last < 50) return;
+    this.last = time;
+    const t = time / 1000;
+    const { w, h } = this;
+    const ctx = this.tex.context;
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'lighter';
+    const ribbon = (strip: HTMLCanvasElement, base: number, amp: number, len: number, bright: number, phase: number) => {
+      let prev = 0;
+      for (let x = 0; x < w; x += 1) {
+        const u = x / w;
+        // The hem: a long slow S-fold, a shorter fold that travels along it, and a little ripple.
+        const y =
+          base +
+          Math.sin(u * Math.PI * 1.6 + t * 0.1 + phase) * amp +
+          Math.sin(u * Math.PI * 4.5 - t * 0.3 + phase * 2) * amp * 0.55 +
+          Math.sin(u * Math.PI * 19 + t * 1.1) * amp * 0.05;
+        const slope = x === 0 ? 0 : Math.abs(y - prev);
+        prev = y;
+        // Rays are brighter where the ribbon is seen edge-on, and shimmer in soft bands that run along it.
+        const fold = Math.min(1, 0.3 + slope * 1.2);
+        const shimmer = 0.7 + 0.3 * Math.sin(u * 40 + t * 2.4 + phase) * Math.sin(u * 11 - t * 0.8);
+        // The ribbon thins and breaks in places, so it is not one even band across the whole sky.
+        const breaks = Math.max(0, Math.sin(u * Math.PI * 2.4 + t * 0.07 + phase * 3) * 0.6 + 0.55);
+        const k = fold * shimmer * breaks * bright * (0.85 + this.seeds[x] * 0.3);
+        // Fade the ribbon out at both ends, so the texture has no hard edge.
+        const edge = Math.min(1, u * 6, (1 - u) * 6);
+        const ray = len * (0.65 + 0.35 * Math.sin(u * 30 + this.seeds[(x + 37) % w]) * 0.5 + 0.35 * fold);
+        ctx.globalAlpha = Math.max(0, Math.min(1, k * edge * 0.6));
+        ctx.drawImage(strip, x - 1, y - ray, 3, ray + 8);
+      }
+    };
+    ribbon(this.strips[1], h * 0.34, 40, 130, 0.5, 2.1);
+    ribbon(this.strips[0], h * 0.55, 70, 190, 1, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    this.tex.refresh();
+  }
 }
 
 function snowPineArt(): Art {
@@ -470,51 +654,55 @@ function snowPoleArt(): Art {
 const SNOW: Biome = {
   key: 'snow',
   sky: [
-    [0, '#0A1838'],
-    [0.38, '#1E3A6E'],
-    [0.66, '#4E6EA6'],
-    [0.86, '#B6C4E2'],
-    [1, '#EAC2CE'],
+    [0, '#060E26'],
+    [0.4, '#12285A'],
+    [0.7, '#2E4C88'],
+    [0.88, '#6E7EB8'],
+    [1, '#B8A8D0'],
   ],
   ground: { '#C47F58': '#E8EEF6', '#9C5C48': '#B8C6DC', '#5E3A44': '#6A7898', '#B06E50': '#D0DAEA', '#93594A': '#A8B6CE', '#774650': '#7E8CAA', '#EDB27D': '#C9D3E2', '#F8CC97': '#E2E8F2', '#E2A27A': '#FFFFFF' },
   grass: { '#2F6B55': '#DCE6F4', '#3E8A68': '#F4F8FF', '#4F9C74': '#C6D4EA', '#62AE7E': '#FFFFFF' },
   grip: 0.55,
   lamps: true,
-  arts: () => [snowPeaksArt(), snowPinesArt('bd_s_pines_far', 520, '#3A5684', 61, 0.8), snowPinesArt('bd_s_pines', 520, '#22385E', 67, 1.1), snowLakeArt(), snowPineArt(), snowPoleArt()],
+  arts: () => [
+    frostPeaksArt(true),
+    frostPeaksArt(false),
+    frostForestArt('bd_s_pines_far', 520, '#2A3E70', '#8EA6D8', 61, 0.8, '#AEBCE0'),
+    frostForestArt('bd_s_pines', 560, '#14213E', '#7E96CC', 67, 1.25, '#D6E0F4'),
+    frostLakeArt(),
+    snowNearArt(),
+    snowPoleArt(),
+  ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_snow', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
     // Stars, twinkling.
     const stars: Phaser.GameObjects.Image[] = [];
     for (let i = 0; i < 120; i++) stars.push(scene.add.image(Math.random() * 1920, Math.random() * 420, 'halo').setScrollFactor(0).setDepth(-49).setDisplaySize(6, 6).setTint(0xeaf2ff).setAlpha(0.4 + Math.random() * 0.6));
-    // The aurora: several curtains, swaying and breathing, added over the sky.
-    const tex = auroraTexture(scene);
-    const curtains = [0, 1, 2, 3].map((i) =>
-      scene.add
-        .image(200 + i * 520, -60 + (i % 2) * 50, tex)
-        .setOrigin(0.5, 0)
-        .setScrollFactor(0.02, 0)
-        .setDepth(-47)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setScale(2 + (i % 2) * 0.6, 1.25 + (i % 3) * 0.2)
-        .setAlpha(0.7),
-    );
+    // The aurora: a live ribbon across the whole sky, and its reflection in the frozen lake.
+    const aurora = new Aurora(scene, 'aurora_live');
+    aurora.draw(0);
+    scene.add.image(960, -40, aurora.key).setOrigin(0.5, 0).setScrollFactor(0.02, 0).setDepth(-47).setDisplaySize(2400, 760).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.95);
+    const glow = scene.add.image(960, 420, 'halo').setScrollFactor(0.02, 0).setDepth(-48).setDisplaySize(2600, 700).setTint(0x40c090).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD);
     scene.add.circle(1620, 170, 34, 0xf4f6ff).setScrollFactor(0.02, 0).setDepth(-46);
     scene.add.image(1620, 170, 'halo').setScrollFactor(0.02, 0).setDepth(-46).setDisplaySize(260, 260).setTint(0xb8c8ff).setAlpha(0.5);
-    tiles(scene, 'bd_s_peaks', o.horizon - 70, 0.08, -42, o.reach);
-    const fog = fogTexture(scene, 'fog_cold', '#DCE6F8');
-    const fogs = [fogBand(scene, fog, o.horizon - 230, 0.12, -40, 0.55, 1.3)];
-    tiles(scene, 'bd_s_pines_far', o.horizon - 150, 0.18, -38, o.reach);
-    tiles(scene, 'bd_s_lake', o.horizon + 10, 0.32, -36, o.reach, -300);
-    // The cabin's window glows in each copy of the lake.
+    // Two ranges of peaks: the far one paler and hazier.
+    tiles(scene, 'bd_s_peaks_far', o.horizon - 150, 0.05, -43, o.reach, -700);
+    const fog = fogTexture(scene, 'fog_cold', '#A8B8E0');
+    const fogs = [fogBand(scene, fog, o.horizon - 300, 0.07, -42.5, 0.35, 1.3)];
+    tiles(scene, 'bd_s_peaks', o.horizon - 60, 0.09, -42, o.reach);
+    fogs.push(fogBand(scene, fog, o.horizon - 200, 0.13, -39, 0.35, 1.1));
+    tiles(scene, 'bd_s_pines_far', o.horizon - 120, 0.18, -38, o.reach);
+    tiles(scene, 'bd_s_pines', o.horizon - 30, 0.24, -37, o.reach, -900);
+    tiles(scene, 'bd_s_lake', o.horizon + 40, 0.32, -36, o.reach, -300);
+    // The cabins' windows glow in each copy of the lake; the moon shines in the ice.
     const n = Math.ceil((1920 + o.reach * 0.32) / TILE) + 1;
-    for (let i = 0; i < n; i++) scene.add.image(i * TILE - 300 + CABIN.x, o.horizon + 10 - 360 + 143, 'halo').setScrollFactor(0.32, 1).setDepth(-35).setDisplaySize(160, 120).setTint(0xffc060).setAlpha(0.7).setBlendMode(Phaser.BlendModes.ADD);
-    fogs.push(fogBand(scene, fog, o.horizon - 130, 0.3, -34, 0.55, 1));
-    tiles(scene, 'bd_s_pines', o.horizon - 60, 0.24, -37, o.reach, -900);
-    haze(scene, o.horizon - 260, 260, 0xc8d4f0, 0.25, -30, 0.3);
+    for (let i = 0; i < n; i++) for (const cx of LAKE_CABINS) scene.add.image(i * TILE - 300 + cx, o.horizon + 40 - 380 + 110, 'halo').setScrollFactor(0.32, 1).setDepth(-35).setDisplaySize(130, 90).setTint(0xffc060).setAlpha(0.7).setBlendMode(Phaser.BlendModes.ADD);
+    const moonGlint = scene.add.image(1620, o.horizon + 40 - 380 + 230, 'halo').setScrollFactor(0.02, 1).setDepth(-35.5).setDisplaySize(70, 150).setTint(0xdfe8ff).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD);
+    haze(scene, o.horizon - 260, 260, 0x8ea0d8, 0.12, -30, 0.3);
     // Roadside: snowy pines and orange snow poles marking the road edge.
     let seed = 3;
-    for (let x = 1900; x < o.finish - 300; x += 420 + rnd(11, seed) * 380, seed++) scene.add.image(x, o.groundY(x) + 8, 'snowpine').setOrigin(0.5, 1).setDepth(-9).setScale(0.8 + rnd(13, seed) * 0.5).setFlipX(seed % 2 === 0);
-    for (let x = 1700; x < o.finish; x += 600) scene.add.image(x, o.groundY(x) + 10, 'snowpole').setOrigin(0.5, 1).setDepth(-6);
+    for (let x = Math.max(1900, from(o)); x < Math.min(o.finish - 300, to(o)); x += 420 + rnd(11, seed) * 380, seed++) scene.add.image(x, o.groundY(x) + 8, 'snowpine').setOrigin(0.5, 1).setDepth(-9).setScale(0.8 + rnd(13, seed) * 0.5).setFlipX(seed % 2 === 0);
+    for (let x = Math.max(1700, from(o)); x < Math.min(o.finish, to(o)); x += 600) scene.add.image(x, o.groundY(x) + 10, 'snowpole').setOrigin(0.5, 1).setDepth(-6);
     // Snow: big soft flakes close by, fine ones far off, drifting in the wind.
     const near = fallers(scene, 'halo', 90, 57, (f) => {
       f.vx = -0.8 - Math.random() * 0.6;
@@ -532,11 +720,9 @@ const SNOW: Biome = {
     return {
       update(time, delta, scrollX) {
         const dt = delta / 1000;
-        curtains.forEach((c, i) => {
-          c.setAlpha(0.8 + Math.sin(time / 1900 + i * 1.3) * 0.2);
-          c.x = 200 + i * 520 + Math.sin(time / 3100 + i) * 60;
-          c.scaleY = 1.25 + (i % 3) * 0.2 + Math.sin(time / 2300 + i * 2) * 0.15;
-        });
+        aurora.draw(time);
+        glow.setAlpha(0.15 + Math.sin(time / 2600) * 0.05);
+        moonGlint.setAlpha(0.32 + Math.sin(time / 900) * 0.08);
         stars.forEach((s, i) => i % 6 === 0 && s.setAlpha(0.35 + Math.abs(Math.sin(time / 700 + i)) * 0.65));
         for (const fb of fogs) fb.tilePositionX = scrollX * (fb.getData('sf') as number) + time * 0.01;
         const pan = scrollX - lastScroll;
@@ -587,49 +773,112 @@ export const SHOPS = [
 ];
 function shopArt(n: number): Art {
   const s = SHOPS[n];
+  const neon = s.colour;
+  const glass = mix(neon, '#140E24', 0.55);
   return inked(`shop_${n}`, 420, 460, (p) => {
-    p.rect(20, 80, 380, 380, { fill: s.wall, width: 5, r: 4 });
-    // Upper windows, some lit.
-    for (let k = 0; k < 3; k++) p.rect(50 + k * 120, 120, 80, 70, { fill: (n + k) % 3 ? '#FFD27A' : '#24284A', width: 4, r: 3 });
-    // The sign board.
-    p.rect(40, 214, 340, 56, { fill: '#14122A', width: 4, r: 6 });
-    // Awning stripes.
-    for (let k = 0; k < 8; k++) p.shape([[30 + k * 45, 280], [75 + k * 45, 280], [70 + k * 45, 316], [35 + k * 45, 316]], { fill: k % 2 ? s.awning : '#F2E8DA', width: 3, raw: true });
-    // A big lit shop window and a door.
-    p.rect(44, 330, 230, 120, { fill: '#FFE2A8', width: 4, r: 4 });
-    p.rect(296, 330, 76, 130, { fill: '#FFC97A', width: 4, r: 4 });
-    p.rect(44, 330, 230, 14, { fill: mix('#FFE2A8', s.awning, 0.4), stroke: null, r: 0 });
+    // Dark wall panels, street-lit warm at the foot.
+    p.rect(20, 80, 380, 380, { fill: '#221C36', width: 5, r: 4, shade: [{ pts: [[0, 330], [420, 330], [420, 470], [0, 470]], color: '#3A2638' }] });
+    for (const x of [100, 200, 300]) p.line([[x, 84], [x, 206]], { width: 2, color: '#16122A', raw: true });
+    // Upper windows with blinds, some lit.
+    for (let k = 0; k < 3; k++) {
+      const lit = (n + k) % 3 !== 0;
+      const c = lit ? ['#FFD27A', '#9FE8FF', '#FF9AE8'][(n + k) % 3] : '#16122A';
+      p.rect(46 + k * 120, 112, 84, 70, { fill: c, width: 4, r: 3 });
+      if (lit) for (let y = 120; y < 176; y += 9) p.line([[50 + k * 120, y], [126 + k * 120, y]], { width: 2, color: mix(c, '#000000', 0.35), raw: true, opacity: 0.6 });
+    }
+    // An AC unit on the wall, and a pipe running down.
+    p.rect(330, 186, 54, 30, { fill: '#5A5470', width: 3.5, r: 3 });
+    p.ellipse(346, 201, 9, 9, { fill: '#2A2440', width: 2.5 });
+    p.line([[30, 90], [30, 456]], { width: 5, color: '#3A3450', raw: true });
+    // The sign board, outlined in a neon tube; the shop's name is lit on it in the game.
+    p.rect(40, 214, 340, 56, { fill: '#0E0A1C', width: 4, r: 6 });
+    p.rect(46, 220, 328, 44, { width: 3, stroke: neon, r: 5 });
+    // A metal canopy, with a strip light along its underside.
+    p.shape([[24, 282], [396, 282], [404, 304], [16, 304]], { fill: '#3A3450', raw: true, width: 4 });
+    p.rect(30, 304, 360, 6, { fill: neon, r: 2, stroke: null });
+    // The shop window, glowing in the shop's colour, with shelves and goods inside; a shutter half up.
+    p.rect(44, 324, 230, 126, { fill: glass, width: 4, r: 4 });
+    for (let y = 334; y < 352; y += 6) p.line([[46, y], [272, y]], { width: 3, color: '#5A5470', raw: true });
+    for (const y of [384, 420]) {
+      p.line([[52, y], [266, y]], { width: 3, color: mix(neon, '#000000', 0.4), raw: true });
+      for (let x = 62; x < 260; x += 26) p.rect(x, y - 16, 16, 14, { fill: mix(neon, '#FFFFFF', 0.3), r: 3, width: 2 });
+    }
+    // The door, with a lit strip window.
+    p.rect(296, 324, 76, 136, { fill: '#2A2440', width: 4, r: 4 });
+    p.rect(310, 340, 48, 60, { fill: mix(neon, '#FFFFFF', 0.4), width: 3, r: 3 });
+    p.dot(360, 410, 4, '#B9BCCB');
   });
 }
 
 const TOWN: Biome = {
   key: 'town',
   sky: [
-    [0, '#05060F'],
-    [0.45, '#111634'],
-    [0.8, '#26204A'],
-    [1, '#4A2E5E'],
+    [0, '#07051A'],
+    [0.4, '#160C38'],
+    [0.7, '#3A145A'],
+    [0.88, '#8A2A78'],
+    [1, '#E04A90'],
   ],
   ground: { '#C47F58': '#2A2838', '#9C5C48': '#222030', '#5E3A44': '#16141E', '#B06E50': '#2E2C3E', '#93594A': '#262434', '#774650': '#1E1C2A', '#EDB27D': '#3A3850', '#F8CC97': '#4C4A64', '#E2A27A': '#5A5874', '#FFE2BC': '#8A8AA8', '#D69A6A': '#4A4860', '#B97E5E': '#3A3850' },
   grass: { '#2F6B55': '#1A1A2E', '#3E8A68': '#262640', '#4F9C74': '#2E2E48', '#62AE7E': '#36365A' },
   grip: 0.8,
   lamps: true,
-  arts: () => [skylineArt('bd_n_far', 560, '#1C2046', 101, 380, 0.08), skylineArt('bd_n_mid', 520, '#141634', 111, 300, 0.22), ...SHOPS.map((_, i) => shopArt(i))],
+  arts: () => [megaArt(false), megaArt(true), cityArt('far', false), cityArt('far', true), cityArt('mid', false), cityArt('mid', true), railArt(), trainArt(), wetStreetArt(), ...SHOPS.map((_, i) => shopArt(i))],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_town', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
-    // A glow over the town on the low clouds, and a lightning flash now and then.
-    const glow = scene.add.image(960, 640, 'halo').setScrollFactor(0).setDepth(-48).setDisplaySize(2400, 700).setTint(0xb04a8a).setAlpha(0.35);
+    // The city's light thrown up onto the low clouds, magenta at the horizon; lightning now and then.
+    const glow = scene.add.image(960, 760, 'halo').setScrollFactor(0).setDepth(-48).setDisplaySize(2800, 760).setTint(0xff3fa0).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD);
     const flash = scene.add.rectangle(0, 0, 1920, 1080, 0xdfe6ff, 0).setOrigin(0).setScrollFactor(0).setDepth(-47);
     const clouds: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < 6; i++) clouds.push(scene.add.image(i * 720 - 300, 120 + ((i * 97) % 160), `bd_cloud_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-46).setTint(0x3a3260).setAlpha(0.85).setScale(1.1));
-    tiles(scene, 'bd_n_far', o.horizon - 140, 0.1, -42, o.reach);
-    haze(scene, o.horizon - 520, 400, 0x4a3a7a, 0.4, -41, 0.1);
-    tiles(scene, 'bd_n_mid', o.horizon - 40, 0.25, -38, o.reach, -500);
-    haze(scene, o.horizon - 300, 260, 0x3a2e6a, 0.35, -37, 0.25);
+    for (let i = 0; i < 6; i++) clouds.push(scene.add.image(i * 720 - 300, 120 + ((i * 97) % 160), `bd_cloud_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-46).setTint(0x5a2a7a).setAlpha(0.8).setScale(1.1));
+    // Each lit layer twice: the buildings, then a blurred copy of only their lights, added on top to bloom.
+    const layer = (key: string, bottom: number, sf: number, depth: number, offset = 0, bloom = 0.85) => {
+      tiles(scene, key, bottom, sf, depth, o.reach, offset);
+      for (const g of tiles(scene, `${key}_glow`, bottom, sf, depth + 0.05, o.reach, offset)) g.setBlendMode(Phaser.BlendModes.ADD).setAlpha(bloom);
+    };
+    // Megatowers on the horizon, with red beacons blinking on their spires.
+    layer('bd_n_mega', o.horizon - 180, 0.05, -44, 0, 0.7);
+    const beacons: Phaser.GameObjects.Image[] = [];
+    const megaN = Math.ceil((1920 + o.reach * 0.05) / TILE) + 1;
+    for (let i = 0; i < megaN; i++) for (const [bx, by] of MEGA_BEACONS) beacons.push(scene.add.image(i * TILE + bx, o.horizon - 180 - 1100 + by, 'halo').setScrollFactor(0.05, 1).setDepth(-43.8).setDisplaySize(30, 30).setTint(0xff3030).setBlendMode(Phaser.BlendModes.ADD));
+    haze(scene, o.horizon - 520, 420, 0xff3fa0, 0.22, -43, 0.05);
+    layer('bd_n_far', o.horizon - 110, 0.12, -42);
+    haze(scene, o.horizon - 380, 300, 0x7a2a9a, 0.3, -41, 0.12);
+    // Flying cars crossing between the towers, their lights trailing.
+    const flyers = [0, 1, 2, 3].map((k) => {
+      const body = scene.add.rectangle(0, 0, 34, 10, 0x1a1430).setScrollFactor(0).setDepth(-40.5);
+      const lamp = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.4).setDisplaySize(26, 16).setTint(k % 2 ? 0x3ff2ff : 0xffb43f).setBlendMode(Phaser.BlendModes.ADD);
+      const trail = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.45).setDisplaySize(160, 8).setTint(k % 2 ? 0x3ff2ff : 0xff3fd0).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
+      return { body, lamp, trail, y: 160 + k * 90, speed: (0.05 + k * 0.02) * (k % 2 ? 1 : -1), off: k * 700 };
+    });
+    layer('bd_n_mid', o.horizon - 20, 0.25, -38, -500);
+    // Holographic billboards on the big mid buildings: glowing panels whose slogans change with a glitch.
+    const words = ['NOODLE BAR', 'MOVE FAST', 'SLEEP: OPTIONAL', 'ROPES 2 FOR 1', 'BOX CO.', 'NEON HOTEL', 'TRUCKS R US', 'PIE?'];
+    const boards: { text: Phaser.GameObjects.Text; panel: Phaser.GameObjects.Rectangle; halo: Phaser.GameObjects.Image; n: number }[] = [];
+    const midN = Math.ceil((1920 + o.reach * 0.25) / TILE) + 1;
+    const midTop = o.horizon - 20 - 640;
+    for (let i = 0; i < midN; i++) {
+      BILLBOARDS.forEach((b, k) => {
+        const x = i * TILE - 500 + b.x + b.w / 2;
+        const y = midTop + b.y + b.h / 2;
+        const c = [0xff3fd0, 0x3ff2ff, 0xffb43f][(i + k) % 3];
+        const panel = scene.add.rectangle(x, y, b.w, b.h, c, 0.28).setScrollFactor(0.25, 1).setDepth(-37.85).setStrokeStyle(3, c, 0.9);
+        const halo = scene.add.image(x, y, 'halo').setScrollFactor(0.25, 1).setDepth(-37.84).setDisplaySize(b.w * 1.6, b.h * 2.2).setTint(c).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
+        const text = scene.add.text(x, y, words[(i * 3 + k) % words.length], { fontFamily: 'Karla', fontSize: '26px', fontStyle: 'bold', color: '#FFFFFF' }).setOrigin(0.5).setScrollFactor(0.25, 1).setDepth(-37.83).setShadow(0, 0, Phaser.Display.Color.IntegerToColor(c).rgba, 12, true, true);
+        text.setScale(Math.min(1, (b.w * 0.86) / text.width));
+        boards.push({ text, panel, halo, n: i * 3 + k });
+      });
+    }
+    haze(scene, o.horizon - 300, 260, 0x3a1e6a, 0.3, -37, 0.25);
+    // The elevated railway, and a train along it now and then.
+    tiles(scene, 'bd_n_rail', o.horizon + 60, 0.42, -36, o.reach);
+    const deckY = o.horizon + 60 - 520 + RAIL_DECK;
+    const train = scene.add.image(0, deckY + 4, 'bd_n_train').setOrigin(0, 1).setScrollFactor(0.42, 1).setDepth(-35.9);
+    const trainGlow = scene.add.image(0, deckY - 46, 'halo').setScrollFactor(0.42, 1).setDepth(-35.85).setDisplaySize(1600, 70).setTint(0x9fe8ff).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
     // Main street: storefronts behind the road, each with a buzzing neon sign and its reflection.
     const signs: { glow: Phaser.GameObjects.Image; text: Phaser.GameObjects.Text; buzz: number }[] = [];
     let i = 0;
-    for (let x = 2200; x < o.finish - 600; x += 900 + rnd(17, i) * 500, i++) {
+    for (let x = Math.max(2200, from(o)); x < Math.min(o.finish - 600, to(o)); x += 900 + rnd(17, i) * 500, i++) {
       // Keep the shops clear of the gate signs and the locals' signs, so nothing hides their neon.
       if (o.busy?.some((bx) => Math.abs(bx - x) < 480)) continue;
       const n = i % SHOPS.length;
@@ -637,7 +886,7 @@ const TOWN: Biome = {
       const gy = o.groundY(x) + 6;
       scene.add.image(x, gy, `shop_${n}`).setOrigin(0.5, 1).setDepth(-9).setScale(k);
       const sy = gy - (460 - 242) * k;
-      const text = scene.add.text(x, sy, SHOPS[n].name, { fontFamily: '"Fraunces", serif', fontSize: '40px', color: SHOPS[n].colour, stroke: '#ffffff', strokeThickness: 1 }).setOrigin(0.5).setDepth(-8.9);
+      const text = scene.add.text(x, sy, SHOPS[n].name, { fontFamily: '"Fraunces", serif', fontSize: '40px', color: SHOPS[n].colour, stroke: '#ffffff', strokeThickness: 1 }).setOrigin(0.5).setDepth(-8.9).setShadow(0, 0, SHOPS[n].colour, 16, true, true);
       const g = scene.add.image(x, sy, 'halo').setDepth(-8.8).setDisplaySize(380, 140).setTint(Phaser.Display.Color.HexStringToColor(SHOPS[n].colour).color).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
       // The sign and the shop window, mirrored as long streaks on the wet road.
       scene.add.image(x, o.groundY(x) + 30, 'halo').setOrigin(0.5, 0).setDepth(0.6).setDisplaySize(70, 150).setTint(Phaser.Display.Color.HexStringToColor(SHOPS[n].colour).color).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
@@ -675,7 +924,29 @@ const TOWN: Biome = {
         stepFallers(near, dt, pan);
         stepFallers(far, dt, pan * 0.3);
         for (const c of clouds) c.x += dt * 6;
-        glow.setAlpha(0.3 + Math.sin(time / 1700) * 0.05);
+        glow.setAlpha(0.36 + Math.sin(time / 1700) * 0.05);
+        beacons.forEach((b, i) => b.setAlpha((time / 900 + i * 0.37) % 1 < 0.25 ? 1 : 0.15));
+        // Billboards: every few seconds a glitch, and a new slogan.
+        for (const b of boards) {
+          const cycle = (time / 3200 + b.n * 0.37) % 1;
+          const glitch = cycle > 0.94;
+          if (glitch && Math.random() < 0.3) b.text.setText(words[Math.floor(Math.random() * words.length)]);
+          b.text.setAlpha(glitch ? Math.random() : 1).setX(b.panel.x + (glitch ? (Math.random() - 0.5) * 8 : 0));
+          b.halo.setAlpha(glitch ? 0.12 : 0.32 + Math.sin(time / 400 + b.n) * 0.04);
+        }
+        // The train: crosses the view every twenty seconds or so, right to left.
+        const tx = scrollX * 0.42 + 2200 - ((time * 0.45) % 9000);
+        train.setX(tx);
+        trainGlow.setX(tx + 750);
+        // Flying cars, drifting across the sky.
+        for (const f of flyers) {
+          const span = 2600;
+          const x = (((f.off + time * f.speed) % span) + span) % span - 340;
+          const y = f.y + Math.sin(time / 1300 + f.off) * 10;
+          f.body.setPosition(x, y);
+          f.lamp.setPosition(x + (f.speed > 0 ? 16 : -16), y);
+          f.trail.setPosition(x - (f.speed > 0 ? 90 : -90), y);
+        }
         // Neon buzz: mostly on, now and then a flicker.
         for (const s of signs) {
           const off = Math.random() < 0.012;
@@ -798,7 +1069,7 @@ const COAST: Biome = {
     ...birdArts().map((a) => recolor(a, a.key.replace('bd_bird', 'bd_gull'), { '#3B2F55': '#F4F6FA' })),
     seaArt(),
     cliffsArt(),
-    lighthouseArt(), beachHutArt(0), beachHutArt(1), beachHutArt(2), beachHutArt(3), windswept()],
+    lighthouseArt(), beachHutArt(0), beachHutArt(1), beachHutArt(2), beachHutArt(3)],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_coast', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
     // A bright morning sun, and its glitter path on the sea.
@@ -830,7 +1101,7 @@ const COAST: Biome = {
     haze(scene, o.horizon - 330, 300, 0xeaf6ff, 0.3, -35, 0.22);
     // Roadside: beach huts in a row, windswept pines.
     let seed = 7;
-    for (let x = 2000; x < o.finish - 400; x += 520 + rnd(19, seed) * 520, seed++) {
+    for (let x = Math.max(2000, from(o)); x < Math.min(o.finish - 400, to(o)); x += 520 + rnd(19, seed) * 520, seed++) {
       const key = rnd(21, seed) < 0.5 ? `hut_${seed % 4}` : 'seapine';
       scene.add.image(x, o.groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-9).setScale(key === 'seapine' ? 0.95 : 0.9).setFlipX(key === 'seapine' && seed % 2 === 0);
     }

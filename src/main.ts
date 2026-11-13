@@ -6,6 +6,7 @@ import * as art from './art';
 import { C, type Pt } from './ink';
 import { PlayScene } from './game';
 import { prepareLeg } from './prepare';
+import { LEGS } from './legs';
 import { makeCursors } from './cursors';
 import { TitleScene, titleArts } from './title';
 import { backdropArts } from './backdrop';
@@ -147,6 +148,7 @@ game.events.once('ready', async () => {
     ...[0, 1].flatMap((n) => [art.bushArt(n), art.tuftArt(n), art.flowerArt(n)]),
     art.sunArt(),
     ...art.EYE_MOODS.flatMap((m) => art.boiled(() => art.eyeArt(m))),
+    ...art.DRIVER_MOODS.flatMap((m) => art.boiled(() => art.driverArt(m))),
     ...art.boiled(art.freshenerArt),
     ...art.boiled(art.aerialArt),
     art.bumpSignArt(),
@@ -154,8 +156,9 @@ game.events.once('ready', async () => {
     art.milestoneArt(),
     art.homeSignArt(),
     art.plankSignArt(),
-    art.tollBoothArt(),
+    ...Object.keys(art.TOLL_SKINS).flatMap((k) => [art.tollBoothArt(k), art.tollCanopyArt(k)]),
     art.tollArmArt(),
+    art.railSignalArt(),
     art.dashArt(),
     art.hbHandleArt(),
     art.receiptArt(),
@@ -197,3 +200,23 @@ game.events.once('ready', async () => {
 
 // Handy while building the game.
 (window as unknown as { game: Phaser.Game }).game = game;
+
+// While building: window.__view(leg, scrollX | 'end') jumps straight to a place on a leg, to look at it.
+if (import.meta.env.DEV) {
+  (window as unknown as { __view: (n: number, sx: number | 'end') => Promise<number> }).__view = async (n, sx) => {
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    await prepareLeg(game.textures, n);
+    let s = game.scene.getScene('play') as unknown as { sys: Phaser.Scenes.Systems; leg?: { n: number }; scene: Phaser.Scenes.ScenePlugin; cameras: Phaser.Cameras.Scene2D.CameraManager };
+    if (!s.sys.isActive() || s.leg?.n !== n) {
+      const trip = { leg: n, cargo: [{ key: 'box_l', broken: false, dx: -80, dy: -60, angle: 0, tied: true }], lost: [], broken: [], parking: [], time: 0 };
+      const data = n === 1 ? { intro: false } : { leg: n, trip };
+      if (s.sys.isActive()) s.scene.restart(data);
+      else game.scene.getScene('title').scene.start('play', data);
+      await wait(6500);
+      s = game.scene.getScene('play') as unknown as typeof s;
+    }
+    s.cameras.main.scrollX = sx === 'end' ? LEGS[n - 1].finish + 490 - 960 : sx;
+    await wait(1200);
+    return n;
+  };
+}
