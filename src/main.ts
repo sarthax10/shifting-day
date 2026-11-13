@@ -8,6 +8,14 @@ import { PlayScene, CHUNK, CHUNK_TOP } from './game';
 import { makeCursors } from './cursors';
 import { TitleScene, titleArts } from './title';
 import { backdropArts } from './backdrop';
+import { audio } from './audio';
+
+// Browsers keep sound off until the player does something; the first click or key turns it on.
+// M mutes and unmutes everywhere.
+for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => audio.unlock());
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'm' || e.key === 'M') audio.toggleMute();
+});
 import { H, W, WORLD_END, WORLD_START, groundY } from './terrain';
 
 function groundChunks(): art.Art[] {

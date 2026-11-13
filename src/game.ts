@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { zzfx } from 'zzfx';
+import { Engine, ambience, audio, chime, music, play, thud } from './audio';
 import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood } from './art';
 import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
@@ -115,82 +115,6 @@ interface Thing {
 }
 
 type Phase = 'intro' | 'pack' | 'drive' | 'arrived' | 'done';
-
-const SOUND = {
-  pick: [0.5, 0.05, 420, 0.01, 0.02, 0.06, 0, 1.5, 0, 0, 120, 0.03],
-  drop: [0.4, 0.05, 260, 0.01, 0.02, 0.06, 0, 1.5, 0, 0, -80, 0.03],
-  lost: [0.6, 0.02, 300, 0.02, 0.12, 0.25, 0, 1.2, -4, 0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0.05],
-  crack: [0.7, 0.3, 900, 0, 0.01, 0.12, 4, 2.2, 0, 0, 0, 0, 0, 1.4, 0, 0.2],
-  tie: [0.5, 0.05, 180, 0.01, 0.03, 0.08, 1, 1.4, 12],
-  untie: [0.4, 0.05, 240, 0.01, 0.03, 0.06, 1, 1.4, -10],
-  honk: [0.5, 0, 310, 0.02, 0.12, 0.08, 2, 0.6],
-  beep: [0.35, 0, 1180, 0.01, 0.12, 0.05, 1, 1.4],
-  clunk: [0.55, 0.05, 110, 0, 0.02, 0.07, 4, 1, 0, 0, 0, 0, 0, 0.5],
-  grind: [0.6, 0.4, 600, 0.01, 0.16, 0.22, 3, 2, 0, 0, 0, 0, 0, 1.8, 0, 0.4],
-  bang: [0.8, 0.2, 80, 0, 0.03, 0.12, 4, 2.5, 0, 0, 0, 0, 0, 1, 0, 0.3],
-  ratchet: [0.4, 0.05, 900, 0, 0.05, 0.08, 4, 3, 0, 0, 0, 0, 0.012, 0.6],
-  stall: [0.6, 0.1, 70, 0.01, 0.1, 0.35, 3, 1, -2, 0, 0, 0, 0, 0.8],
-  crank: [0.5, 0.2, 60, 0.02, 0.4, 0.1, 3, 1, 0, 0, 0, 0, 0.06, 1.2],
-  squeal: [0.25, 0.1, 1400, 0.02, 0.15, 0.1, 2, 0.5, 0, 0, 0, 0, 0, 0.4],
-  win: [0.6, 0, 523, 0.02, 0.15, 0.3, 0, 1.3, 0, 0, 200, 0.08, 0.1],
-} as const;
-
-function play(name: keyof typeof SOUND) {
-  try {
-    zzfx(...SOUND[name]);
-  } catch {
-    // Sound is a nicety. The game carries on without it.
-  }
-}
-
-function thud(force: number) {
-  try {
-    zzfx(Math.min(0.7, 0.12 + force * 0.05), 0.2, 90 + Math.random() * 40, 0, 0.02, 0.08, 4, 1.2, 0, 0, 0, 0, 0, 0.6);
-  } catch {
-    // As above.
-  }
-}
-
-/** The truck's engine: a low hum that rises with speed. */
-class Engine {
-  private ctx?: AudioContext;
-  private osc?: OscillatorNode;
-  private gain?: GainNode;
-
-  start() {
-    try {
-      this.ctx = new AudioContext();
-      this.osc = this.ctx.createOscillator();
-      this.osc.type = 'square';
-      this.osc.frequency.value = 38;
-      const muffle = this.ctx.createBiquadFilter();
-      muffle.type = 'lowpass';
-      muffle.frequency.value = 220;
-      this.gain = this.ctx.createGain();
-      this.gain.gain.value = 0;
-      this.osc.connect(muffle).connect(this.gain).connect(this.ctx.destination);
-      this.osc.start();
-    } catch {
-      this.ctx = undefined;
-    }
-  }
-
-  /** Sets the note from the engine's rpm and how open the throttle is. A cut from the rev limiter dips the sound. */
-  rev(rpm: number, throttle: number, cut = false) {
-    if (!this.ctx || !this.osc || !this.gain) return;
-    const now = this.ctx.currentTime;
-    this.osc.frequency.setTargetAtTime(Math.max(24, rpm / 30), now, 0.05);
-    this.gain.gain.setTargetAtTime(cut ? 0.02 : 0.045 + throttle * 0.06, now, 0.05);
-  }
-
-  stop() {
-    if (!this.ctx) return;
-    this.gain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2);
-    const ctx = this.ctx;
-    this.ctx = undefined;
-    setTimeout(() => void ctx.close(), 800);
-  }
-}
 
 export class PlayScene extends Phaser.Scene {
   private phase: Phase = 'pack';
@@ -320,7 +244,14 @@ export class PlayScene extends Phaser.Scene {
       this.engine.start();
       this.cameras.main.fadeIn(350, 42, 33, 64);
     }
-    this.events.once('shutdown', () => this.engine.stop());
+    this.events.once('shutdown', () => {
+      this.engine.stop();
+      ambience.quiet();
+    });
+    music.play('pack');
+    music.setMelody(true);
+    ambience.birds(true);
+    ambience.setSpeed(0);
 
     // Paper grain and darker corners over the whole picture, under the buttons and text.
     this.add.image(0, 0, 'vignette').setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(95);
@@ -583,12 +514,17 @@ export class PlayScene extends Phaser.Scene {
       this.engine.stop();
       this.confetti();
       play('honk');
+      chime(72);
+      music.play('results', 0.6);
+      ambience.setSpeed(0);
+      ambience.birds(true);
       this.floatText(cx, this.chassis.position.y - 220, this.parkBonus >= 90 ? 'Perfect parking!' : 'Parked!', C.mustard);
     }
   }
 
   /** Confetti and streamers over the new house when the truck pulls up. */
   private confetti() {
+    for (let i = 0; i < 9; i++) this.time.delayedCall(i * 70 + Math.random() * 60, () => play('pop', 0.8, 0.8 + Math.random() * 0.6, Math.random() * 1.6 - 0.8));
     const cam = this.cameras.main;
     const colours = [0xee6a4d, 0xffb23f, 0x5daa7a, 0x3fa7b5, 0xf49aa0, 0xb9a3d6, 0xfff2da];
     for (let i = 0; i < 140; i++) {
@@ -889,6 +825,7 @@ export class PlayScene extends Phaser.Scene {
     bg.setInteractive({ cursor: CURSOR.open });
     bg.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
+      play('click');
       onClick();
     });
     bg.on('pointerover', () => box.setScale(1.05));
@@ -929,6 +866,16 @@ export class PlayScene extends Phaser.Scene {
       });
       this.showFx();
     }
+
+    const soundLabel = this.add.text(40, this.fx.available ? 76 : 34, '', { ...style, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
+    const showSound = () => soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
+    soundLabel.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      audio.toggleMute();
+      showSound();
+    });
+    this.input.keyboard!.on('keydown-M', showSound);
+    showSound();
 
     this.goButton = this.button(W - 210, 990, 'btn', "Let's go!", 50, () => this.go()).box;
     const rope = this.button(W - 560, 990, 'btn_rope', '', 42, () => this.setRoping(!this.roping));
@@ -1190,6 +1137,8 @@ export class PlayScene extends Phaser.Scene {
     this.say("Handbrake's on. Press P to let it off, then hold D. Change up with SHIFT when the gear goes red.");
     play('honk');
     this.engine.start();
+    music.play('drive');
+    ambience.birds(false);
   }
 
   /** The truck's speed along its own length, forwards positive. */
@@ -1371,6 +1320,7 @@ export class PlayScene extends Phaser.Scene {
     this.floatText(t.body.position.x, t.body.position.y - 40, 'Lost!', C.cream);
     this.say(t.spec.pet ? `${t.spec.name} fell off!` : `Oh no, ${this.name(t)}!`);
     play('lost');
+    if (t.spec.pet) this.time.delayedCall(250, () => play(t.spec.key === 'cat' ? 'meow' : 'chirp'));
     this.cameras.main.shake(120, 0.002);
   }
 
@@ -1648,7 +1598,7 @@ export class PlayScene extends Phaser.Scene {
       duration: 180,
       ease: 'Quad.easeIn',
       onComplete: () => {
-        thud(6);
+        play('stamp');
         this.cameras.main.shake(90, 0.002);
         for (let i = 0; i < stars; i++) this.time.delayedCall(120 + i * 140, () => play('tie'));
       },
@@ -1722,7 +1672,12 @@ export class PlayScene extends Phaser.Scene {
       if (out.jolt) this.jolted(out.jolt);
       for (const w of this.wheels) M.Body.setAngularVelocity(w, forward / TRUCK.wheelR);
       if (this.drive.stalled) this.engine.rev(30, -0.75);
-      else this.engine.rev(this.drive.rpm, this.drive.throttle, this.drive.limiting);
+      else this.engine.rev(this.drive.rpm, this.drive.throttle, this.drive.limiting, this.drive.lugging);
+      if (this.phase === 'drive') {
+        music.setIntensity(Math.abs(forward) / 8);
+        music.setMelody(!this.drive.stalled);
+        ambience.setSpeed(forward);
+      }
       if (grounded && Math.abs(forward) > 2.5 && this.frame % 9 === 0) {
         const rear = this.wheels[0].position;
         this.dust(rear.x - 20, rear.y + TRUCK.wheelR - 14);

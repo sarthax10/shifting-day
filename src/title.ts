@@ -5,6 +5,7 @@ import { C, Pen, type Pt } from './ink';
 import { buildBackdrop } from './backdrop';
 import { GROUND, H, W } from './terrain';
 import { CHUNK_TOP } from './game';
+import { ambience, audio, music, play } from './audio';
 
 const TITLE = '"Fraunces", serif';
 const TEXT = '"Karla", sans-serif';
@@ -63,6 +64,18 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create() {
+    music.play('title');
+    ambience.birds(true);
+    // A sound toggle in the corner; M works everywhere.
+    const soundLabel = this.add.text(30, 30, '', { fontFamily: '"Karla", sans-serif', fontSize: '28px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setDepth(40).setInteractive({ cursor: CURSOR.open });
+    const show = () => soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
+    soundLabel.on('pointerdown', () => {
+      audio.unlock();
+      audio.toggleMute();
+      show();
+    });
+    this.input.keyboard!.on('keydown-M', show);
+    show();
     this.leaving = false;
     this.letters = [];
     this.wheels = [];
@@ -176,6 +189,11 @@ export class TitleScene extends Phaser.Scene {
   private start() {
     if (this.leaving) return;
     this.leaving = true;
+    audio.unlock();
+    play('click');
+    play('honk');
+    // The cat has views about this.
+    this.time.delayedCall(350, () => play('meow'));
     // The cat has not agreed to any of this.
     this.cat.setTexture('cat_panic#0');
     this.tweens.add({
