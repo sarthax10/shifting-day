@@ -80,7 +80,7 @@ let redraw = 0;
 let stray = 0;
 
 /** Every drawing starts here, so boiled() can ask for the same picture with a slightly different line. */
-function pen(asset: string): Pen {
+export function pen(asset: string): Pen {
   return new Pen(asset, redraw, stray);
 }
 
@@ -1212,8 +1212,8 @@ export function receiptArt(): Art {
   for (let y = 190; y < h - 60; y += 42) p.line([[40, y], [w - 40, y]], { width: 1.6, color: '#BFD2E6', raw: true, wobble: 0 });
   p.line([[84, 30], [84, h - 50]], { width: 2, color: '#F2A7A0', raw: true, wobble: 0 });
   // A coffee ring, because it has been in the truck.
-  p.ellipse(w - 130, 250, 64, 60, { stroke: '#C98552', width: 5, wobble: 2, opacity: 0.25 });
-  p.ellipse(w - 130, 250, 56, 52, { stroke: '#C98552', width: 2, wobble: 2, opacity: 0.18 });
+  p.ellipse(w - 150, h - 140, 64, 60, { stroke: '#C98552', width: 5, wobble: 2, opacity: 0.25 });
+  p.ellipse(w - 150, h - 140, 56, 52, { stroke: '#C98552', width: 2, wobble: 2, opacity: 0.18 });
   // Tape at the top corners.
   for (const [x, a] of [[70, -0.5], [w - 70, 0.5]] as const) {
     const c = Math.cos(a);
@@ -1454,7 +1454,7 @@ export function heartArt(key: string, fill: string): Art {
  * striped speed bumps, over layers of earth with stones, roots and the odd thing somebody buried.
  * x0 is where the stretch starts in the world, so every stretch gets its own stones, and the bumps line up.
  */
-export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0): Art {
+export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, features: [number, number, number][] = FEATURES): Art {
   const p = pen(key);
   p.plain = true;
   const w = pts[pts.length - 1][0];
@@ -1557,7 +1557,7 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0): Art {
     p.raw(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(1.2 + r() * 2.4).toFixed(1)}" ry="${(0.9 + r() * 1.4).toFixed(1)}" fill="${tone}" opacity="0.8"/>`);
   }
   // Speed bumps painted with warning stripes, so the driver sees them coming.
-  for (const [fx, fh, fw] of FEATURES) {
+  for (const [fx, fh, fw] of features) {
     if (fh <= 0 || fh > 60) continue;
     const lx = fx - x0;
     if (lx < -fw * 2 || lx > w + fw * 2) continue;
@@ -1569,7 +1569,7 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0): Art {
     }
   }
   // Potholes: dark puddles of muddy water with a bright glint.
-  for (const [fx, fh, fw] of FEATURES) {
+  for (const [fx, fh, fw] of features) {
     if (fh >= 0 || fh < -70) continue;
     const lx = fx - x0;
     if (lx < 0 || lx > w) continue;
@@ -1794,7 +1794,9 @@ export function loadArt(textures: Phaser.Textures.TextureManager, art: Art): Pro
         canvas.height = art.h;
         const ctx = canvas.getContext('2d')!;
         ctx.filter = `blur(${art.blur}px)`;
-        ctx.drawImage(img, 0, 0, art.w, art.h);
+        // Scenery that tiles sideways is blurred with its neighbours either side, so its edges match up.
+        const tiles = art.w === 2400;
+        for (const dx of tiles ? [-art.w, 0, art.w] : [0]) ctx.drawImage(img, dx, 0, art.w, art.h);
         textures.addCanvas(art.key, canvas);
       } else {
         textures.addImage(art.key, img);

@@ -4,12 +4,14 @@ export const H = 1080;
 /** Height of the flat road. */
 export const GROUND = 880;
 export const WORLD_START = -600;
-export const WORLD_END = 25900;
+/** Where the road ends, for the leg being driven (a little past its finish). */
+export let WORLD_END = 25900;
 /** The truck has arrived once it passes this. */
-export const FINISH = 24700;
+export let FINISH = 24700;
 
 /** Bumps (positive) and holes (negative) along the road: [where, how tall, how wide]. */
-export const FEATURES: [number, number, number][] = [
+/** The first leg's road (the tutorial): kept as the default. */
+export const LEG1_FEATURES: [number, number, number][] = [
   [2500, 24, 55],
   [3100, 28, 52],
   [3320, 28, 52],
@@ -53,9 +55,24 @@ export const FEATURES: [number, number, number][] = [
   [23500, 32, 50],
 ];
 
+/** The road of the leg being driven. */
+export let FEATURES: [number, number, number][] = LEG1_FEATURES;
+
+/** Switches the road to another leg's: its bumps and hills, and where it finishes. */
+export function setRoad(features: [number, number, number][], finish: number) {
+  FEATURES = features;
+  FINISH = finish;
+  WORLD_END = finish + 1200;
+}
+
 export function groundY(x: number): number {
+  return groundAt(FEATURES, x);
+}
+
+/** The road height at x, for any leg's bumps and hills. */
+export function groundAt(features: [number, number, number][], x: number): number {
   let y = GROUND;
-  for (const [fx, h, w] of FEATURES) {
+  for (const [fx, h, w] of features) {
     const d = (x - fx) / w;
     if (d > -3.2 && d < 3.2) y -= h * Math.exp(-d * d);
   }

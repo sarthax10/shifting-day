@@ -10,25 +10,25 @@ import { C, Pen, mix, type Pt } from './ink';
 export const TILE = 2400;
 
 /** A smooth height along a layer that repeats exactly every TILE pixels. */
-function wave(seed: number, amps: number[]) {
+export function wave(seed: number, amps: number[]) {
   const phases = amps.map((_, i) => ((seed * 9301 + i * 49297) % 233280) / 233280 * Math.PI * 2);
   return (x: number) => amps.reduce((h, a, i) => h + a * Math.sin(((i + 1) * Math.PI * 2 * x) / TILE + phases[i]), 0);
 }
 
 /** A sharp-peaked ridge (for mountains): the absolute value of waves makes points rather than domes. */
-function peaks(seed: number, amps: number[]) {
+export function peaks(seed: number, amps: number[]) {
   const smooth = wave(seed, amps);
   const jag = wave(seed + 7, [0, 0, 0, 0, 0, 0, 14, 0, 9, 0, 0, 6]);
   return (x: number) => Math.abs(smooth(x)) + jag(x);
 }
 
 /** A random-looking but repeatable number in 0..1 for an index. */
-function rnd(seed: number, i: number) {
+export function rnd(seed: number, i: number) {
   const v = Math.sin(seed * 127.1 + i * 311.7) * 43758.5453;
   return v - Math.floor(v);
 }
 
-function plainPen(key: string) {
+export function plainPen(key: string) {
   return new Pen(key, 0, 0);
 }
 
@@ -242,7 +242,7 @@ export function backdropArts(): Art[] {
   return [mountainsArt(), forestArt(), farmsArt(), cloudBankArt(0), cloudBankArt(1), cloudBankArt(2), grassStripArt(), ...windmillArts(), ...birdArts(), leafArt()];
 }
 
-interface Layers {
+export interface Layers {
   /** How far across the scenery has to reach, in world pixels. */
   reach: number;
   /** Where the bottom of the farmland sits (just behind the road). */
@@ -254,7 +254,7 @@ interface Layers {
 }
 
 /** A soft haze band laid between layers: the further back, the more the colours fade towards the sky. */
-function haze(scene: Phaser.Scene, y: number, height: number, colour: number, alpha: number, depth: number, sf: number) {
+export function haze(scene: Phaser.Scene, y: number, height: number, colour: number, alpha: number, depth: number, sf: number) {
   const g = scene.add.graphics().setDepth(depth).setScrollFactor(sf, 1);
   g.fillGradientStyle(colour, colour, colour, colour, 0, 0, alpha, alpha);
   g.fillRect(-200, y, 40000, height);

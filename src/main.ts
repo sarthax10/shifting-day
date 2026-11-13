@@ -4,7 +4,8 @@ import '@fontsource/karla/700.css';
 import Phaser from 'phaser';
 import * as art from './art';
 import { C, type Pt } from './ink';
-import { PlayScene, CHUNK, CHUNK_TOP } from './game';
+import { PlayScene } from './game';
+import { prepareLeg } from './prepare';
 import { makeCursors } from './cursors';
 import { TitleScene, titleArts } from './title';
 import { backdropArts } from './backdrop';
@@ -16,17 +17,7 @@ for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev
 window.addEventListener('keydown', (e) => {
   if (e.key === 'm' || e.key === 'M') audio.toggleMute();
 });
-import { H, W, WORLD_END, WORLD_START, groundY } from './terrain';
-
-function groundChunks(): art.Art[] {
-  const out: art.Art[] = [];
-  for (let x0 = WORLD_START, i = 0; x0 < WORLD_END; x0 += CHUNK, i++) {
-    const pts: Pt[] = [];
-    for (let x = 0; x <= CHUNK; x += 30) pts.push([x, groundY(x0 + x) - CHUNK_TOP]);
-    out.push(art.groundArt(`ground_${i}`, pts, H - CHUNK_TOP + 40, x0));
-  }
-  return out;
-}
+import { H, W } from './terrain';
 
 /** Soft pictures that ink cannot draw: the sky, shadows, darker corners and paper grain. */
 function softTextures(textures: Phaser.Textures.TextureManager) {
@@ -189,7 +180,6 @@ game.events.once('ready', async () => {
     art.coinArt(),
     art.heartArt('heart', C.terracotta),
     art.heartArt('heart_empty', C.creamShade),
-    ...groundChunks(),
     ...titleArts(),
     ...backdropArts(),
   ];
@@ -197,6 +187,7 @@ game.events.once('ready', async () => {
   await Promise.all([
     makeCursors(),
     ...arts.map((a) => art.loadArt(game.textures, a)),
+    prepareLeg(game.textures, 1),
     document.fonts.load('700 40px "Karla"'),
     document.fonts.load('900 40px "Fraunces"'),
   ]);

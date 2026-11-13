@@ -4,7 +4,8 @@ import { CURSOR } from './cursors';
 import { C, Pen, type Pt } from './ink';
 import { buildBackdrop } from './backdrop';
 import { GROUND, H, W } from './terrain';
-import { CHUNK_TOP } from './game';
+import { CHUNK_TOP, prepareLeg } from './prepare';
+import { LEGS, clearTrip, loadTrip, type Trip } from './legs';
 import { ambience, audio, music, play } from './audio';
 
 const TITLE = '"Fraunces", serif';
@@ -139,13 +140,26 @@ export class TitleScene extends Phaser.Scene {
     bg.setInteractive({ cursor: CURSOR.open });
     bg.on('pointerover', () => play.setScale(1.06));
     bg.on('pointerout', () => play.setScale(1));
-    bg.on('pointerdown', () => this.start());
+    bg.on('pointerdown', () => this.start(null));
     this.tweens.add({ targets: play, scale: 1.04, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.add.text(370, 540, 'or press Enter', { fontFamily: TEXT, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
+    const saved = loadTrip();
+    if (saved) {
+      label.setText('New trip');
+      const cbg = this.add.image(0, 0, 'btn').setScale(1.15, 1);
+      const clabel = this.add.text(0, -6, `Continue · Leg ${saved.leg}`, { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0.5);
+      const cont = this.add.container(370, 590, [cbg, clabel]).setDepth(31);
+      cbg.setInteractive({ cursor: CURSOR.open });
+      cbg.on('pointerover', () => cont.setScale(1.06));
+      cbg.on('pointerout', () => cont.setScale(1));
+      cbg.on('pointerdown', () => this.start(saved));
+      this.add.text(370, 668, `${LEGS[saved.leg - 1].title}  ·  Enter to continue`, { fontFamily: TEXT, fontSize: '26px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
+    } else {
+      this.add.text(370, 540, 'or press Enter', { fontFamily: TEXT, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
+    }
     this.add.text(W - 30, H - 22, 'Made for GitHub Game Off 2026  ·  theme: SHIFT', { fontFamily: TEXT, fontSize: '26px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(1, 1).setDepth(31);
 
-    this.input.keyboard!.on('keydown-ENTER', () => this.start());
-    this.input.keyboard!.on('keydown-SPACE', () => this.start());
+    this.input.keyboard!.on('keydown-ENTER', () => this.start(saved));
+    this.input.keyboard!.on('keydown-SPACE', () => this.start(saved));
   }
 
   /** The truck, piled high, with the cat on top: the same pictures as in the game. */
@@ -186,9 +200,11 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /** Play: the truck pulls away and drives off to the right, then the game opens with it backing up to the old house. */
-  private start() {
+  private start(trip: Trip | null) {
     if (this.leaving) return;
     this.leaving = true;
+    if (!trip) clearTrip();
+    const ready = trip ? prepareLeg(this.textures, trip.leg) : Promise.resolve();
     audio.unlock();
     play('click');
     play('honk');
@@ -203,7 +219,7 @@ export class TitleScene extends Phaser.Scene {
       ease: 'Cubic.easeIn',
       onComplete: () => {
         this.cameras.main.fadeOut(260, 42, 33, 64);
-        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('play', { intro: true }));
+        this.cameras.main.once('camerafadeoutcomplete', () => void ready.then(() => this.scene.start('play', trip ? { leg: trip.leg, trip } : { intro: true })));
       },
     });
   }
