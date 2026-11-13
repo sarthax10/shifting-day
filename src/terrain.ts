@@ -11,7 +11,12 @@ export let FINISH = 24700;
 
 /** Bumps (positive) and holes (negative) along the road: [where, how tall, how wide]. */
 /** The first leg's road (the tutorial): kept as the default. */
-export const LEG1_FEATURES: [number, number, number][] = [
+/**
+ * A feature of the road: a bump, hill or dip [where, height, width], or a ledge [where, height, wall width,
+ * plateau length]: a cliff too steep to drive up, a stretch along the top, then a long gentle way back down.
+ */
+export type Feature = [number, number, number] | [number, number, number, number];
+export const LEG1_FEATURES: Feature[] = [
   [2500, 24, 55],
   [3100, 28, 52],
   [3320, 28, 52],
@@ -46,20 +51,17 @@ export const LEG1_FEATURES: [number, number, number][] = [
   [18200, 40, 60],
   [18400, -44, 70],
   [19300, 170, 440],
-  [20100, -100, 320],
-  [20900, 26, 58],
-  [21060, 26, 58],
-  [21220, 26, 58],
-  [22100, 150, 300],
+  // The cliff that teaches the anchor crossbow: too steep to drive, so fire at the top and reel in.
+  [20400, 230, 220, 800],
   [22900, -60, 100],
   [23500, 32, 50],
 ];
 
 /** The road of the leg being driven. */
-export let FEATURES: [number, number, number][] = LEG1_FEATURES;
+export let FEATURES: Feature[] = LEG1_FEATURES;
 
 /** Switches the road to another leg's: its bumps and hills, and where it finishes. */
-export function setRoad(features: [number, number, number][], finish: number) {
+export function setRoad(features: Feature[], finish: number) {
   FEATURES = features;
   FINISH = finish;
   WORLD_END = finish + 1200;
@@ -70,9 +72,23 @@ export function groundY(x: number): number {
 }
 
 /** The road height at x, for any leg's bumps and hills. */
-export function groundAt(features: [number, number, number][], x: number): number {
+const smooth = (t: number) => {
+  const k = Math.max(0, Math.min(1, t));
+  return k * k * (3 - 2 * k);
+};
+
+export function groundAt(features: Feature[], x: number): number {
   let y = GROUND;
-  for (const [fx, h, w0] of features) {
+  for (const f of features) {
+    const [fx, h, w0] = f;
+    if (f.length === 4) {
+      // A ledge: the wall (steepest about 1.5·h/w), the plateau, then down at about 10°.
+      const plateau = f[3];
+      const down = h / 0.18;
+      const top = fx + w0 / 2 + plateau;
+      y -= h * (smooth((x - fx) / w0 + 0.5) - smooth((x - top) / down));
+      continue;
+    }
     // Dips are widened until their walls are no steeper than about 13°, so the wheels roll through them
     // instead of slamming into the far side and stopping dead. (The steepest slope of a dip h deep and
     // w wide is about 0.86·h/w.)

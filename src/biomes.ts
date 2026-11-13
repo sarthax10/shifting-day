@@ -5,7 +5,8 @@ import { TILE, birdArts, buildBackdrop, cloudBankArt, haze, peaks, plainPen, rnd
 import type { BiomeKey } from './legs';
 import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from './falls';
 import { SWITCH, TUNNEL } from './tunnel';
-import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt } from './night';
+import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
+import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from './night';
 
 /**
  * The look of each leg's world. Every biome follows the same rules (see docs/JOURNEY.md):
@@ -823,7 +824,7 @@ const TOWN: Biome = {
   grass: { '#2F6B55': '#1A1A2E', '#3E8A68': '#262640', '#4F9C74': '#2E2E48', '#62AE7E': '#36365A' },
   grip: 0.8,
   lamps: true,
-  arts: () => [megaArt(false), megaArt(true), cityArt('far', false), cityArt('far', true), cityArt('mid', false), cityArt('mid', true), railArt(), trainArt(), wetStreetArt(), ...SHOPS.map((_, i) => shopArt(i))],
+  arts: () => [megaArt(false), megaArt(true), cityArt('far', false), cityArt('far', true), cityArt('mid', false), cityArt('mid', true), railArt(), trainArt(), wetStreetArt(), holoFishArt(), ...SHOPS.map((_, i) => shopArt(i))],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_town', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
     // The city's light thrown up onto the low clouds, magenta at the horizon; lightning now and then.
@@ -844,6 +845,12 @@ const TOWN: Biome = {
     haze(scene, o.horizon - 520, 420, 0xff3fa0, 0.22, -43, 0.05);
     layer('bd_n_far', o.horizon - 110, 0.12, -42);
     haze(scene, o.horizon - 380, 300, 0x7a2a9a, 0.3, -41, 0.12);
+    // A giant hologram fish, swimming slowly across the sky between the towers, flickering now and then.
+    const fish = scene.add.image(0, o.horizon - 560, 'holo_fish').setScrollFactor(0.07, 1).setDepth(-43.4).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.55).setScale(1.3);
+    // Steam rising from the street's grates.
+    for (let x = Math.max(2400, from(o)); x < Math.min(o.finish - 600, to(o)); x += 1300) {
+      scene.add.particles(x, o.groundY(x) + 4, 'halo', { lifespan: 2600, speedX: { min: -14, max: 14 }, speedY: { min: -60, max: -30 }, scale: { start: 0.25, end: 1.1 }, alpha: { start: 0.22, end: 0 }, tint: 0xd8d0f0, frequency: 220 }).setDepth(-5.2);
+    }
     // Flying cars crossing between the towers, their lights trailing.
     const flyers = [0, 1, 2, 3].map((k) => {
       const body = scene.add.rectangle(0, 0, 34, 10, 0x1a1430).setScrollFactor(0).setDepth(-40.5);
@@ -926,6 +933,10 @@ const TOWN: Biome = {
         for (const c of clouds) c.x += dt * 6;
         glow.setAlpha(0.36 + Math.sin(time / 1700) * 0.05);
         beacons.forEach((b, i) => b.setAlpha((time / 900 + i * 0.37) % 1 < 0.25 ? 1 : 0.15));
+        // The fish: across the sky and round again, its body rippling, now and then glitching.
+        fish.x = scrollX * 0.07 + 2200 - ((time * 0.03) % 3000);
+        fish.y = o.horizon - 560 + Math.sin(time / 1800) * 24;
+        fish.setScale(1.3, 1.3 + Math.sin(time / 400) * 0.05).setAlpha(Math.random() < 0.02 ? 0.15 : 0.5 + Math.sin(time / 700) * 0.08);
         // Billboards: every few seconds a glitch, and a new slogan.
         for (const b of boards) {
           const cycle = (time / 3200 + b.n * 0.37) % 1;
@@ -973,58 +984,6 @@ const TOWN: Biome = {
 
 // ======================================================================== COAST: Coast Road, bright morning
 
-/** The sea: turquoise near the shore, deep blue at the horizon, with wave lines and far islands. */
-function seaArt(): Art {
-  const key = 'bd_c_sea';
-  const h = 340;
-  const p = plainPen(key);
-  const bands = ['#3E7EC0', '#4A92CC', '#56A6D6', '#66BCDC', '#7ED0E0'];
-  bands.forEach((c, i) => p.rect(0, i * (h / bands.length), TILE, h / bands.length + 2, { fill: c, stroke: null, r: 0 }));
-  // Islands on the horizon.
-  for (const [x, w, t] of [[300, 260, 40], [1100, 180, 28], [1800, 340, 52]] as const) p.shape([[x - w / 2, 4], [x - w / 4, -t], [x + w / 6, -t * 0.7], [x + w / 2, 4]], { fill: '#7E98C8', stroke: null, raw: true, wobble: 0.5 });
-  for (let i = 0; i < 160; i++) {
-    const y = 10 + rnd(121, i) * (h - 20);
-    const x = rnd(123, i) * TILE;
-    const len = 20 + (y / h) * 60;
-    p.line([[x, y], [x + len, y]], { width: 1.5 + (y / h) * 2.5, color: '#E6F6FA', raw: true, opacity: 0.55, wobble: 0 });
-  }
-  return { key, svg: p.svg(TILE, h + 60), w: TILE, h: h + 60 };
-}
-
-/** White cliffs with green tops falling to the sea, rocks and surf at their feet. */
-/** Where the lighthouse stands in each stretch of cliffs, and where its lamp is. */
-export const LIGHT = { x: 1560 };
-function cliffsArt(): Art {
-  const key = 'bd_c_cliffs';
-  const h = 520;
-  const p = plainPen(key);
-  const hill = wave(131, [60, 40, 20]);
-  const at = (x: number) => h - 300 - hill(x);
-  const top: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 14) top.push([x, at(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: '#F2E6CE', stroke: null, raw: true, wobble: 0.3 });
-  for (let x = 30; x < TILE; x += 60) p.shape([[x, at(x) + 20], [x + 30, at(x) + 30], [x + 26, h - 40], [x + 6, h - 40]], { fill: '#D8C8AC', stroke: null, raw: true, wobble: 0.5, opacity: 0.8 });
-  p.shape([...top.map(([x, y]) => [x, y - 4] as Pt), ...top.slice().reverse().map(([x, y]) => [x, y + 22] as Pt)], { fill: '#7FC07A', stroke: null, raw: true, wobble: 0.4 });
-  // A lighthouse on the highest headland.
-  const lx = LIGHT.x;
-  const ly = at(lx) + 6;
-  p.shape([[lx - 34, ly], [lx - 22, ly - 210], [lx + 22, ly - 210], [lx + 34, ly]], { fill: '#F6F2EA', stroke: null, raw: true });
-  for (const k of [0.15, 0.45, 0.75]) {
-    const y0 = ly - 210 * (1 - k);
-    p.shape([[lx - 34 + 12 * (1 - k), y0], [lx + 34 - 12 * (1 - k), y0], [lx + 32 - 12 * (1 - k), y0 - 34], [lx - 32 + 12 * (1 - k), y0 - 34]], { fill: '#D8463A', stroke: null, raw: true });
-  }
-  p.rect(lx - 26, ly - 246, 52, 36, { fill: '#FFE9A8', stroke: null, r: 3 });
-  p.shape([[lx - 34, ly - 244], [lx, ly - 284], [lx + 34, ly - 244]], { fill: '#D8463A', stroke: null, raw: true });
-  p.rect(lx - 40, ly - 214, 80, 8, { fill: '#3A3A4E', stroke: null, r: 2 });
-  p.rect(lx + 30, ly - 60, 70, 60, { fill: '#F6F2EA', stroke: null, r: 2 });
-  p.shape([[lx + 24, ly - 58], [lx + 65, ly - 90], [lx + 106, ly - 58]], { fill: '#D8463A', stroke: null, raw: true });
-  // Surf and rocks at the foot.
-  p.rect(0, h - 44, TILE, 44, { fill: '#5AAAD0', stroke: null, r: 0 });
-  for (let x = 0; x < TILE; x += 70) p.ellipse(x + rnd(141, x) * 40, h - 44, 30 + rnd(143, x) * 30, 14, { fill: '#FFFFFF', stroke: null, wobble: 0.8, opacity: 0.9 });
-  for (let x = 40; x < TILE; x += 190) p.ellipse(x, h - 36, 26, 16, { fill: '#8A7E8E', stroke: null, wobble: 0.6 });
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.5 };
-}
-
 function lighthouseArt(): Art {
   return inked('lighthouse', 180, 520, (p) => {
     p.shape([[56, 500], [70, 120], [110, 120], [124, 500]], { fill: '#F4F0E8', width: 5, raw: true });
@@ -1068,7 +1027,10 @@ const COAST: Biome = {
     ...[0, 1, 2].map((n) => recolor(cloudBankArt(n), `bd_cloud_white_${n}`, { '#C9A3CF': '#D8E6F4', '#F7C6CC': '#F4F8FC', '#FFE7DF': '#FFFFFF' })),
     ...birdArts().map((a) => recolor(a, a.key.replace('bd_bird', 'bd_gull'), { '#3B2F55': '#F4F6FA' })),
     seaArt(),
+    headlandsArt(),
     cliffsArt(),
+    coveArt(),
+    surfArt(),
     lighthouseArt(), beachHutArt(0), beachHutArt(1), beachHutArt(2), beachHutArt(3)],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_coast', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
@@ -1078,7 +1040,9 @@ const COAST: Biome = {
     const clouds: Phaser.GameObjects.Image[] = [];
     for (let i = 0; i < 7; i++) clouds.push(scene.add.image(i * 640 - 300, 110 + ((i * 89) % 180), `bd_cloud_white_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-44).setScale(0.9 + (i % 3) * 0.2));
     const seaTop = o.horizon - 380;
-    tiles(scene, 'bd_c_sea', seaTop + 400, 0.06, -42, o.reach);
+    tiles(scene, 'bd_c_sea', seaTop + 400, 0.06, -42.5, o.reach);
+    // Headlands receding along the coast, in the haze.
+    tiles(scene, 'bd_c_far', seaTop + 14, 0.09, -42, o.reach, -500);
     const glitter: Phaser.GameObjects.Image[] = [];
     for (let i = 0; i < 46; i++) glitter.push(scene.add.image(1500 + (Math.random() - 0.5) * (60 + i * 6), seaTop + 8 + i * 7, 'halo').setScrollFactor(0.03, 1).setDepth(-41).setDisplaySize(30 + Math.random() * 40, 5).setTint(0xfff6d8).setBlendMode(Phaser.BlendModes.ADD));
     // Sailboats on the sea, drifting.
@@ -1088,17 +1052,24 @@ const COAST: Biome = {
       const hull = scene.add.rectangle(4, 2, 30, 6, 0x3a3a4e).setOrigin(0.5, 0);
       boats.push(scene.add.container(300 + i * 520, seaTop + 40 + (i % 2) * 40, [sail, hull]).setScrollFactor(0.07, 1).setDepth(-41).setScale(1 + (i % 2) * 0.4));
     }
-    tiles(scene, 'bd_c_cliffs', o.horizon - 30, 0.22, -38, o.reach, -700);
+    const cliffBottom = o.horizon + 10;
+    tiles(scene, 'bd_c_cliffs', cliffBottom, 0.22, -38, o.reach, -700);
     // The lighthouse lamps, blinking, one in each stretch of cliffs.
-    const cliffHill = wave(131, [60, 40, 20]);
     const lamps: Phaser.GameObjects.Image[] = [];
     const cn = Math.ceil((1920 + o.reach * 0.22) / TILE) + 1;
     for (let i = 0; i < cn; i++) {
-      const x = i * TILE - 700 + LIGHT.x;
-      const y = o.horizon - 30 - 520 + (520 - 300 - cliffHill(LIGHT.x)) + 6 - 228;
-      lamps.push(scene.add.image(x, y, 'halo').setScrollFactor(0.22, 1).setDepth(-36.9).setDisplaySize(110, 110).setTint(0xfff0a0).setBlendMode(Phaser.BlendModes.ADD));
+      lamps.push(scene.add.image(i * TILE - 700 + LIGHT.x, cliffBottom - 600 + LIGHT.lampY, 'halo').setScrollFactor(0.22, 1).setDepth(-36.9).setDisplaySize(110, 110).setTint(0xfff0a0).setBlendMode(Phaser.BlendModes.ADD));
     }
-    haze(scene, o.horizon - 330, 300, 0xeaf6ff, 0.3, -35, 0.22);
+    haze(scene, o.horizon - 330, 300, 0xeaf6ff, 0.18, -35, 0.22);
+    // The cove, nearer, and its surf washing up and down the sand.
+    const coveBottom = o.horizon + 70;
+    tiles(scene, 'bd_c_cove', coveBottom, 0.36, -34, o.reach, -300);
+    const surf = scene.add
+      .tileSprite(-300, coveBottom - COVE.h + COVE.edge - 20, 1920 + o.reach * 0.36 + TILE, 40, 'bd_c_surf')
+      .setOrigin(0, 0)
+      .setScrollFactor(0.36, 1)
+      .setDepth(-33.9);
+    const surfY = surf.y;
     // Roadside: beach huts in a row, windswept pines.
     let seed = 7;
     for (let x = Math.max(2000, from(o)); x < Math.min(o.finish - 400, to(o)); x += 520 + rnd(19, seed) * 520, seed++) {
@@ -1122,6 +1093,10 @@ const COAST: Biome = {
           b.rotation = Math.sin(time / 900 + i) * 0.05;
         });
         for (const l of lamps) l.setAlpha(Math.sin(time / 600) > 0.3 ? 0.9 : 0.15);
+        // The surf washes up the sand and draws back, every few seconds.
+        const wash = Math.sin(time / 1300);
+        surf.setY(surfY + wash * 7).setAlpha(0.65 + wash * 0.3);
+        surf.tilePositionX = time * 0.004;
         for (const g of gulls) {
           g.t += dt;
           g.img.x += (g.vx * 60 * dt) - pan * 0.4;

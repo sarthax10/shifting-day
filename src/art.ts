@@ -1,5 +1,5 @@
 import { C, Pen, mix, type Pt } from './ink';
-import { FEATURES } from './terrain';
+import { FEATURES, type Feature } from './terrain';
 
 /** Room around every drawing for the ink line, which strays outside the shape. */
 export const PAD = 14;
@@ -44,15 +44,26 @@ export interface ItemSpec {
   draw: (p: Pen, x: number, y: number, w: number, h: number, mood?: Mood) => void;
 }
 
-export type Mood = 'calm' | 'worried' | 'panic' | 'happy' | 'grumpy';
-export const MOODS: Mood[] = ['calm', 'worried', 'panic', 'happy', 'grumpy'];
+export type Mood = 'calm' | 'worried' | 'panic' | 'happy' | 'grumpy' | 'sleepy' | 'dizzy';
+export const MOODS: Mood[] = ['calm', 'worried', 'panic', 'happy', 'grumpy', 'sleepy', 'dizzy'];
+
+/** A little spiral, for dizzy eyes. */
+function spiral(p: Pen, x: number, y: number, r: number) {
+  const pts: Pt[] = [];
+  for (let a = 0; a < Math.PI * 4; a += 0.4) pts.push([x + Math.cos(a) * r * (a / (Math.PI * 4)), y + Math.sin(a) * r * (a / (Math.PI * 4))]);
+  p.line(pts, { width: 2.6, raw: true });
+}
 
 /** Eyes, brows and mouth, centred between the eyes. */
 function face(p: Pen, cx: number, cy: number, mood: Mood, s = 1) {
   const gap = 15 * s;
   for (const side of [-1, 1]) {
     const x = cx + gap * side;
-    if (mood === 'panic') {
+    if (mood === 'sleepy') {
+      p.line([[x - 7 * s, cy], [x, cy + 3 * s], [x + 7 * s, cy]], { width: 3.5 });
+    } else if (mood === 'dizzy') {
+      spiral(p, x, cy, 8 * s);
+    } else if (mood === 'panic') {
       p.ellipse(x, cy, 9 * s, 10 * s, { fill: C.cream, width: 3.5 });
       p.dot(x, cy + 1, 3 * s);
     } else if (mood === 'happy') {
@@ -452,10 +463,13 @@ export const ITEMS: ItemSpec[] = [
         p.line([[px + 2, y + h - 9], [px + 2, y + h - 4]], { width: 1.4, raw: true, color: '#C9A88A' });
       }
       // Ears: small, set wide on the big flat head; flat back when it is cross or scared.
+      // Ears say it first: flat back when cross or scared, out sideways when worried or dizzy, droopy when
+      // sleepy, and up tall when happy.
       const flat = mood === 'grumpy' || panic;
+      const sideways = mood === 'worried' || mood === 'dizzy';
       for (const s of [-1, 1]) {
         const ex = cx + s * w * 0.25;
-        const tip: Pt = flat ? [ex + s * 18, y + h * 0.16] : [ex + s * 4, y + 1];
+        const tip: Pt = flat ? [ex + s * 18, y + h * 0.16] : sideways ? [ex + s * 22, headY - h * 0.16] : mood === 'sleepy' ? [ex + s * 12, y + h * 0.08] : mood === 'happy' ? [ex + s * 2, y - 3] : [ex + s * 4, y + 1];
         p.shape([[ex - s * 11, headY - h * 0.2], tip, [ex + s * 12, headY - h * 0.08]], { fill: GINGER, raw: true, width: 3.6 });
         p.shape([[ex - s * 5, headY - h * 0.18], [tip[0] - s * 2, tip[1] + 6], [ex + s * 7, headY - h * 0.1]], { fill: '#F29AA2', raw: true, stroke: null });
       }
@@ -474,8 +488,19 @@ export const ITEMS: ItemSpec[] = [
       for (const s of [-1, 1]) {
         const ex = cx + s * w * 0.16;
         if (mood === 'happy') {
-          // Smug, eyes shut.
-          p.line([[ex - 7, eyeY], [ex, eyeY + 4], [ex + 7, eyeY]], { width: 3 });
+          // Delighted: eyes shut in happy arcs.
+          p.line([[ex - 7, eyeY + 3], [ex, eyeY - 4], [ex + 7, eyeY + 3]], { width: 3.4 });
+          continue;
+        }
+        if (mood === 'sleepy') {
+          // Dozing: lids down, with lashes.
+          p.line([[ex - 7, eyeY], [ex, eyeY + 4], [ex + 7, eyeY]], { width: 3.2 });
+          for (const lx of [-4, 0, 4]) p.line([[ex + lx, eyeY + 3], [ex + lx * 1.3, eyeY + 6]], { width: 1.6, raw: true });
+          continue;
+        }
+        if (mood === 'dizzy') {
+          p.ellipse(ex, eyeY, er, er, { fill: '#FFFFFF', width: 2.6 });
+          spiral(p, ex, eyeY, er * 0.85);
           continue;
         }
         p.ellipse(ex, eyeY, er, er, { fill: panic ? '#FFFFFF' : EYE, width: 2.6 });
@@ -497,10 +522,39 @@ export const ITEMS: ItemSpec[] = [
       // A tiny nose, a flat little mouth, and long whiskers.
       const ny = headY + hry * 0.36;
       p.shape([[cx - 3, ny], [cx + 3, ny], [cx, ny + 3]], { fill: '#E8768A', raw: true, width: 1.6 });
-      if (panic) p.ellipse(cx, ny + 9, 4.5, 6, { fill: C.terracottaDark, width: 2.2 });
-      else if (mood === 'happy') p.line([[cx - 6, ny + 5], [cx - 3, ny + 7], [cx, ny + 4], [cx + 3, ny + 7], [cx + 6, ny + 5]], { width: 2 });
-      else if (mood === 'worried') p.line([[cx - 4, ny + 8], [cx, ny + 6], [cx + 4, ny + 8]], { width: 2 });
-      else p.line([[cx - 4, ny + 6], [cx + 4, ny + 6.5]], { width: 2, raw: true });
+      if (panic) {
+        // A yowl, fangs and all.
+        p.ellipse(cx, ny + 10, 6, 8, { fill: C.terracottaDark, width: 2.4 });
+        for (const fx of [-3, 3]) p.shape([[cx + fx - 1.6, ny + 4], [cx + fx + 1.6, ny + 4], [cx + fx, ny + 8]], { fill: '#FFFFFF', raw: true, stroke: null });
+      } else if (mood === 'happy') p.line([[cx - 6, ny + 5], [cx - 3, ny + 7], [cx, ny + 4], [cx + 3, ny + 7], [cx + 6, ny + 5]], { width: 2.2 });
+      else if (mood === 'worried') p.line([[cx - 5, ny + 8], [cx - 2, ny + 6], [cx + 1, ny + 8], [cx + 4, ny + 6]], { width: 2 });
+      else if (mood === 'grumpy') p.line([[cx - 5, ny + 8], [cx, ny + 5], [cx + 5, ny + 8]], { width: 2.4 });
+      else if (mood === 'dizzy') {
+        p.line([[cx - 4, ny + 6], [cx + 4, ny + 6]], { width: 2, raw: true });
+        p.ellipse(cx + 2, ny + 9, 3, 4, { fill: '#F27A8A', width: 1.8 });
+      } else p.line([[cx - 4, ny + 6], [cx + 4, ny + 6.5]], { width: 2, raw: true });
+      // Extras that sell the mood: blush and a heart, a bead of sweat, an angry vein, a snot bubble and
+      // a z, a ring of stars.
+      if (mood === 'happy') {
+        for (const s of [-1, 1]) p.ellipse(cx + s * w * 0.24, ny + 2, 5, 3, { fill: '#F48C9A', stroke: null, opacity: 0.8 });
+        const hx = cx + w * 0.3;
+        const hy = y + 6;
+        p.shape([[hx, hy + 6], [hx - 6, hy], [hx - 5, hy - 4], [hx - 1, hy - 4], [hx, hy - 1], [hx + 1, hy - 4], [hx + 5, hy - 4], [hx + 6, hy]], { fill: '#F2607A', raw: true, width: 1.8 });
+      } else if (mood === 'worried') {
+        p.shape([[cx + w * 0.34, headY - hry * 0.7], [cx + w * 0.38, headY - hry * 0.3], [cx + w * 0.34, headY - hry * 0.15], [cx + w * 0.3, headY - hry * 0.3]], { fill: '#BFEAF6', width: 1.8 });
+      } else if (mood === 'grumpy') {
+        const vx = cx + w * 0.3;
+        const vy = headY - hry * 0.8;
+        for (const [ax, ay, bx, by] of [[-5, -2, -1, -1], [5, -2, 1, -1], [-5, 4, -1, 2], [5, 4, 1, 2]] as const) p.line([[vx + ax, vy + ay], [vx + bx, vy + by]], { width: 2.4, color: '#D8403A', raw: true });
+      } else if (mood === 'sleepy') {
+        p.ellipse(cx + 7, ny + 4, 4, 4, { fill: '#DFF4FF', width: 1.6, opacity: 0.9 });
+      } else if (mood === 'dizzy') {
+        for (const [sx, sy] of [[-0.3, -0.05], [0, -0.12], [0.3, -0.05]] as const) {
+          const px = cx + w * sx;
+          const py = y + h * sy + 4;
+          p.shape([[px, py - 5], [px + 1.6, py - 1.6], [px + 5, py], [px + 1.6, py + 1.6], [px, py + 5], [px - 1.6, py + 1.6], [px - 5, py], [px - 1.6, py - 1.6]], { fill: C.mustard, raw: true, width: 1.6 });
+        }
+      }
       for (const s of [-1, 1]) {
         for (const dy of [-2.5, 1, 4.5]) p.line([[cx + s * w * 0.12, ny + 3 + dy], [cx + s * w * 0.5, ny + dy * 2.4 - 1]], { width: 1, color: '#FFF4E0', raw: true, opacity: 0.95 });
       }
@@ -563,13 +617,14 @@ export const TRUCK = {
   cab: { x: 190, w: 150, top: -150 },
   hood: { x: 340, w: 70, top: -62 },
   frame: { x: -186, w: 590, y: 24, h: 26 },
-  wheels: [{ x: -96, y: 84 }, { x: 296, y: 84 }],
-  wheelR: 46,
+  // Lifted: bigger wheels, set lower under the body.
+  wheels: [{ x: -96, y: 96 }, { x: 296, y: 96 }],
+  wheelR: 54,
   /** Where (0, 0) sits inside the picture. */
   ox: 190 + PAD + 4,
   oy: 150 + PAD + 4 + 56,
   /** The truck picture's size. */
-  w: 660,
+  w: 720,
   h: 316,
 };
 
@@ -588,10 +643,12 @@ function archPts(cx: number, cy: number, r: number, from = 0): Pt[] {
 }
 
 /**
- * A 1950s step-side pickup, drawn side-on, after Pinterest pins of vintage pickups: round fenders that
- * hug the tyres, a round headlight on the front fender, a cream roof, a chrome grille and bumper,
- * whitewall tyres, a running board, and a wooden stake bed. The shapes the physics uses
- * (bed, tailgate, cab, bonnet, wheels) are unchanged.
+ * The truck, as a heavily modified, home-built rig: whoever owns it has been bolting things on for years, and
+ * a lot of it came out of the house they are now moving out of. A teal wedge of a body, lifted on big tyres;
+ * a hot-rod blower bursting up through the bonnet; an ironing board for a sun visor; a primer-grey door that
+ * came off another truck; a riveted rust patch; duct tape over a crack; a side pipe; bungee cords; a spare
+ * tyre strapped to the roll bar; and on the roll bar's turret the anchor crossbow, its cable running down to
+ * a drum in the bed. Lines are deliberately a little crooked. The shapes the physics uses keep their places.
  */
 export function truckArt(front = false): Art {
   const t = TRUCK;
@@ -599,175 +656,250 @@ export function truckArt(front = false): Art {
   const X = (n: number) => n + t.ox;
   const Y = (n: number) => n + t.oy;
   const P = (pts: Pt[]) => pts.map(([x, y]) => [X(x), Y(y)] as Pt);
-  // A teal truck, so it stands out against the warm sunset.
   const BODY = C.teal;
   const SHADE = '#22707F';
-  const ROOF = C.cream;
   const HILITE = '#8CD8E0';
-  // The front layer is drawn over the load, so things in the bed sit behind its side.
+  const STEEL = '#3A3644';
+  const STEEL_LIT = '#5A5668';
+  const ACCENT = C.mustard;
+  const MUD = '#7A5444';
+  const PRIMER = '#A8A4B4';
+  const RUST = '#C2643A';
+  const TAPE = '#C9CCD6';
+  const done = (key: string): Art => ({ key, svg: p.svg(t.w, t.h), w: t.w, h: t.h });
+  const rivets = (pts: Pt[]) => {
+    for (const [x, y] of pts) p.dot(X(x), Y(y), 2.4, '#2A2733');
+  };
+
   if (front) {
-    // The bed's steel side, a cream pinstripe, and the tailgate with its tail light.
-    p.rect(X(-194), Y(-46), 384, 74, { fill: BODY, r: 10, width: 6, shade: [{ pts: [[X(-200), Y(4)], [X(200), Y(0)], [X(200), Y(40)], [X(-200), Y(40)]], color: SHADE }] });
-    p.line([[X(-182), Y(-30)], [X(182), Y(-30)]], { width: 4, color: ROOF, raw: true });
-    // A shine across the glossy paint.
-    p.shape([[X(40), Y(-42)], [X(70), Y(-42)], [X(36), Y(22)], [X(6), Y(22)]], { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.14 });
-    p.shape([[X(80), Y(-42)], [X(90), Y(-42)], [X(56), Y(22)], [X(46), Y(22)]], { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.12 });
-    // Rivets along the top and bottom.
-    for (let x = -176; x <= 176; x += 32) {
-      for (const y of [-38, 20]) {
-        p.dot(X(x), Y(y), 2.6, SHADE);
-        p.dot(X(x - 0.8), Y(y - 0.9), 1, HILITE);
+    // The bed's side: diamond plate, a teal rail, and bolted over the back of it, a fridge door from the old
+    // kitchen, magnets and all. The company name is painted on a board, crooked, by hand.
+    p.shape(P([[-196, -48], [192, -50], [192, 28], [-196, 28]]), { fill: STEEL, raw: true, width: 6, wobble: 1.2, shade: [{ pts: [[X(-200), Y(8)], [X(200), Y(4)], [X(200), Y(40)], [X(-200), Y(40)]], color: '#2A2733' }] });
+    for (let x = -186; x < 182; x += 16) {
+      for (let y = -38, row = 0; y < 20; y += 12, row++) {
+        const dx = row % 2 ? 8 : 0;
+        p.line([[X(x + dx), Y(y)], [X(x + 5 + dx), Y(y + 4)]], { width: 2, color: STEEL_LIT, raw: true, opacity: 0.5 });
       }
     }
-    // A dent somebody backed into a post, with a scrape of bare metal.
-    p.ellipse(X(-120), Y(-2), 20, 11, { fill: SHADE, stroke: null, opacity: 0.6 });
-    p.line([[X(-134), Y(-6)], [X(-108), Y(2)]], { width: 2, color: HILITE, raw: true, opacity: 0.9 });
-    p.line([[X(-60), Y(6)], [X(-30), Y(-2)], [X(-6), Y(4)]], { width: 1.6, color: '#C9D9DE', raw: true, opacity: 0.7 });
-    // Mud splashed up from the road.
-    for (let i = 0; i < 16; i++) {
+    p.shape(P([[-200, -58], [196, -60], [196, -46], [-200, -44]]), { fill: BODY, raw: true, width: 5, wobble: 1.2 });
+    // The fridge door.
+    p.shape(P([[-188, -40], [-104, -42], [-102, 22], [-186, 24]]), { fill: '#F2EEE2', raw: true, width: 4.5, wobble: 1.4, shade: [{ pts: [[X(-130), Y(-50)], [X(-96), Y(-50)], [X(-96), Y(30)], [X(-130), Y(30)]], color: '#D8D2C2' }] });
+    p.rect(X(-120), Y(-30), 7, 40, { fill: CHROME, r: 3, width: 3 });
+    for (const [mx, my, mc] of [[-170, -28, '#E8743E'], [-150, -6, '#3FA7B5'], [-176, 8, '#FFB23F'], [-140, 12, '#D8403A']] as const) p.ellipse(X(mx), Y(my), 6, 6, { fill: mc, width: 2.5 });
+    rivets([[-184, -36], [-106, -38], [-184, 20], [-106, 18]]);
+    // The name board, painted by hand.
+    p.shape(P([[-84, -28], [118, -32], [120, 10], [-82, 14]]), { fill: C.cream, raw: true, width: 4, wobble: 1.6 });
+    p.shape(P([[-78, -23], [113, -27], [115, 5], [-76, 9]]), { stroke: C.terracotta, raw: true, width: 1.6, wobble: 1.6 });
+    // Hazard stripes on the tailgate's edge, and a tail light.
+    for (let k = 0; k < 4; k++) p.shape(P([[-204, -44 + k * 18], [-196, -44 + k * 18], [-196, -36 + k * 18], [-204, -28 + k * 18]]), { fill: k % 2 ? '#2A2733' : ACCENT, raw: true, stroke: null });
+    p.rect(X(-212), Y(-14), 12, 18, { fill: '#D8403A', r: 3, width: 3 });
+    for (let i = 0; i < 14; i++) {
       const x = -186 + ((i * 53) % 370);
-      const y = 26 - ((i * 7) % 12);
-      p.ellipse(X(x), Y(y), 3 + ((i * 5) % 7), 2 + ((i * 3) % 4), { fill: '#8A5A44', stroke: null, opacity: 0.55, wobble: 1.2 });
+      const y = 22 - ((i * 7) % 12);
+      p.ellipse(X(x), Y(y), 3 + ((i * 5) % 7), 2 + ((i * 3) % 4), { fill: MUD, stroke: null, opacity: 0.6, wobble: 1.2 });
     }
-    p.shape([[X(-194), Y(14)], [X(190), Y(14)], [X(190), Y(28)], [X(-194), Y(28)]], { fill: '#8A5A44', raw: true, stroke: null, opacity: 0.25, wobble: 2.4 });
-    // A sign-painter's panel for the company name, which the game writes on.
-    p.rect(X(-100), Y(-24), 200, 34, { fill: ROOF, r: 8, width: 4 });
-    p.rect(X(-94), Y(-19), 188, 24, { r: 6, width: 1.6, stroke: C.terracotta });
-    p.ellipse(X(-196), Y(-18), 6, 10, { fill: '#B2402C', width: 3.5 });
-    return { key: 'truck_front', svg: p.svg(TRUCK.w, TRUCK.h), w: TRUCK.w, h: TRUCK.h };
+    return done('truck_front');
   }
 
-  /** The top half of a circle round a wheel, from its left edge over to its right. */
-  const over = (cx: number, r: number, y = 84): Pt[] => {
+  const over = (cx: number, r: number, y: number): Pt[] => {
     const out: Pt[] = [];
-    for (let i = 0; i <= 14; i++) {
-      const a = Math.PI + (i / 14) * Math.PI;
+    for (let i = 0; i <= 16; i++) {
+      const a = Math.PI + (i / 16) * Math.PI;
       out.push([cx + Math.cos(a) * r, y + Math.sin(a) * r]);
     }
     return out;
   };
+  const [rw, fw] = t.wheels;
 
-  // Underneath: chassis and exhaust pipe.
-  p.rect(X(-186), Y(22), 596, 26, { fill: C.walnut, r: 8 });
-  p.rect(X(-214), Y(32), 44, 11, { fill: CHROME, r: 5, width: 4.5 });
+  // The frame, a skid plate, and the exhaust: a side pipe running along under the doors.
+  p.rect(X(-190), Y(24), 600, 28, { fill: '#2A2733', r: 6, width: 5 });
+  p.rect(X(-216), Y(34), 40, 12, { fill: CHROME, r: 5, width: 4.5 });
 
-  // The stake bed: two long boards, then the stakes that hold them, evenly spaced, one at each end.
-  for (const y of [-112, -82]) {
-    p.rect(X(-184), Y(y), 366, 18, { fill: C.wood, r: 4, width: 5, shade: [{ pts: [[X(-190), Y(y + 11)], [X(190), Y(y + 11)], [X(190), Y(y + 22)], [X(-190), Y(y + 22)]], color: C.woodLine }] });
+  // The roll bar out of the bed's front corner, the spare tyre strapped to it, and the cable drum in its foot.
+  p.ellipse(X(124), Y(-108), 30, 30, { fill: TYRE, width: 4.5 });
+  p.ellipse(X(124), Y(-108), 16, 16, { fill: '#D8403A', width: 3.5 });
+  p.dot(X(124), Y(-108), 4, CHROME);
+  p.line(P([[96, -96], [154, -120]]), { width: 4, color: ACCENT });
+  p.shape(P([[150, 2], [150, -150], [160, -172], [200, -180], [214, -170], [180, -164], [168, -150], [168, 2]]), { fill: STEEL, raw: true, width: 5, wobble: 1, shade: [{ pts: [[X(158), Y(-200)], [X(240), Y(-200)], [X(240), Y(10)], [X(158), Y(10)]], color: '#2A2733' }] });
+  p.rect(X(118), Y(-62), 64, 50, { fill: '#2A2733', r: 8, width: 5 });
+  p.ellipse(X(150), Y(-37), 22, 22, { fill: STEEL_LIT, width: 4 });
+  for (let k = 0; k < 4; k++) p.ellipse(X(150), Y(-37), 18 - k * 4, 18 - k * 4, { stroke: '#B9BCCB', width: 1.8 });
+  p.dot(X(150), Y(-37), 4, ACCENT);
+  p.line(P([[160, -50], [166, -100], [170, -150], [184, -172]]), { width: 2.6, color: '#B9BCCB', opacity: 0.95 });
+  p.rect(X(176), Y(-196), 40, 18, { fill: STEEL, r: 5, width: 4.5 });
+  p.ellipse(X(196), Y(-198), 22, 7, { fill: ACCENT, width: 3.5 });
+
+  // Fender flares over the wheels, bolted on.
+  for (const w of [rw, fw]) {
+    p.shape(P([...over(w.x, 74, w.y), [w.x + 74, w.y], [w.x - 74, w.y]]), { fill: '#2A2733', raw: true, width: 5, wobble: 1.2 });
+    p.shape(P([...over(w.x, 62, w.y), [w.x + 62, w.y + 2], [w.x - 62, w.y + 2]]), { fill: WELL, raw: true, stroke: null, wobble: 0.4 });
+    for (let k = 1; k < 8; k++) {
+      const a = Math.PI + (k / 8) * Math.PI;
+      p.dot(X(w.x + Math.cos(a) * 68), Y(w.y + Math.sin(a) * 68), 2.4, STEEL_LIT);
+    }
   }
-  for (const y of [-112, -82]) {
-    for (let k = 0; k < 5; k++) p.line([[X(-176 + k * 74), Y(y + 6)], [X(-136 + k * 74), Y(y + 5)], [X(-118 + k * 74), Y(y + 8)]], { width: 1.4, color: C.woodLine, raw: true, opacity: 0.8 });
-    p.ellipse(X(-60 + (y + 112) * 3), Y(y + 9), 3.5, 2.2, { fill: C.woodLine, stroke: null });
-  }
-  for (let i = 0; i < 6; i++) {
-    const x = -188 + i * 72;
-    p.rect(X(x), Y(-124), 16, 84, { fill: C.woodDark, r: 4, width: 5 });
-    p.dot(X(x + 8), Y(-103), 2.6, C.walnut);
-    p.dot(X(x + 8), Y(-73), 2.6, C.walnut);
-  }
 
-  // Rear fender: a round arch that hugs the back tyre, with its dark wheel well.
-  p.shape(P([...over(-96, 66), [-30, 84], [-162, 84]]), { fill: BODY, raw: true, width: 6, shade: [{ pts: [[X(-170), Y(48)], [X(-20), Y(44)], [X(-20), Y(90)], [X(-170), Y(90)]], color: SHADE }] });
-  p.line(P(over(-96, 58).slice(2, 7)), { width: 4, color: HILITE, opacity: 0.9 });
-  p.shape(P([...over(-96, 52), [-44, 86], [-148, 86]]), { fill: WELL, raw: true, stroke: null, wobble: 0.5 });
-
-  // Running board, between the fenders.
-  p.rect(X(-34), Y(28), 268, 12, { fill: C.walnut, r: 5, width: 4.5 });
-
-  // The cab: a rounded roof in cream over a red body.
-  const cab: Pt[] = [
-    [190, 30], [190, -100], [193, -128], [205, -148], [230, -160], [284, -160], [306, -150], [320, -122], [332, -86], [342, -68],
-    [372, -70], [400, -66], [416, -54], [422, -36], [424, 30],
+  // The body: a teal wedge, a little lumpy where it has been knocked about.
+  const body: Pt[] = [
+    [186, 30], [184, -122], [192, -152], [272, -160], [298, -152], [350, -80], [426, -64], [460, -44], [466, -8], [448, 30],
   ];
-  p.shape(P(cab), { fill: BODY, raw: true, width: 6.5, shade: [{ pts: [[X(180), Y(-200)], [X(440), Y(-200)], [X(440), Y(-114)], [X(180), Y(-114)]], color: ROOF }, { pts: [[X(186), Y(2)], [X(430), Y(-4)], [X(430), Y(40)], [X(186), Y(40)]], color: SHADE }] });
-  p.line([[X(192), Y(-114)], [X(326), Y(-114)]], { width: 4, raw: true });
-  p.line(P([[200, -140], [212, -152], [232, -157], [282, -157], [300, -149]]), { width: 3, color: '#FFFFFF', opacity: 0.55 });
-  p.line([[X(194), Y(-30)], [X(240), Y(-30)]], { width: 4, color: ROOF, raw: true });
+  p.shape(P(body), { fill: BODY, raw: true, width: 6.5, wobble: 1.4, shade: [{ pts: [[X(180), Y(-30)], [X(480), Y(-34)], [X(480), Y(40)], [X(180), Y(40)]], color: SHADE }] });
+  p.shape(P([[184, -122], [192, -152], [272, -160], [298, -152], [306, -138], [210, -138], [198, -120]]), { fill: '#2A2733', raw: true, width: 4, wobble: 1 });
+  // The door, from another truck altogether: primer grey, with its own rivets.
+  p.shape(P([[210, -78], [338, -80], [338, 2], [210, 4]]), { fill: PRIMER, raw: true, width: 4.5, wobble: 1.6, shade: [{ pts: [[X(206), Y(-20)], [X(340), Y(-22)], [X(340), Y(8)], [X(206), Y(8)]], color: '#8E8A9C' }] });
+  rivets([[216, -72], [332, -74], [216, -4], [332, -4], [274, -76]]);
+  p.rect(X(300), Y(-60), 22, 8, { fill: '#2A2733', r: 3, width: 3 });
+  // The side window, angled at the front. The driver sits in it as a sprite of their own.
+  const win: Pt[] = [[214, -134], [290, -134], [334, -86], [214, -82]];
+  p.shape(P(win), { fill: GLASS, raw: true, width: 5, wobble: 1 });
+  p.shape(P([[214, -112], [226, -112], [226, -82], [214, -82]]), { fill: '#3A2E44', raw: true, stroke: null, opacity: 0.6 });
+  // A rust patch riveted over a hole on the cab's back corner, and duct tape over a crack in the bonnet.
+  p.shape(P([[188, -70], [206, -74], [208, -30], [190, -26]]), { fill: RUST, raw: true, width: 3.5, wobble: 1.8 });
+  rivets([[192, -66], [204, -68], [192, -32], [204, -34]]);
+  for (const [a, b] of [[[384, -70], [414, -56]], [[384, -56], [414, -70]]] as const) p.line(P([a as unknown as Pt, b as unknown as Pt]), { width: 7, color: TAPE, raw: true, wobble: 0.4 });
+  // The accent stripe (it stops at the borrowed door), and the crease along the nose.
+  p.shape(P([[340, -46], [460, -30], [462, -22], [340, -38]]), { fill: ACCENT, raw: true, stroke: null });
+  p.shape(P([[188, -44], [208, -44], [208, -36], [190, -36]]), { fill: ACCENT, raw: true, stroke: null });
+  // The blower, bursting up through the bonnet: chrome, ribbed, with its scoop and a belt.
+  p.shape(P([[352, -86], [402, -88], [404, -66], [350, -64]]), { fill: CHROME, raw: true, width: 4.5, wobble: 0.8, shade: [{ pts: [[X(378), Y(-100)], [X(410), Y(-100)], [X(410), Y(-60)], [X(380), Y(-60)]], color: CHROME_SHADE }] });
+  for (let k = 0; k < 4; k++) p.line(P([[358 + k * 12, -84], [358 + k * 12, -68]]), { width: 2, color: CHROME_SHADE, raw: true });
+  // A tall scoop on top, breaking the silhouette, with the butterfly flaps showing.
+  p.shape(P([[356, -86], [360, -128], [404, -132], [402, -88]]), { fill: '#2A2733', raw: true, width: 4.5, wobble: 0.8 });
+  p.rect(X(366), Y(-126), 30, 12, { fill: '#14121A', r: 2, stroke: null });
+  for (const fx of [372, 384]) p.line(P([[fx, -124], [fx + 6, -116]]), { width: 2.4, color: CHROME, raw: true });
+  p.line(P([[358, -104], [403, -108]]), { width: 3, color: ACCENT, raw: true });
+  p.line(P([[400, -70], [416, -40]]), { width: 3, color: '#2A2733' });
+  // The ironing board, bolted over the windscreen as a sun visor, its legs folded under it.
+  p.shape(P([[262, -170], [340, -160], [372, -150], [380, -142], [370, -136], [338, -140], [264, -152]]), { fill: '#F4F0E6', raw: true, width: 4.5, wobble: 1 });
+  for (const [fx, fy] of [[282, -160], [302, -158], [322, -154], [342, -150], [360, -145], [292, -154], [332, -146]] as const) p.ellipse(X(fx), Y(fy), 4, 3, { fill: '#F48C9A', stroke: null });
+  p.line(P([[290, -152], [300, -142], [320, -146]]), { width: 2.5, color: '#9AA0B5' });
+  // The snorkel up the windscreen pillar, and the light bar on the roof.
+  p.line(P([[352, -58], [342, -96], [304, -146], [300, -166]]), { width: 13, raw: true });
+  p.line(P([[352, -58], [342, -96], [304, -146], [300, -166]]), { width: 7, color: '#3A3644', raw: true });
+  p.rect(X(290), Y(-180), 22, 14, { fill: '#2A2733', r: 4, width: 3.5 });
+  p.rect(X(204), Y(-172), 64, 12, { fill: '#2A2733', r: 4, width: 4 });
+  for (let k = 0; k < 4; k++) p.rect(X(209 + k * 14), Y(-169), 10, 6, { fill: '#FFF2B0', r: 2, stroke: null });
+  // A wing mirror on a stalk, with a spotlight taped to it.
+  p.line([[X(338), Y(-96)], [X(354), Y(-106)]], { width: 4, raw: true });
+  p.shape(P([[350, -118], [366, -114], [362, -98], [348, -100]]), { fill: '#2A2733', raw: true, width: 3.5 });
+  p.ellipse(X(362), Y(-124), 8, 8, { fill: ACCENT, width: 3 });
+  p.ellipse(X(362), Y(-124), 4.5, 4.5, { fill: '#FFF6D8', stroke: null });
+  p.line(P([[354, -118], [366, -116]]), { width: 4, color: TAPE, raw: true });
+  // Rockers and the side pipe along them.
+  p.shape(P([[186, 6], [452, 4], [446, 30], [186, 30]]), { fill: '#2A2733', raw: true, width: 4, wobble: 1 });
+  p.rect(X(212), Y(30), 150, 12, { fill: CHROME, r: 6, width: 4 });
+  for (let k = 0; k < 6; k++) p.dot(X(222 + k * 24), Y(36), 2.2, CHROME_SHADE);
+  for (const [mx, my, mr] of [[232, 22, 7], [246, 14, 4], [390, 20, 6], [410, 12, 4]] as const) p.ellipse(X(mx), Y(my), mr, mr * 0.8, { fill: MUD, stroke: null, opacity: 0.7, wobble: 1.4 });
 
-  // On the roof: a rack, and on it a rolled-up rug and a standard lamp, lashed down with rope. Moving day.
-  for (const rx of [204, 300]) p.rect(X(rx), Y(-176), 8, 18, { fill: C.walnut, r: 2, width: 3.5 });
-  p.rect(X(196), Y(-182), 128, 9, { fill: CHROME, r: 4, width: 4, shade: [{ pts: [[X(190), Y(-177)], [X(330), Y(-177)], [X(330), Y(-170)], [X(190), Y(-170)]], color: CHROME_SHADE }] });
-  // The lamp lying along the rack, its shade at the back.
-  p.rect(X(186), Y(-196), 150, 8, { fill: '#8A6A4A', r: 4, width: 3.5 });
-  p.shape(P([[150, -214], [190, -206], [190, -178], [150, -186]]), { fill: C.cream, raw: true, width: 4, shade: [{ pts: [[X(140), Y(-196)], [X(200), Y(-196)], [X(200), Y(-170)], [X(140), Y(-170)]], color: C.creamShade }] });
-  // The rug: a fat roll, striped, with its spiral end towards us.
-  p.rect(X(208), Y(-226), 120, 40, { fill: C.terracotta, r: 20, width: 5, shade: [{ pts: [[X(200), Y(-204)], [X(340), Y(-204)], [X(340), Y(-180)], [X(200), Y(-180)]], color: C.terracottaDark }] });
-  for (const sx of [236, 262, 288]) p.line([[X(sx), Y(-224)], [X(sx - 4), Y(-188)]], { width: 4, color: C.mustard });
-  p.ellipse(X(326), Y(-206), 14, 20, { fill: C.terracottaDark, width: 4.5 });
-  p.line([[X(326), Y(-206)], [X(330), Y(-212)], [X(322), Y(-216)], [X(318), Y(-204)], [X(326), Y(-196)], [X(334), Y(-206)]], { width: 2.4, color: C.cream });
-  // Rope lashings over the rug, down to the rack.
-  for (const lx of [222, 304]) {
-    p.line([[X(lx), Y(-178)], [X(lx + 2), Y(-228)], [X(lx + 6), Y(-178)]], { width: 6.5 });
-    p.line([[X(lx), Y(-178)], [X(lx + 2), Y(-228)], [X(lx + 6), Y(-178)]], { width: 3.5, color: '#E8C48A' });
+  // The nose: a mesh grille, and the headlight (the eye sits in it) in a narrow, angled housing.
+  p.shape(P([[440, -48], [462, -40], [466, -8], [448, -4]]), { fill: '#1E1C26', raw: true, width: 4 });
+  for (let k = 0; k < 4; k++) p.line(P([[446, -40 + k * 9], [462, -36 + k * 9]]), { width: 1.8, color: '#4A4658', raw: true });
+  p.shape(P([[380, -42], [420, -50], [424, -10], [384, -14]]), { fill: '#2A2733', raw: true, width: 4.5, wobble: 1 });
+  p.ellipse(X(401), Y(-28), 15, 17, { fill: CHROME, width: 4 });
+  p.ellipse(X(401), Y(-28), 11, 13, { fill: WELL, stroke: null });
+  p.shape(P([[376, -46], [426, -56], [428, -46], [380, -38]]), { fill: BODY, raw: true, width: 3.5 });
+  // The bumper: a steel plate, a little bent, with the cable's fairlead, red shackles, and bungee cords.
+  p.shape(P([[396, 8], [474, 0], [482, 30], [404, 38]]), { fill: STEEL, raw: true, width: 5, wobble: 1.6, shade: [{ pts: [[X(390), Y(24)], [X(490), Y(20)], [X(490), Y(40)], [X(390), Y(40)]], color: '#2A2733' }] });
+  p.rect(X(426), Y(12), 26, 9, { fill: '#14121A', r: 4, stroke: null });
+  for (const [sx, sy] of [[404, 18], [470, 12]] as const) {
+    p.ellipse(X(sx), Y(sy), 6, 6, { fill: '#D8403A', width: 3 });
+    p.ellipse(X(sx), Y(sy), 2.5, 2.5, { fill: '#2A2733', stroke: null });
   }
-
-  // The side window; the driver sits in it as a sprite of their own.
-  const win: Pt[] = [[220, -136], [288, -138], [306, -124], [320, -94], [326, -66], [220, -66]];
-  p.shape(P(win), { fill: GLASS, raw: true, width: 6 });
-  // The back of the cab, seen through the window: a dark interior and the seat back.
-  p.shape(P([[224, -100], [236, -100], [236, -66], [224, -66]]), { fill: "#3A2E44", raw: true, stroke: null, opacity: 0.6 });
-  p.line([[X(298), Y(-134)], [X(310), Y(-106)]], { width: 3.5, color: C.cream, opacity: 0.85 });
-
-  // Door: its seams, a chrome handle, a heart sticker, and a side mirror.
-  p.line([[X(216), Y(-58)], [X(216), Y(24)]], { width: 3.5, raw: true, opacity: 0.55 });
-  p.line([[X(318), Y(-58)], [X(318), Y(24)]], { width: 3.5, raw: true, opacity: 0.55 });
-  p.rect(X(292), Y(-46), 18, 7, { fill: CHROME, r: 3, width: 3 });
-  p.shape(P([[262, -16], [256, -24], [259, -31], [265, -29], [271, -31], [274, -24], [268, -16], [265, -12]]), { fill: C.cream, width: 3 });
-  p.line([[X(326), Y(-100)], [X(342), Y(-110)]], { width: 4, raw: true });
-  p.ellipse(X(349), Y(-112), 7, 11, { fill: CHROME, width: 3.5 });
-
-  // A shine on the cab, a fuel cap, and a spot of rust.
-  p.shape(P([[200, -100], [210, -100], [196, -40], [192, -40]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.16 });
-  p.ellipse(X(204), Y(-10), 7, 7, { fill: CHROME, width: 3 });
-  p.dot(X(204), Y(-10), 2, CHROME_SHADE);
-  for (const [rx, ry, rr] of [[232, 18, 6], [242, 12, 3.5], [226, 10, 2.5]] as const) p.ellipse(X(rx), Y(ry), rr, rr * 0.8, { fill: '#B8693C', stroke: null, opacity: 0.75, wobble: 1.4 });
-
-  // Bonnet: a chrome strip along it.
-  p.line([[X(346), Y(-60)], [X(408), Y(-56)]], { width: 4, color: CHROME, raw: true });
-
-  // Front fender: hugs the front tyre.
-  const frontFender: Pt[] = [...over(296, 66), [364, 86], [228, 86]];
-  p.shape(P(frontFender), { fill: BODY, raw: true, width: 6.5, shade: [{ pts: [[X(222), Y(52)], [X(450), Y(40)], [X(450), Y(96)], [X(222), Y(96)]], color: SHADE }] });
-  p.line(P(over(296, 58).slice(2, 7)), { width: 4, color: HILITE, opacity: 0.9 });
-  p.shape(P([...over(296, 52), [348, 86], [244, 86]]), { fill: WELL, raw: true, stroke: null, wobble: 0.5 });
-
-  // Headlight pod (the eye sits in it), grille, bumper and a smile.
-  p.ellipse(X(401), Y(-28), 17, 21, { fill: CHROME, width: 5 });
-  p.ellipse(X(401), Y(-28), 12, 15, { fill: WELL, stroke: null });
-  p.rect(X(424), Y(-50), 14, 60, { fill: CHROME, r: 5, width: 4.5 });
-  for (const y of [-38, -24, -10]) p.line([[X(426), Y(y)], [X(436), Y(y)]], { width: 3, raw: true });
-  p.rect(X(406), Y(12), 42, 16, { fill: CHROME, r: 7, width: 5, shade: [{ pts: [[X(404), Y(22)], [X(448), Y(20)], [X(448), Y(30)], [X(404), Y(30)]], color: CHROME_SHADE }] });
-  p.line([[X(410), Y(2)], [X(420), Y(7)], [X(430), Y(3)]], { width: 3.5 });
-  // A shine along the bumper, and a licence plate hanging by one screw.
-  p.line([[X(412), Y(16)], [X(438), Y(15)]], { width: 2.4, color: '#FFFFFF', raw: true, opacity: 0.9 });
-  p.shape(P([[-212, 4], [-178, 8], [-180, 30], [-214, 26]]), { fill: C.cream, raw: true, width: 3.5 });
-  for (const lx of [-206, -199, -192, -185]) p.line([[X(lx), Y(12)], [X(lx + 1), Y(24)]], { width: 2.2, raw: true, color: C.dusk });
-  p.dot(X(-204), Y(8), 2, C.ink);
-  return { key: 'truck', svg: p.svg(TRUCK.w, TRUCK.h), w: TRUCK.w, h: TRUCK.h };
+  p.line(P([[410, 26], [430, 38], [452, 30]]), { width: 3.5, color: '#E8743E' });
+  p.line(P([[440, 4], [456, 20], [474, 16]]), { width: 3.5, color: '#3FA7B5' });
+  p.shape(P([[196, -112], [204, -112], [194, -76], [190, -76]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.16 });
+  return done('truck');
 }
 
-/** Whitewall tyres with red hubs and chrome caps, like the old pickups. */
-export function wheelArt(): Art {
+/**
+ * The crossbow on its turret: a heavy stock on a rail, recurve limbs at the front with a cable-steel string,
+ * a sight, and the anchor bolt loaded: a steel shaft with a three-fluked grapple for a head. Drawn pointing
+ * right; the game turns it to aim about its pivot (on the turret).
+ */
+export const CROSSBOW = { w: 230, h: 120, pivot: { x: 60, y: 64 }, tip: { x: 196, y: 46 } };
+export function crossbowArt(loaded: boolean): Art {
+  const key = loaded ? 'crossbow' : 'crossbow_empty';
+  const p = pen(key);
+  const { x: px, y: py } = CROSSBOW.pivot;
+  p.ellipse(px, py, 16, 16, { fill: '#3A3644', width: 4.5 });
+  p.dot(px, py, 4, C.mustard);
+  p.shape([[px - 52, py - 6], [px - 40, py - 16], [px + 120, py - 14], [px + 124, py - 2], [px + 40, py + 6], [px + 10, py + 22], [px - 8, py + 22], [px - 18, py + 8], [px - 52, py + 8]], { fill: '#2A2733', raw: true, width: 4.5, shade: [{ pts: [[px - 60, py], [px + 130, py], [px + 130, py + 30], [px - 60, py + 30]], color: '#1E1C26' }] });
+  p.line([[px - 44, py - 10], [px + 116, py - 9]], { width: 2.5, color: C.mustard, raw: true });
+  p.rect(px + 10, py - 26, 26, 10, { fill: '#3A3644', r: 3, width: 3 });
+  p.ellipse(px + 40, py - 21, 4, 4, { fill: '#D8403A', stroke: null });
+  const lx = px + 112;
+  p.shape([[lx - 6, py - 12], [lx + 4, py - 34], [lx - 2, py - 52], [lx + 8, py - 56], [lx + 14, py - 34], [lx + 6, py - 10]], { fill: '#3A3644', raw: true, width: 4 });
+  p.shape([[lx - 6, py + 4], [lx + 4, py + 28], [lx - 2, py + 46], [lx + 8, py + 50], [lx + 14, py + 28], [lx + 6, py + 4]], { fill: '#3A3644', raw: true, width: 4 });
+  p.ellipse(lx + 3, py - 54, 6, 5, { fill: C.mustard, width: 3 });
+  p.ellipse(lx + 3, py + 48, 6, 5, { fill: C.mustard, width: 3 });
+  const latch = loaded ? px + 30 : lx - 2;
+  p.line([[lx + 1, py - 54], [latch, py - 6], [lx + 1, py + 47]], { width: 2.6, color: '#D8D8E4', raw: true });
+  if (loaded) {
+    p.line([[px + 22, py - 18], [px + 136, py - 18]], { width: 5, color: '#B9BCCB', raw: true });
+    const hx = px + 136;
+    p.shape([[hx, py - 24], [hx + 18, py - 18], [hx, py - 12]], { fill: C.terracotta, raw: true, width: 3 });
+    p.line([[hx + 2, py - 20], [hx - 10, py - 32], [hx - 16, py - 28]], { width: 3.5, color: C.terracotta, raw: true });
+    p.line([[hx + 2, py - 16], [hx - 10, py - 4], [hx - 16, py - 8]], { width: 3.5, color: C.terracotta, raw: true });
+  }
+  return { key, svg: p.svg(CROSSBOW.w, CROSSBOW.h), w: CROSSBOW.w, h: CROSSBOW.h };
+}
+
+/** The anchor bolt in flight and stuck in: a steel shaft and a grapple head. Points right; its tip is at the right. */
+export function boltArt(): Art {
+  const p = pen('anchor_bolt');
+  p.line([[6, 14], [70, 14]], { width: 5, color: '#B9BCCB', raw: true });
+  p.shape([[70, 8], [90, 14], [70, 20]], { fill: C.terracotta, raw: true, width: 3 });
+  p.line([[72, 12], [60, 2], [54, 6]], { width: 3.5, color: C.terracotta, raw: true });
+  p.line([[72, 16], [60, 26], [54, 22]], { width: 3.5, color: C.terracotta, raw: true });
+  return { key: 'anchor_bolt', svg: p.svg(96, 28), w: 96, h: 28 };
+}
+
+/**
+ * The wheels, mismatched, as on a truck built from whatever was going: at the back, big knobbies on dark
+ * beadlock wheels with a mustard ring; at the front, an old red steel wheel with a chrome cap and a whitewall
+ * that has seen better days. Same size, so the physics does not care.
+ */
+export function wheelArt(front = false): Art {
   const r = TRUCK.wheelR;
   const s = r * 2 + PAD * 2;
   const c = s / 2;
-  const p = pen('wheel');
-  p.ellipse(c, c, r, r, { fill: TYRE });
-  for (let i = 0; i < 18; i++) {
-    const a = (i / 18) * Math.PI * 2;
-    const b = a + 0.12;
-    p.shape([[c + Math.cos(a) * (r + 1), c + Math.sin(a) * (r + 1)], [c + Math.cos(b) * (r + 1), c + Math.sin(b) * (r + 1)], [c + Math.cos(b) * (r - 9), c + Math.sin(b) * (r - 9)], [c + Math.cos(a) * (r - 9), c + Math.sin(a) * (r - 9)]], { fill: '#4A3E44', raw: true, stroke: null });
+  const key = front ? 'wheel_front' : 'wheel';
+  const p = pen(key);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + (front ? 0.1 : 0);
+    const b = a + 0.22;
+    p.shape([[c + Math.cos(a) * (r + 3), c + Math.sin(a) * (r + 3)], [c + Math.cos(b) * (r + 3), c + Math.sin(b) * (r + 3)], [c + Math.cos(b) * (r - 6), c + Math.sin(b) * (r - 6)], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { fill: '#2A2733', raw: true, width: 3 });
   }
-  p.ellipse(c, c, r * 0.76, r * 0.76, { fill: C.cream, width: 4 });
-  p.ellipse(c, c, r * 0.56, r * 0.56, { fill: C.mustard, width: 4.5, shade: [{ pts: [[c - r, c + r * 0.08], [c + r, c - r * 0.06], [c + r, c + r], [c - r, c + r]], color: '#C98A24' }] });
-  p.ellipse(c, c, r * 0.27, r * 0.27, { fill: CHROME, width: 3.5, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: CHROME_SHADE }] });
-  p.ellipse(c - r * 0.08, c - r * 0.1, r * 0.09, r * 0.06, { fill: '#FFFFFF', stroke: null, opacity: 0.9 });
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 + 0.3;
-    p.dot(c + Math.cos(a) * r * 0.42, c + Math.sin(a) * r * 0.42, 3, C.cream);
+  p.ellipse(c, c, r - 2, r - 2, { fill: TYRE, width: 4 });
+  if (front) {
+    // An old whitewall, scuffed, on a red steelie with a chrome cap.
+    p.ellipse(c, c, r * 0.78, r * 0.78, { fill: '#E8E2D4', width: 3 });
+    p.ellipse(c, c, r * 0.64, r * 0.64, { fill: TYRE, stroke: null });
+    p.ellipse(c, c, r * 0.58, r * 0.58, { fill: '#D8403A', width: 4, shade: [{ pts: [[c - r, c + 4], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: '#A82E2E' }] });
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.3;
+      p.ellipse(c + Math.cos(a) * r * 0.4, c + Math.sin(a) * r * 0.4, r * 0.07, r * 0.07, { fill: '#7A2A2E', stroke: null });
+    }
+    p.ellipse(c, c, r * 0.24, r * 0.24, { fill: CHROME, width: 3.5, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: CHROME_SHADE }] });
+    p.line([[c - r * 0.7, c - r * 0.3], [c - r * 0.6, c - r * 0.5]], { width: 3, color: '#8A8478', raw: true });
+    return { key, svg: p.svg(s, s), w: s, h: s };
   }
-  return { key: 'wheel', svg: p.svg(s, s), w: s, h: s };
+  p.ellipse(c, c, r * 0.8, r * 0.8, { fill: '#3A3644', stroke: null });
+  p.ellipse(c, c, r * 0.62, r * 0.62, { fill: '#2A2733', width: 4 });
+  p.ellipse(c, c, r * 0.6, r * 0.6, { stroke: C.mustard, width: 5 });
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    p.dot(c + Math.cos(a) * r * 0.6, c + Math.sin(a) * r * 0.6, 1.8, '#2A2733');
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    p.ellipse(c + Math.cos(a) * r * 0.36, c + Math.sin(a) * r * 0.36, r * 0.08, r * 0.08, { fill: '#14121A', stroke: null });
+  }
+  p.ellipse(c, c, r * 0.18, r * 0.18, { fill: C.mustard, width: 3.5 });
+  p.ellipse(c - r * 0.05, c - r * 0.06, r * 0.06, r * 0.04, { fill: '#FFFFFF', stroke: null, opacity: 0.8 });
+  return { key, svg: p.svg(s, s), w: s, h: s };
 }
+
 
 /** The house picture's size, and where its chimney top and banner are, for the game to use. */
 export const HOUSE = { w: 660, h: 880, ground: 866, chimney: { x: 52, y: 118 }, banner: { x: 282, y: 398 }, oldBanner: { x: 282, y: 398 } };
@@ -1541,7 +1673,7 @@ export function heartArt(key: string, fill: string): Art {
  * x0 is where the stretch starts in the world, so every stretch gets its own stones, and the bumps line up.
  */
 export type RoadStyle = 'meadow' | 'autumn' | 'snow' | 'town' | 'coast';
-export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, features: [number, number, number][] = FEATURES, style: RoadStyle = 'meadow'): Art {
+export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, features: Feature[] = FEATURES, style: RoadStyle = 'meadow'): Art {
   const p = pen(key);
   p.plain = true;
   const w = pts[pts.length - 1][0];
@@ -1655,6 +1787,14 @@ export function groundArt(key: string, pts: Pt[], depth: number, x0 = 0, feature
     p.raw(`<path d="${band(() => 0, () => 4)}" fill="${style === 'town' ? '#6A6290' : '#7A788C'}"/>`);
     p.raw(`<path d="M${path(() => 13)}" fill="none" stroke="${style === 'town' ? '#E8E4FF' : '#F2C230'}" stroke-width="3.5" stroke-dasharray="60 46" opacity="0.9"/>`);
     if (style === 'town') {
+      // Yellow crossings painted across the road now and then, as on Night City's streets.
+      for (let cx = 300 + r() * 200; cx < w - 200; cx += 700 + r() * 300) {
+        for (let k = 0; k < 6; k++) {
+          const sx = cx + k * 26;
+          const y = yAt(sx);
+          p.raw(`<path d="M${sx.toFixed(1)} ${(y + 2).toFixed(1)}L${(sx + 14).toFixed(1)} ${(y + 2).toFixed(1)}L${(sx + 14).toFixed(1)} ${(y + 22).toFixed(1)}L${sx.toFixed(1)} ${(y + 22).toFixed(1)}Z" fill="#FCEE0A" opacity="0.85"/>`);
+        }
+      }
       // Wet: streaks of neon reflected in the asphalt.
       for (let n = 0; n < 26; n++) {
         const x = r() * w;
@@ -2056,95 +2196,168 @@ export function cursorArt(kind: CursorKind): Art {
 }
 
 /**
- * The driver, a character of their own now rather than a dot in the window: a round face under a mustard
- * cap, big eyes that look where the trouble is, eyebrows that do most of the acting, and an arm resting on
- * the door with the elbow out of the window. Head centre is at (70, 66) in the picture.
- *  - calm: eyes ahead, a small smile;     - blink;
- *  - whistle: eyes half shut, lips pursed;  - strain: squeezed eyes, teeth gritted (high revs);
- *  - worried: brows up, eyes glancing back at the load, a wobbly mouth;
- *  - panic: eyes wide, mouth open, cap jumping off the head, a bead of sweat;
- *  - happy: eyes shut in a grin (parked well).
+ * The driver, drawn the way cartoon drivers are on the reference boards: a big head that fills the
+ * window, a strong silhouette (a red knit beanie with a pompom, a tuft of hair escaping at the back), a
+ * face turned three-quarters towards the road so both eyes read, a button nose sticking out past the
+ * cheek, and the acting done by thick eyebrows, eye shapes and the mouth. A mustard jacket, the arm out
+ * along the sill and a mitten gripping the door.
+ *  - calm: a soft smile;  blink;  whistle: eyes shut, lips pursed;
+ *  - strain: eyes screwed up, teeth gritted (high revs);  worried: brows up, glancing back at the load;
+ *  - panic: eyes huge, mouth wide, beanie and hair flying up;  happy: a big grin;
+ *  - surprised: eyes round, a little "o" (a jolt);  cool: half-lidded and smug (flying along in top gear).
  */
-export type DriverMood = 'calm' | 'blink' | 'whistle' | 'strain' | 'worried' | 'panic' | 'happy';
-export const DRIVER_MOODS: DriverMood[] = ['calm', 'blink', 'whistle', 'strain', 'worried', 'panic', 'happy'];
+export type DriverMood = 'calm' | 'blink' | 'whistle' | 'strain' | 'worried' | 'panic' | 'happy' | 'surprised' | 'cool';
+export const DRIVER_MOODS: DriverMood[] = ['calm', 'blink', 'whistle', 'strain', 'worried', 'panic', 'happy', 'surprised', 'cool'];
 export const DRIVER = { w: 150, h: 150, head: { x: 70, y: 66 } };
 export function driverArt(mood: DriverMood): Art {
   const key = `driver_${mood}`;
   const p = pen(key);
   const { x: cx, y: cy } = DRIVER.head;
-  const SKIN = '#FFD8B4';
-  const SKIN_SHADE = '#F2B48E';
-  const SHIRT = C.terracotta;
-  /** A thick rounded limb: an ink stroke with the colour inside, so it reads as one soft shape. */
+  const SKIN = '#FFD3AE';
+  const SKIN_SHADE = '#EFAE88';
+  const JACKET = C.mustard;
+  const JACKET_SHADE = '#D99A2E';
+  const HAT = '#D9483A';
+  const HAT_SHADE = '#B23A30';
+  const HAIR = '#5A3A2E';
+  const INK = C.ink;
   const limb = (pts: Pt[], colour: string, thick: number) => {
-    p.line(pts, { width: thick + 8, raw: true, wobble: 0.4 });
-    p.line(pts, { width: thick, color: colour, raw: true, wobble: 0.4 });
+    p.line(pts, { width: thick + 8, raw: true, wobble: 0.3 });
+    p.line(pts, { width: thick, color: colour, raw: true, wobble: 0.3 });
   };
-  // Shoulders, down to the window sill.
-  p.shape([[cx - 34, cy + 31], [cx - 30, cy + 21], [cx - 12, cy + 15], [cx + 12, cy + 15], [cx + 28, cy + 21], [cx + 32, cy + 31]], { fill: SHIRT, width: 4.5, shade: [{ pts: [[cx + 4, cy + 10], [cx + 40, cy + 10], [cx + 40, cy + 36], [cx + 8, cy + 36]], color: C.terracottaDark }] });
-  // The arm: out along the sill, elbow over the edge, forearm down the door, hand resting on it.
-  limb([[cx + 18, cy + 24], [cx + 44, cy + 27], [cx + 60, cy + 29]], SHIRT, 16);
-  limb([[cx + 61, cy + 32], [cx + 62, cy + 52]], SKIN, 14);
-  p.ellipse(cx + 62, cy + 58, 10, 9, { fill: SKIN, width: 4 });
-  // The head: one round shape, a little shade under the chin.
-  p.ellipse(cx, cy, 30, 29, { fill: SKIN, width: 4.5, shade: [{ pts: [[cx - 40, cy + 14], [cx + 40, cy + 12], [cx + 40, cy + 40], [cx - 40, cy + 40]], color: SKIN_SHADE }] });
-  // The cap: a dome and a brim forward, with a button on top. In a panic it jumps up.
-  const lift = mood === 'panic' ? -14 : 0;
-  p.shape([[cx - 31, cy - 4 + lift], [cx - 28, cy - 21 + lift], [cx - 12, cy - 33 + lift], [cx + 10, cy - 34 + lift], [cx + 27, cy - 22 + lift], [cx + 31, cy - 4 + lift]], { fill: C.mustard, width: 4.5, shade: [{ pts: [[cx + 6, cy - 50], [cx + 40, cy - 50], [cx + 40, cy], [cx + 6, cy]], color: '#D99A2E' }] });
-  p.rect(cx + 12, cy - 11 + lift, 40, 10, { fill: '#D99A2E', r: 5, width: 4 });
-  p.dot(cx - 2, cy - 33 + lift, 4, C.terracotta);
-  // The face looks three-quarters forward, towards the road: eyes and nose set to the right of centre.
-  const ex = [cx + 1, cy + 1];
-  const ex2 = cx + 19;
-  const ey = cy + 1;
-  p.ellipse(cx + 22, cy + 13, 6, 4, { fill: '#F48C86', stroke: null, opacity: 0.7 });
-  p.ellipse(cx - 8, cy + 13, 5, 3.5, { fill: '#F48C86', stroke: null, opacity: 0.7 });
-  const eyes = [ex[0], ex2];
-  if (mood === 'blink' || mood === 'happy' || mood === 'whistle') {
-    // Shut: arcs, up for a grin, down for a blink, flat lids for a contented whistle.
-    for (const x of eyes) {
-      if (mood === 'happy') p.line([[x - 6, ey + 3], [x, ey - 4], [x + 6, ey + 3]], { width: 4 });
-      else if (mood === 'blink') p.line([[x - 6, ey], [x, ey + 3], [x + 6, ey]], { width: 4 });
-      else {
-        p.ellipse(x, ey, 6.5, 7.5, { fill: '#FFFFFF', width: 3.5 });
-        p.dot(x + 2, ey + 2, 3.4);
-        p.shape([[x - 8, ey - 9], [x + 8, ey - 9], [x + 8, ey - 1], [x - 8, ey]], { fill: SKIN, raw: true, width: 3 });
-      }
-    }
-  } else if (mood === 'strain') {
-    // Squeezed shut: > <.
-    p.line([[ex[0] - 6, ey - 5], [ex[0] + 5, ey], [ex[0] - 6, ey + 5]], { width: 4 });
-    p.line([[ex2 + 6, ey - 5], [ex2 - 5, ey], [ex2 + 6, ey + 5]], { width: 4 });
-  } else {
-    // Open: big white ovals and big pupils, looking ahead (or back at the load when worried).
-    const wide = mood === 'panic' ? 1.25 : 1;
-    const look = mood === 'worried' ? -2.5 : 2;
-    for (const x of eyes) {
-      p.ellipse(x, ey, 6.5 * wide, 8 * wide, { fill: '#FFFFFF', width: 3.5 });
-      p.dot(x + look, ey + 1, mood === 'panic' ? 2.6 : 3.8);
-      if (mood !== 'panic') p.dot(x + look + 1.4, ey - 1.6, 1.2, '#FFFFFF');
+  const panic = mood === 'panic';
+  // The beanie sits high, so the brows and eyes stay clear of it; it jumps when they do.
+  const up = (panic ? -12 : mood === 'surprised' ? -5 : 0) - 11;
+  // Jacket shoulders, down to the sill, with a collar.
+  p.shape([[cx - 36, cy + 31], [cx - 32, cy + 20], [cx - 14, cy + 14], [cx + 14, cy + 14], [cx + 30, cy + 20], [cx + 34, cy + 31]], { fill: JACKET, width: 4.5, shade: [{ pts: [[cx + 6, cy + 8], [cx + 44, cy + 8], [cx + 44, cy + 36], [cx + 10, cy + 36]], color: JACKET_SHADE }] });
+  p.shape([[cx - 12, cy + 14], [cx + 2, cy + 26], [cx + 14, cy + 14]], { fill: '#F4F0E6', raw: true, width: 3 });
+  // The arm along the sill, and a mitten gripping the door.
+  limb([[cx + 18, cy + 24], [cx + 46, cy + 27], [cx + 62, cy + 30]], JACKET, 17);
+  limb([[cx + 63, cy + 33], [cx + 64, cy + 50]], JACKET, 14);
+  p.ellipse(cx + 64, cy + 58, 11, 10, { fill: HAT, width: 4 });
+  p.ellipse(cx + 56, cy + 53, 5, 6, { fill: HAT, width: 3 });
+  // Hair escaping at the back, standing on end in a panic.
+  if (panic) p.shape([[cx - 34, cy + 6], [cx - 44, cy - 10], [cx - 32, cy - 6], [cx - 38, cy - 22], [cx - 24, cy - 12], [cx - 22, cy + 8]], { fill: HAIR, raw: true, width: 3.5 });
+  else p.shape([[cx - 32, cy + 12], [cx - 40, cy + 2], [cx - 34, cy - 6], [cx - 24, cy - 2], [cx - 22, cy + 10]], { fill: HAIR, width: 3.5 });
+  // The head: round, with a little chin forward.
+  p.shape([[cx - 30, cy - 6], [cx - 22, cy - 26], [cx, cy - 31], [cx + 22, cy - 24], [cx + 31, cy - 4], [cx + 29, cy + 16], [cx + 18, cy + 27], [cx - 2, cy + 30], [cx - 22, cy + 22], [cx - 31, cy + 8]], {
+    fill: SKIN,
+    width: 4.5,
+    shade: [{ pts: [[cx - 40, cy + 16], [cx + 40, cy + 14], [cx + 40, cy + 40], [cx - 40, cy + 40]], color: SKIN_SHADE }],
+  });
+  // An ear at the back of the head.
+  p.ellipse(cx - 24, cy + 6, 7, 9, { fill: SKIN, width: 3.5 });
+  p.line([[cx - 25, cy + 2], [cx - 23, cy + 9]], { width: 2.4, color: SKIN_SHADE, raw: true });
+  // The beanie: a dome with a folded, ribbed band, and a pompom that jumps when they jump.
+  p.shape([[cx - 32, cy - 6 + up], [cx - 26, cy - 26 + up], [cx - 6, cy - 38 + up], [cx + 14, cy - 36 + up], [cx + 30, cy - 22 + up], [cx + 33, cy - 6 + up]], { fill: HAT, width: 4.5, shade: [{ pts: [[cx + 8, cy - 50], [cx + 44, cy - 50], [cx + 44, cy], [cx + 8, cy]], color: HAT_SHADE }] });
+  p.rect(cx - 34, cy - 12 + up, 69, 13, { fill: '#F4F0E6', r: 5, width: 4 });
+  for (let k = 0; k < 8; k++) p.line([[cx - 28 + k * 8, cy - 10 + up], [cx - 28 + k * 8, cy - 1 + up]], { width: 2, color: '#C9C2B4', raw: true });
+  p.ellipse(cx - 12, cy - 42 + up * 1.6, 10, 9, { fill: '#F4F0E6', width: 3.5 });
+  // Cheeks: rosy, rosier when happy or straining.
+  const blush = mood === 'happy' || mood === 'strain' ? 0.9 : 0.55;
+  p.ellipse(cx + 24, cy + 14, 6, 4, { fill: '#F48C86', stroke: null, opacity: blush });
+  p.ellipse(cx - 8, cy + 15, 5, 3.5, { fill: '#F48C86', stroke: null, opacity: blush });
+  // Eyes: the near one (left) a little bigger than the far one, three-quarters view.
+  const eyes: [number, number, number][] = [
+    [cx + 2, cy + 3, 1],
+    [cx + 20, cy + 3, 0.85],
+  ];
+  for (const [ex, ey, k] of eyes) {
+    const rx = 7.5 * k;
+    const ry = 9 * k;
+    if (mood === 'blink') p.line([[ex - rx, ey + 1], [ex, ey + 4], [ex + rx, ey + 1]], { width: 4 });
+    else if (mood === 'happy' || mood === 'whistle') p.line([[ex - rx, ey + 3], [ex, ey - 4], [ex + rx, ey + 3]], { width: 4 });
+    else if (mood === 'strain') p.line([[ex - rx, ey - 4], [ex + rx * 0.6, ey + 1], [ex - rx, ey + 5]].map(([x, y]): Pt => [ex + (x - ex) * (ex > cx + 10 ? -1 : 1), y]), { width: 4 });
+    else {
+      const big = panic ? 1.35 : mood === 'surprised' ? 1.2 : 1;
+      p.ellipse(ex, ey, rx * big, ry * big, { fill: '#FFFFFF', width: 3.5 });
+      const look = mood === 'worried' ? -3 : panic || mood === 'surprised' ? 0 : 2.5;
+      const pr = panic ? 2.2 : mood === 'surprised' ? 3 : 4.2;
+      p.dot(ex + look, ey + 1, pr * k, INK);
+      if (!panic) p.dot(ex + look + 1.6, ey - 1.8, 1.4 * k, '#FFFFFF');
+      // Lids: half down when cool.
+      if (mood === 'cool') p.shape([[ex - rx - 2, ey - 1], [ex - rx - 2, ey - ry - 3], [ex + rx + 2, ey - ry - 3], [ex + rx + 2, ey - 1]], { fill: SKIN, raw: true, width: 3.5 });
     }
   }
-  // Brows, only when the face needs them.
-  if (mood === 'worried' || mood === 'panic') {
-    p.line([[ex[0] - 6, ey - 10], [ex[0] + 5, ey - 14]], { width: 3.5 });
-    p.line([[ex2 - 5, ey - 14], [ex2 + 6, ey - 10]], { width: 3.5 });
-  } else if (mood === 'strain') {
-    p.line([[ex[0] - 6, ey - 13], [ex[0] + 5, ey - 9]], { width: 3.5 });
-    p.line([[ex2 - 5, ey - 9], [ex2 + 6, ey - 13]], { width: 3.5 });
+  // Eyebrows: thick, tapered shapes, doing most of the acting. [inner lift, outer lift] for each.
+  const brow: Record<DriverMood, [number, number]> = { calm: [0, 0], blink: [0, 0], whistle: [-2, -2], strain: [5, -3], worried: [-7, 3], panic: [-12, -8], happy: [-4, -4], surprised: [-9, -7], cool: [2, -5] };
+  const [inner, outer] = brow[mood];
+  for (const [ex, ey, k] of eyes) {
+    const far = ex > cx + 10;
+    const inX = far ? ex - 7 * k : ex + 7 * k;
+    const outX = far ? ex + 8 * k : ex - 8 * k;
+    const by = ey - 14 * k;
+    // The far brow in 'cool' goes up (one raised eyebrow); the near one stays level.
+    const raise = mood === 'cool' && far ? -5 : 0;
+    p.shape([[outX, by + outer + raise], [inX, by + inner + raise], [inX, by + inner + raise + 4], [outX, by + outer + raise + 3]], { fill: HAIR, raw: true, width: 2.5 });
   }
-  // A small round nose.
-  p.ellipse(cx + 13, cy + 10, 5, 4.5, { fill: SKIN_SHADE, width: 3 });
+  // The button nose, sticking out past the cheek.
+  p.ellipse(cx + 30, cy + 12, 7, 6, { fill: SKIN, width: 3.5, shade: [{ pts: [[cx + 22, cy + 14], [cx + 40, cy + 14], [cx + 40, cy + 22], [cx + 22, cy + 22]], color: SKIN_SHADE }] });
   // The mouth.
-  const mx = cx + 11;
-  const my = cy + 20;
-  if (mood === 'panic') p.ellipse(mx, my + 1, 6, 7, { fill: '#7A2A3A', width: 3.5 });
-  else if (mood === 'whistle') p.ellipse(mx + 2, my, 3.5, 3.5, { fill: '#7A2A3A', width: 3 });
-  else if (mood === 'strain') {
-    p.rect(mx - 8, my - 3, 16, 7, { fill: '#FFFFFF', r: 2, width: 3 });
-    p.line([[mx, my - 3], [mx, my + 4]], { width: 2 });
-  } else if (mood === 'worried') p.line([[mx - 7, my + 1], [mx - 2, my - 1], [mx + 3, my + 1], [mx + 7, my - 1]], { width: 3.5 });
-  else if (mood === 'happy') p.shape([[mx - 9, my - 2], [mx + 9, my - 2], [mx + 5, my + 6], [mx - 5, my + 6]], { fill: '#7A2A3A', width: 3.5 });
-  else p.line([[mx - 6, my], [mx, my + 4], [mx + 6, my]], { width: 3.5 });
+  const mx = cx + 15;
+  const my = cy + 21;
+  if (panic) {
+    p.shape([[mx - 9, my - 4], [mx + 9, my - 4], [mx + 7, my + 9], [mx - 7, my + 9]], { fill: '#7A2A3A', width: 3.5 });
+    p.rect(mx - 7, my - 3, 14, 4, { fill: '#FFFFFF', r: 1, stroke: null });
+  } else if (mood === 'happy') {
+    p.shape([[mx - 11, my - 3], [mx + 11, my - 3], [mx + 6, my + 7], [mx - 6, my + 7]], { fill: '#7A2A3A', width: 3.5 });
+    p.ellipse(mx, my + 4, 5, 3, { fill: '#F27A7A', stroke: null });
+  } else if (mood === 'strain') {
+    p.rect(mx - 10, my - 4, 20, 9, { fill: '#FFFFFF', r: 2, width: 3 });
+    for (const dx of [-4, 1, 6]) p.line([[mx + dx, my - 4], [mx + dx, my + 5]], { width: 1.8 });
+  } else if (mood === 'surprised') p.ellipse(mx, my + 1, 4.5, 5, { fill: '#7A2A3A', width: 3 });
+  else if (mood === 'whistle') p.ellipse(mx + 4, my, 3.2, 3.2, { fill: '#7A2A3A', width: 3 });
+  else if (mood === 'worried') p.line([[mx - 8, my + 1], [mx - 3, my - 1], [mx + 2, my + 2], [mx + 7, my - 1]], { width: 3.5 });
+  else if (mood === 'cool') p.line([[mx - 6, my + 1], [mx + 2, my + 3], [mx + 9, my - 3]], { width: 3.5 });
+  else p.line([[mx - 7, my], [mx, my + 4], [mx + 7, my]], { width: 3.5 });
+  // Sweat when it is going wrong.
+  if (panic || mood === 'strain' || mood === 'worried') p.shape([[cx - 18, cy - 4], [cx - 13, cy + 6], [cx - 18, cy + 10], [cx - 23, cy + 6]], { fill: '#BFEAF6', width: 2.5 });
   return { key, svg: p.svg(DRIVER.w, DRIVER.h), w: DRIVER.w, h: DRIVER.h };
+}
+
+/** A red jerrycan of fuel, with its handles and a cap, standing by the road. */
+export function fuelCanArt(): Art {
+  const p = pen('fuel_can');
+  p.rect(14, 22, 62, 78, { fill: '#D8403A', r: 8, width: 4.5, shade: [{ pts: [[50, 10], [90, 10], [90, 110], [52, 110]], color: '#A82E2E' }] });
+  p.rect(22, 8, 30, 16, { fill: '#D8403A', r: 6, width: 4 });
+  p.rect(28, 12, 18, 7, { fill: C.cream, r: 3, stroke: null });
+  p.rect(56, 10, 14, 14, { fill: '#B9BCCB', r: 3, width: 3.5 });
+  p.line([[22, 44], [68, 80]], { width: 4, color: '#A82E2E', raw: true });
+  p.line([[68, 44], [22, 80]], { width: 4, color: '#A82E2E', raw: true });
+  p.rect(26, 54, 38, 16, { fill: C.cream, r: 4, width: 3 });
+  p.line([[33, 62], [57, 62]], { width: 3, color: '#D8403A', raw: true });
+  return { key: 'fuel_can', svg: p.svg(92, 110), w: 92, h: 110 };
+}
+
+/** A winch post: a yellow-and-black bollard with a steel ring on top, and a little sign with a hook on it. */
+export function winchPostArt(): Art {
+  const p = pen('winch_post');
+  const w = 120;
+  const h = 200;
+  p.rect(48, 50, 26, 150, { fill: C.mustard, r: 5, width: 4.5 });
+  for (let y = 70; y < 190; y += 34) p.shape([[48, y], [74, y - 12], [74, y + 2], [48, y + 14]], { fill: '#2A2140', raw: true, stroke: null });
+  p.ellipse(61, 36, 18, 18, { fill: 'none', stroke: '#9AA0B5', width: 7 } as never);
+  p.ellipse(61, 36, 18, 18, { stroke: C.ink, width: 2.5 });
+  p.rect(76, 96, 40, 34, { fill: '#2E6AD8', r: 4, width: 3.5 });
+  p.line([[96, 104], [96, 118], [90, 122], [86, 116]], { width: 3, color: '#FFFFFF' });
+  return { key: 'winch_post', svg: p.svg(w, h), w, h };
+}
+
+/**
+ * A roll of bubble wrap, blown off another mover's van somewhere up the road: a fat translucent roll, its
+ * end showing the spiral, bubbles all over it, and a strip of tape where it came loose.
+ */
+export function bubbleWrapArt(): Art {
+  const p = pen('bubble_wrap');
+  const w = 110;
+  const h = 80;
+  p.rect(14, 16, 74, 50, { fill: '#CFEFFF', r: 24, width: 4, shade: [{ pts: [[0, 50], [w, 50], [w, h], [0, h]], color: '#A8D8EE' }] });
+  for (let row = 0; row < 3; row++) for (let k = 0; k < 5; k++) p.ellipse(28 + k * 13 + (row % 2) * 6, 26 + row * 13, 4.5, 4.5, { fill: '#EAF8FF', width: 1.6 });
+  p.ellipse(88, 41, 15, 25, { fill: '#DDF4FF', width: 4 });
+  p.line([[88, 41], [92, 36], [86, 30], [80, 40], [88, 52], [97, 42]], { width: 2, color: '#8ABCD6' });
+  // The loose end of the sheet, flapping off the roll, and its tape.
+  p.shape([[16, 40], [2, 52], [8, 70], [24, 62]], { fill: '#CFEFFF', raw: true, width: 3, opacity: 0.9 });
+  p.rect(40, 12, 24, 10, { fill: '#D8B068', r: 2, width: 2.5, opacity: 0.95 });
+  p.ellipse(34, 24, 9, 4, { fill: '#FFFFFF', stroke: null, opacity: 0.8 });
+  return { key: 'bubble_wrap', svg: p.svg(w, h), w, h };
 }

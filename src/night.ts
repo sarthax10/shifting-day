@@ -17,7 +17,7 @@ import { TILE, plainPen, rnd, wave } from './backdrop';
 
 // ===================================================================================== Neon Town
 
-const NEON = ['#FF3FD0', '#3FF2FF', '#FFB43F', '#B57BFF', '#FF5A7A'];
+const NEON = ['#FF3FD0', '#3FF2FF', '#FCEE0A', '#FFB43F', '#B57BFF', '#FF3B3B', '#3AFF8A'];
 
 /** A tall stack of floors: a block with set-backs near the top, a spire or antennae. */
 function tower(p: ReturnType<typeof plainPen>, x: number, w: number, h: number, base: number, fill: string, seed: number) {
@@ -62,6 +62,17 @@ export function megaArt(lights: boolean): Art {
     p.line([[x + 6, h], [x + 6, h - th + 30]], { width: lw, color: c, raw: true, opacity: lights ? 0.9 : 0.75, wobble: 0 });
     p.line([[x + w - 6, h], [x + w - 6, h - th + 30]], { width: lw, color: c, raw: true, opacity: lights ? 0.9 : 0.75, wobble: 0 });
     for (let y = h - 120; y > h - th + 60; y -= 140 + rnd(209, i) * 80) p.line([[x + 6, y], [x + w - 6, y]], { width: lights ? 5 : 2, color: c, raw: true, opacity: 0.6, wobble: 0 });
+    // A curved billboard wrapped round the tower, as on Night City's megabuildings.
+    if (i % 3 === 1) {
+      const by = h - th * 0.55;
+      const bc = NEON[(i * 2) % NEON.length];
+      if (lights) p.rect(x - 14, by - 6, w + 28, 74, { fill: bc, stroke: null, r: 30, opacity: 0.7 });
+      else {
+        p.rect(x - 10, by, w + 20, 62, { fill: mix(bc, '#0A0818', 0.5), stroke: null, r: 26 });
+        p.rect(x - 10, by, w + 20, 18, { fill: mix(bc, '#FFFFFF', 0.2), stroke: null, r: 9, opacity: 0.6 });
+        for (let gx = x + 6; gx < x + w - 10; gx += 22) p.rect(gx, by + 24, 14, 26, { fill: bc, stroke: null, r: 2, opacity: 0.8 });
+      }
+    }
     // A few rows of lit windows.
     if (!lights) {
       for (let y = h - th + 80; y < h - 40; y += 26) {
@@ -171,6 +182,34 @@ export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
         if (!lights && !far && style === 2) p.line([[x + 4, y + floor - 4], [x + w - 4, y + floor - 4]], { width: 2, color: '#4A3A5E', raw: true, wobble: 0 });
       }
     }
+    if (!far) {
+      if (!lights && style === 2) {
+        for (let s = 1, y = h - floor * 2; y > top + floor; s++, y -= floor) {
+          if (rnd(seed + 40, i * 13 + s) < 0.3) {
+            const px = x + 14 + rnd(seed + 41, i * 13 + s) * (w - 40);
+            p.rect(px, y + floor - 14, 14, 10, { fill: '#8A4A3A', stroke: null, r: 2 });
+            p.ellipse(px + 7, y + floor - 18, 11, 8, { fill: '#3E8A4E', stroke: null, wobble: 0.8 });
+          }
+        }
+      }
+      if (!lights && rnd(seed + 42, i) < 0.3) {
+        for (let k = 0; k < 4; k++) {
+          const vx = x + 8 + k * (w / 4);
+          const len = 40 + rnd(seed + 43, i * 5 + k) * 120;
+          p.line([[vx, top], [vx + 4, top + len * 0.5], [vx - 2, top + len]], { width: 4, color: '#3E6A3E', raw: true, opacity: 0.9, wobble: 0.6 });
+        }
+      }
+      if (rnd(seed + 44, i) < 0.18) {
+        const gx = x + w / 2;
+        const gy = top + 60;
+        if (lights) p.ellipse(gx, gy, 34, 34, { fill: '#3AFF8A', stroke: null, opacity: 0.6 });
+        else {
+          p.rect(gx - 22, gy - 22, 44, 44, { fill: '#0A1810', stroke: null, r: 4 });
+          p.rect(gx - 6, gy - 16, 12, 32, { fill: '#3AFF8A', stroke: null, r: 2 });
+          p.rect(gx - 16, gy - 6, 32, 12, { fill: '#3AFF8A', stroke: null, r: 2 });
+        }
+      }
+    }
     if (!lights && !far) {
       // A pipe down one side, and on some, a fire escape zigzagging up.
       const px = rnd(seed + 13, i) < 0.5 ? x + 4 : x + w - 6;
@@ -247,7 +286,15 @@ export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
       const pts: Pt[] = [];
       for (let t = 0; t <= 1.0001; t += 0.1) pts.push([ax + (bx - ax) * t, y0 + Math.sin(t * Math.PI) * sag]);
       if (!lights) p.line(pts, { width: 2, color: '#0A0818', raw: true, wobble: 0 });
-      if (rnd(seed + 29, k) < 0.4) {
+      if (!lights && rnd(seed + 30, k) < 0.5) {
+        const clothes = ['#E8D8C8', '#C85A5A', '#5A8AC8', '#E8C05A', '#8AB878', '#B88AC8'];
+        for (const [n, [lx, ly]] of pts.slice(1, -1).entries()) {
+          if (n % 2) continue;
+          const c = clothes[Math.floor(rnd(seed + 31, k * 11 + n) * clothes.length)];
+          if (rnd(seed + 32, k * 11 + n) < 0.5) p.shape([[lx - 10, ly], [lx + 10, ly], [lx + 12, ly + 6], [lx + 7, ly + 6], [lx + 7, ly + 24], [lx - 7, ly + 24], [lx - 7, ly + 6], [lx - 12, ly + 6]], { fill: c, stroke: null, raw: true, wobble: 0 });
+          else p.rect(lx - 8, ly, 16, 26, { fill: c, stroke: null, r: 1 });
+        }
+      } else if (rnd(seed + 29, k) < 0.4) {
         for (const [lx, ly] of pts.slice(2, -2).filter((_, n) => n % 2 === 0)) {
           if (lights) p.ellipse(lx, ly + 8, 9, 9, { fill: '#FF6A5A', stroke: null, opacity: 0.8 });
           else p.ellipse(lx, ly + 8, 5, 6, { fill: '#FF6A5A', stroke: null });
@@ -550,4 +597,31 @@ export function snowNearArt(): Art {
   p.line(pts, { width: 3, color: '#FFFFFF', raw: true, wobble: 0 });
   for (let i = 0; i < 70; i++) p.ellipse(rnd(601, i) * w, top(rnd(601, i) * w) + 8 + rnd(603, i) * 60, 1.6, 1.6, { fill: '#FFFFFF', stroke: null });
   return { key, svg: p.svg(w, h), w, h };
+}
+
+/** A giant hologram fish for the sky over Neon Town: glowing cyan outlines and scales, nothing solid. */
+export function holoFishArt(): Art {
+  const key = 'holo_fish';
+  const w = 520;
+  const h = 260;
+  const p = plainPen(key);
+  const c = '#7FF6FF';
+  // Body, fins and tail as outlines.
+  const body: Pt[] = [];
+  for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.2) body.push([250 + Math.cos(a) * 170, 130 + Math.sin(a) * 70 * (Math.cos(a) > 0 ? 0.9 : 1)]);
+  p.line(body, { width: 5, color: c, raw: true, wobble: 0 });
+  p.line([[82, 130], [20, 60], [44, 130], [20, 200], [82, 130]], { width: 5, color: c, raw: true, wobble: 0 });
+  p.line([[230, 62], [280, 20], [320, 70]], { width: 4, color: c, raw: true, wobble: 0 });
+  p.line([[240, 196], [270, 236], [300, 192]], { width: 4, color: c, raw: true, wobble: 0 });
+  p.ellipse(370, 112, 10, 10, { fill: c, stroke: null });
+  // Scales: rows of little arcs; and scan lines across the whole thing.
+  for (let row = 0; row < 4; row++) {
+    for (let k = 0; k < 7; k++) {
+      const sx = 150 + k * 28 + (row % 2) * 14;
+      const sy = 92 + row * 22;
+      p.line([[sx - 10, sy], [sx, sy + 8], [sx + 10, sy]], { width: 2.5, color: c, raw: true, opacity: 0.7, wobble: 0 });
+    }
+  }
+  for (let y = 70; y < 200; y += 8) p.line([[90, y], [420, y]], { width: 1, color: c, raw: true, opacity: 0.18, wobble: 0 });
+  return { key, svg: p.svg(w, h), w, h, blur: 1 };
 }

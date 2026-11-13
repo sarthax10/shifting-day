@@ -96,12 +96,14 @@ interface Gate {
 /** Where the bay outside the new house starts and ends, in the world. */
 const bay = () => ({ from: FINISH + 80, to: FINISH + 900 });
 import { TUNNEL, buildTunnel, type Tunnel } from './tunnel';
+import { Extras } from './extras';
+import { Crossbow } from './crossbow';
 /** Where the last biome's roadside ends and this one's begins, around the blend. */
 /** True where the tunnel's rock hides the roadside, so nothing is put there. */
 const inTunnel = (x: number, on: boolean) => on && x > TUNNEL.from - 300 && x < TUNNEL.to + 300;
 /** How far the truck reaches behind and in front of its middle (tailgate to bumper). */
 const TRUCK_BACK = 194;
-const TRUCK_NOSE = 448;
+const TRUCK_NOSE = 476;
 /** The toll gates, each partway up a hill so the stop is on a slope. */
 
 interface Thing {
@@ -148,6 +150,10 @@ export class PlayScene extends Phaser.Scene {
   private slabsIn = new Set<Body>();
   private roadAt = -1e9;
   private fxLabel!: Phaser.GameObjects.Text;
+  /** Fuel and bubble wrap; and the anchor crossbow. */
+  private crossbow!: Crossbow;
+  private extras!: Extras;
+  private extrasLabel!: Phaser.GameObjects.Text;
   private headlight!: Phaser.GameObjects.Image;
   private drive = new Drivetrain();
   private eye!: Inked;
@@ -184,7 +190,7 @@ export class PlayScene extends Phaser.Scene {
   /** From the truck's centre of mass to the (0, 0) its picture is drawn around. */
   private anchor = { x: 0, y: 0 };
   private held: { thing: Thing; dx: number; dy: number; angle: number } | null = null;
-  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four' | 'p' | 'space', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four' | 'p' | 'space' | 'w', Phaser.Input.Keyboard.Key>;
   private hint!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
   private goButton!: Phaser.GameObjects.Container;
@@ -268,6 +274,32 @@ export class PlayScene extends Phaser.Scene {
     this.household();
     this.hud();
     this.controls();
+    this.extras = new Extras({
+      scene: this,
+      leg: this.leg,
+      groundY,
+      chassis: () => this.chassis,
+      nose: () => this.onTruckAt(TRUCK_NOSE - 10, 30),
+      say: (t) => this.say(t),
+      float: (x, y, t, c) => this.floatText(x, y, t, c),
+      phase: () => this.phase,
+    });
+    this.extras.build(this.trip?.coins ?? 0);
+    this.crossbow = new Crossbow({
+      scene: this,
+      bodies: () => [this.chassis, ...this.wheels],
+      mount: () => this.onTruckAt(196, -198),
+      pullFrom: () => this.onTruckAt(TRUCK_NOSE - 10, 30),
+      truckAngle: () => this.chassis.angle,
+      phase: () => this.phase,
+      say: (t) => this.say(t),
+      reeling: () => this.keys.w.isDown,
+      ground: (x) => groundY(x),
+      cliffs: this.leg.features.filter((f) => f.length > 3).map(([fx]) => fx),
+    });
+    this.crossbow.build();
+    this.input.mouse?.disableContextMenu();
+    this.extrasLabel = this.add.text(40, 130, '', { fontFamily: TITLE, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setScrollFactor(0).setDepth(100);
 
     this.matter.world.on('collisionstart', (event: { pairs: { bodyA: Body; bodyB: Body }[] }) => this.knocks(event.pairs));
 
@@ -695,11 +727,68 @@ export class PlayScene extends Phaser.Scene {
     });
     const lostNow = this.things.filter((t) => t.packed && (t.lost || t.ghost) && !onBoard.includes(t)).map((t) => t.spec.key);
     const brokeNow = this.things.filter((t) => t.packed && t.broken && !t.wasBroken).map((t) => t.spec.key);
-    const trip: Trip = { leg: this.leg.n + 1, cargo, lost: [...this.trip.lost, ...lostNow], broken: [...this.trip.broken, ...brokeNow], parking: [...this.trip.parking, this.parkBonus], time: this.trip.time + this.driveTime };
+    this.extras.stop();
+    this.crossbow.stop();
+    const trip: Trip = { leg: this.leg.n + 1, cargo, lost: [...this.trip.lost, ...lostNow], broken: [...this.trip.broken, ...brokeNow], parking: [...this.trip.parking, this.parkBonus], time: this.trip.time + this.driveTime, coins: this.extras.coins + (this.parkBonus >= 90 ? 1 : 0) };
     saveTrip(trip);
     void prepareLeg(this.textures, trip.leg);
     const worth = onBoard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
-    this.time.delayedCall(900, () => this.checkpointCard(trip, lostNow.length, brokeNow.length, worth));
+    this.time.delayedCall(900, () => {
+      this.checkpointCard(trip, lostNow.length, brokeNow.length, worth);
+      this.lostAndFound(trip, lostNow);
+    });
+  }
+
+  /**
+   * The stop's Lost & Found, beside the checkpoint card. Locals bring in what fell off the truck on this leg,
+   * and the stop has tape for broken things. Getting a thing back costs a few coins; the cat always finds
+   * its own way back, for free. Whatever is fixed or found goes back on the truck for the next leg.
+   */
+  private lostAndFound(trip: Trip, lostNow: string[]) {
+    const broken = trip.cargo.filter((c) => c.broken);
+    if (!lostNow.length && !broken.length) return;
+    const x = W - 250;
+    const y0 = H / 2 - 230;
+    const rows = Math.min(4, lostNow.length) + Math.min(2, broken.length);
+    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 201) => o.setScrollFactor(0).setDepth(d);
+    fixed(this.add.rectangle(x, y0 + 60 + rows * 46, 420, 170 + rows * 92, 0xfff4e0).setStrokeStyle(6, 0x2a2140), 200);
+    fixed(this.add.text(x, y0, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '38px', color: C.terracottaDark }).setOrigin(0.5), 202);
+    const purse = fixed(this.add.text(x, y0 + 44, '', { fontFamily: TEXT, fontSize: '24px', color: C.walnut }).setOrigin(0.5), 202);
+    const coins = () => trip.coins ?? 0;
+    const showPurse = () => purse.setText(`You have ${coins()} roll${coins() === 1 ? '' : 's'} of bubble wrap`);
+    showPurse();
+    const nameOf = (key: string) => ITEMS.find((i) => i.key === key)?.name ?? key;
+    let y = y0 + 110;
+    const row = (label: string, cost: number, act: () => void) => {
+      fixed(this.add.text(x - 190, y, label, { fontFamily: TEXT, fontSize: '24px', color: C.ink, wordWrap: { width: 200 } }).setOrigin(0, 0.5), 202);
+      const b = this.button(x + 100, y, 'btn_rope', cost ? `${cost} roll${cost === 1 ? '' : 's'}` : 'Free', 30, () => {
+        if (b.label.text === 'Done!') return;
+        if (coins() < cost) return this.say('Not enough bubble wrap. It lies where the road gets tricky.');
+        trip.coins = coins() - cost;
+        act();
+        saveTrip(trip);
+        showPurse();
+        b.label.setText('Done!');
+        play('stamp');
+      });
+      b.box.setDepth(205).setScale(0.62);
+      y += 92;
+    };
+    lostNow.slice(0, 4).forEach((key, i) => {
+      const pet = ITEMS.find((t) => t.key === key)?.pet;
+      row(`Found: ${nameOf(key)}`, pet ? 0 : 3, () => {
+        trip.cargo.push({ key, broken: false, dx: -150 + i * 80, dy: -110, angle: 0, tied: false });
+        const at = trip.lost.indexOf(key);
+        if (at >= 0) trip.lost.splice(at, 1);
+      });
+    });
+    broken.slice(0, 2).forEach((c) => {
+      row(`Wrap up: ${nameOf(c.key)}`, 2, () => {
+        c.broken = false;
+        const at = trip.broken.indexOf(c.key);
+        if (at >= 0) trip.broken.splice(at, 1);
+      });
+    });
   }
 
   private checkpointCard(trip: Trip, lost: number, broke: number, worth: number) {
@@ -1005,7 +1094,8 @@ export class PlayScene extends Phaser.Scene {
       M.Body.setStatic(wheel, true);
       this.matter.world.add([wheel, axle]);
       this.wheels.push(wheel);
-      this.wheelImgs.push(this.inked(0, 0, 'wheel').img.setDepth(12));
+      // Mismatched: knobbies at the back, an old red steelie at the front.
+      this.wheelImgs.push(this.inked(0, 0, this.wheels.length === 2 ? 'wheel_front' : 'wheel').img.setDepth(12));
     }
     // While it is being loaded the truck is held perfectly still, so it cannot sag on its springs and tip the load.
     M.Body.setStatic(this.chassis, true);
@@ -1225,6 +1315,7 @@ export class PlayScene extends Phaser.Scene {
       three: kb.addKey('THREE'),
       four: kb.addKey('FOUR'),
       p: kb.addKey('P'),
+      w: kb.addKey('W'),
       space: kb.addKey('SPACE'),
     };
     this.keys.p.on('down', () => this.toggleHandbrake());
@@ -1246,6 +1337,12 @@ export class PlayScene extends Phaser.Scene {
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => turn(Math.sign(dy) * (Math.PI / 12)));
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      // Driving: left click fires the anchor crossbow; right click lets the cable go.
+      if (this.phase === 'drive') {
+        if (p.rightButtonDown()) this.crossbow.release();
+        else this.crossbow.fire();
+        return;
+      }
       if (this.phase !== 'pack') return;
       if (this.held && p.rightButtonDown()) return turn(Math.PI / 2);
       const hit = M.Query.point(this.things.map((t) => t.body), { x: p.worldX, y: p.worldY }) as Body[];
@@ -1390,7 +1487,7 @@ export class PlayScene extends Phaser.Scene {
     this.goButton.setVisible(false);
     this.ropeButton.setVisible(false);
     this.pointer('point');
-    this.hint.setPosition(DASH_RIGHT + 24, 1046).setFontSize(24).setText('D gas    A brake    P handbrake    SHIFT gear up    CTRL gear down    1 2 3 4 R N');
+    this.hint.setPosition(DASH_RIGHT + 24, 1046).setFontSize(24).setText('D gas    A brake    P handbrake    SHIFT / CTRL gears    CLICK fire anchor    W reel in    RIGHT-CLICK let go');
     this.dash.show(true);
     this.handbrake = true;
     this.say("Handbrake's on. Press P to let it off, then hold D. Change up with SHIFT when the gear goes red.");
@@ -1497,10 +1594,14 @@ export class PlayScene extends Phaser.Scene {
     this.driver.img.setPosition(dpos.x, dpos.y).setRotation(angle + hb.v * 0.02);
     let face: DriverMood = 'calm';
     if (this.phase === 'arrived' || this.phase === 'done') face = 'happy';
-    else if (now < this.eyeUntil && this.eyeMood === 'wide') face = 'panic';
+    // Something on the truck sliding about or falling: real panic. A jolt or a grinding gear: surprise.
+    else if (this.things.some((t) => t.spec.pet && t.mood === 'panic')) face = 'panic';
+    else if (now < this.eyeUntil && this.eyeMood === 'wide') face = 'surprised';
     else if (this.phase === 'drive' && this.drive.rpm > REDLINE - 400 && this.drive.throttle > 0.5) face = 'strain';
     else if (this.phase === 'drive' && (this.drive.lugging > 0.3 || this.drive.stalled)) face = 'worried';
     else if (now < this.whistleUntil) face = 'whistle';
+    // Flying along in top gear without a care: smug.
+    else if (this.phase === 'drive' && this.drive.gear === 4 && forward > 7) face = 'cool';
     else if (now > this.driverBlink) {
       face = 'blink';
       if (now > this.driverBlink + 140) this.driverBlink = now + 2600 + Math.random() * 3000;
@@ -1626,22 +1727,32 @@ export class PlayScene extends Phaser.Scene {
     if (this.held?.thing === t) return 'panic';
     if (t.ghost) return 'grumpy';
     if (this.phase === 'arrived' || this.phase === 'done') return 'happy';
-    if (this.phase !== 'drive') return 'calm';
+    // Waiting about, a pet nods off now and then.
+    const doze = (this.time.now / 1000 + t.body.id * 3.7) % 18 > 12;
+    if (this.phase !== 'drive') return doze ? 'sleepy' : 'calm';
     const c = this.chassis;
     const slip = Math.hypot(t.body.velocity.x - c.velocity.x, t.body.velocity.y - c.velocity.y);
     const tipped = Math.abs(Phaser.Math.Angle.Wrap(t.body.angle)) > 0.6;
     if (slip > 2.2 || tipped || Math.abs(t.body.angularVelocity) > 0.04) return 'panic';
     if (slip > 0.8 || Math.abs(c.velocity.x) > 4.5 || Math.abs(c.angle) > 0.12) return 'worried';
-    return 'calm';
+    // A gentle, steady drive is very relaxing.
+    return doze && slip < 0.4 && Math.abs(c.velocity.x) < 3.5 ? 'sleepy' : 'calm';
   }
 
   private faces() {
-    const rank: Record<Mood, number> = { calm: 0, happy: 0, grumpy: 0, worried: 1, panic: 2 };
+    const rank: Record<Mood, number> = { calm: 0, happy: 0, grumpy: 0, sleepy: 0, worried: 1, dizzy: 1, panic: 2 };
     for (const t of this.things) {
       if (!t.spec.pet) continue;
       const mood = this.moodOf(t);
       // A fright lingers for a moment, so faces do not flicker.
       if (rank[mood] < rank[t.mood] && this.time.now < t.moodUntil) continue;
+      // Once a fright is over, a pet is dizzy for a moment before it calms down.
+      if (t.mood === 'panic' && rank[mood] < 2) {
+        t.mood = 'dizzy';
+        t.moodUntil = this.time.now + 1400;
+        this.redraw(t.ink, `${t.spec.key}_dizzy`);
+        continue;
+      }
       if (rank[mood] > 0) t.moodUntil = this.time.now + 600;
       if (mood === t.mood) continue;
       t.mood = mood;
@@ -1935,6 +2046,12 @@ export class PlayScene extends Phaser.Scene {
       if (grounded) this.groundedAt = this.time.now;
       const traction = this.time.now - this.groundedAt < 180;
       const pedal = this.phase === 'drive' && right ? 1 : 0;
+      this.drive.power = this.extras.update(Math.min(0.05, delta / 1000), this.drive, this.phase === 'drive');
+      const ptr = this.input.activePointer;
+      ptr.updateWorldPoint(cam);
+      this.crossbow.update(Math.min(0.05, delta / 1000), { x: ptr.worldX, y: ptr.worldY });
+      const fuelText = `Bubble wrap ${this.extras.coins}    Fuel ${Math.round(this.extras.fuel * 100)}%`;
+      if (this.extrasLabel.text !== fuelText) this.extrasLabel.setText(fuelText).setVisible(this.phase === 'drive');
       const out = this.drive.step(Math.min(0.05, delta / 1000), forward, pedal);
       if (out.stalled) this.stalledOut();
       if (this.drive.stalled && pedal) this.tryRestart();
@@ -1975,7 +2092,7 @@ export class PlayScene extends Phaser.Scene {
       }
       if (this.phase === 'drive' && this.frame % (pedal ? 7 : 20) === 0) this.exhaust();
       if (this.phase === 'drive') {
-        this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), 1 - 0.85 * Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1), this.handbrake);
+        this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), this.extras.fuel, this.handbrake);
         this.updateGates(forward, delta);
         this.parking(forward);
       }

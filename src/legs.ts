@@ -1,4 +1,4 @@
-import { LEG1_FEATURES } from './terrain';
+import { LEG1_FEATURES, type Feature } from './terrain';
 
 /**
  * The trip, in five legs. Each leg is its own stretch of road through its own biome, at its own time
@@ -15,7 +15,7 @@ export interface Leg {
   title: string;
   biome: BiomeKey;
   /** Bumps and hills: [where, how tall, how wide]. */
-  features: [number, number, number][];
+  features: Feature[];
   /** Where the parking bay at the end of the leg starts. */
   finish: number;
   /** Toll gates (or rail crossings in town) that make you stop with the handbrake on. */
@@ -59,6 +59,7 @@ export const LEGS: Leg[] = [
     features: [
       [2600, 60, 600],
       [7900, 240, 600],
+      [13000, 230, 220, 800],
       [9800, -60, 140],
       [10500, 30, 52],
       [10700, 30, 52],
@@ -88,6 +89,7 @@ export const LEGS: Leg[] = [
     features: [
       ...washboard(2200, 7),
       [8700, 230, 560],
+      [10200, 230, 220, 800],
       [11000, -55, 90],
       [11400, -55, 90],
       [11800, -55, 90],
@@ -115,9 +117,9 @@ export const LEGS: Leg[] = [
       [2800, 26, 50],
       [3000, 26, 50],
       [7600, 90, 520],
+      [12000, 230, 220, 800],
       [9400, 26, 50],
       [9600, 26, 50],
-      [11800, -50, 120],
       [13200, 26, 50],
       [13400, 26, 50],
       [15600, 60, 420],
@@ -140,6 +142,7 @@ export const LEGS: Leg[] = [
     features: [
       [3000, 120, 600],
       [8100, 200, 560],
+      [11300, 230, 220, 800],
       [10400, -80, 300],
       [12500, 36, 56],
       [12700, 36, 56],
@@ -180,6 +183,8 @@ export interface Trip {
   broken: string[];
   /** Parking bonuses earned at each stop. */
   parking: number[];
+  /** Coins picked up along the way, to spend at the stops. */
+  coins?: number;
   /** Seconds on the road so far. */
   time: number;
 }

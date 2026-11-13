@@ -194,7 +194,7 @@ export class TitleScene extends Phaser.Scene {
     const decal = this.add.text(0, -7, 'SHIFT HAPPENS', { fontFamily: TITLE, fontSize: '22px', color: C.terracotta }).setOrigin(0.5);
     parts.push(decal.setScale(Math.min(1, 176 / decal.width)));
     for (const w of TRUCK.wheels) {
-      const wheel = this.add.image(w.x, w.y, 'wheel#0');
+      const wheel = this.add.image(w.x, w.y, w === TRUCK.wheels[1] ? 'wheel_front#0' : 'wheel#0');
       this.wheels.push(wheel);
       parts.push(wheel);
     }

@@ -110,6 +110,8 @@ export class Drivetrain {
   stalled = false;
   /** 0 to 1: how much the engine is labouring at too few revs for its gear (for a shudder and a sound). */
   lugging = 0;
+  /** How much of its power the engine can make: less when the tank is dry and it is coughing along. */
+  power = 1;
   private shiftLeft = 0;
   private shiftTime = SHIFT_TIME;
   private next: Gear = 1;
@@ -240,7 +242,7 @@ export class Drivetrain {
       this.rpm = demanded;
     }
 
-    let gas = this.throttle;
+    let gas = this.throttle * this.power;
     const taper = Math.max(0, Math.min(1, (LIMIT - this.rpm) / 400));
     this.limiting = taper < 0.25 && gas > 0.5;
     gas *= taper;
