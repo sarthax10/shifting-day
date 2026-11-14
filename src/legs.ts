@@ -59,7 +59,8 @@ export const LEGS: Leg[] = [
     features: [
       [2600, 60, 600],
       [7900, 240, 600],
-      [13000, 230, 220, 800],
+      // A shorter, gentler climb than leg one's - reinforcing the skill just learned, not raising the bar yet.
+      [13000, 170, 240, 700],
       [9800, -60, 140],
       [10500, 30, 52],
       [10700, 30, 52],
@@ -89,7 +90,8 @@ export const LEGS: Leg[] = [
     features: [
       ...washboard(2200, 7),
       [8700, 230, 560],
-      [10200, 230, 220, 800],
+      // The pass's one real test: taller and steeper than any other leg's cliff.
+      [10200, 290, 200, 800],
       [11000, -55, 90],
       [11400, -55, 90],
       [11800, -55, 90],
@@ -116,13 +118,17 @@ export const LEGS: Leg[] = [
     features: [
       [2800, 26, 50],
       [3000, 26, 50],
-      [7600, 90, 520],
+      // A proper rise under the city's own lights, to match everywhere else - town had been the
+      // flattest leg in the game despite being the biggest visual set piece.
+      [4200, 200, 480],
+      [7600, 210, 520],
       [12000, 230, 220, 800],
       [9400, 26, 50],
       [9600, 26, 50],
       [13200, 26, 50],
       [13400, 26, 50],
-      [15600, 60, 420],
+      [15600, 90, 420],
+      [16400, 220, 460],
     ],
     finish: 18200,
     gates: [7700, 10600, 14600],
@@ -149,6 +155,8 @@ export const LEGS: Leg[] = [
       [14600, 220, 600],
       [17000, -60, 120],
       [18300, 60, 400],
+      // One more climb before home - shorter than the first, a last use for a skill well learned.
+      [19000, 150, 240, 450],
     ],
     finish: 20600,
     gates: [8040, 14540],
@@ -158,6 +166,7 @@ export const LEGS: Leg[] = [
       [3100, 'THE SEA IS ON\nTHE OTHER SIDE\nOF THIS HILL.'],
       [11600, 'ALMOST HOME.\nNO PRESSURE.'],
       [16600, 'NEW HOUSE\nAHEAD.\nBREATHE.'],
+      [18100, 'ONE LAST\nCLIMB.\nALMOST THERE.'],
     ],
   },
 ];

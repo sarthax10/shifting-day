@@ -93,6 +93,8 @@ interface Gate {
   green?: Phaser.GameObjects.Image;
   beacon?: Phaser.GameObjects.Image;
   flashers: Phaser.GameObjects.Image[];
+  /** How long the check takes once stopped with the handbrake on: varies a little so every gate does not feel identical. */
+  checkTime: number;
 }
 
 /** Where the bay outside the new house starts and ends, in the world. */
@@ -506,6 +508,9 @@ export class PlayScene extends Phaser.Scene {
       this.add.image(x, y, 'halo').setDisplaySize(w, h).setTint(tint).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(depth);
     for (const x of this.leg.gates) {
       const y = groundY(x);
+      // The very last gate of the whole trip: they already know you're coming, so it is waved
+      // through, no stop needed - one small reward for a trip full of stopping at these.
+      const isFinal = this.leg.n === LEGS.length && x === this.leg.gates[this.leg.gates.length - 1];
       let red: Phaser.GameObjects.Image | undefined;
       let green: Phaser.GameObjects.Image | undefined;
       let beacon: Phaser.GameObjects.Image | undefined;
@@ -548,9 +553,14 @@ export class PlayScene extends Phaser.Scene {
         flashers.push(glow(tx, groundY(tx) - 276, 80, 80, 0xff3a2a, -5.85, 0.6), glow(tx, groundY(tx) - 242, 80, 80, 0x3aff8a, -5.85, 0));
       }
       const arm = this.add.image(x, y - 150, 'toll_arm').setOrigin((420 - 37) / 420, 0.5).setDepth(22);
-      // Where the barrier is, the road is blocked.
+      // Where the barrier is, the road is blocked - unless it is already up and waiting for no one.
       const body = M.Bodies.rectangle(x + 10, y - 150, 26, 300, { isStatic: true, label: 'gate', friction: 0.2 });
-      this.matter.world.add(body);
+      if (isFinal) {
+        arm.setRotation(Math.PI / 2).setDepth(-5.7);
+        if (red) red.setAlpha(0);
+        if (green) green.setAlpha(1);
+        for (const f of flashers) f.setAlpha(0);
+      } else this.matter.world.add(body);
       // The white line to stop at, painted on the road, and a warning sign before it.
       const line = this.add.graphics().setDepth(0.5);
       line.fillStyle(0xfff6e4, 0.9);
@@ -559,12 +569,20 @@ export class PlayScene extends Phaser.Scene {
       const tilt = -0.01;
       this.add.image(sx, groundY(sx) + 10, 'sign_official').setOrigin(0.5, 1).setDepth(-6).setScale(0.8).setRotation(tilt);
       const words = this.add
-        .text(sx, groundY(sx) + 10 - (OFFICIAL_SIGN.h - OFFICIAL_SIGN.text.y) * 0.8, this.leg.gateKind === 'rail' ? 'RAIL CROSSING\nSTOP\nHANDBRAKE ON' : 'TOLL AHEAD\nSTOP\nHANDBRAKE ON', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '28px', color: C.ink, align: 'center', lineSpacing: 0, letterSpacing: 0.5 })
+        .text(
+          sx,
+          groundY(sx) + 10 - (OFFICIAL_SIGN.h - OFFICIAL_SIGN.text.y) * 0.8,
+          isFinal ? 'TOLL AHEAD\nALREADY OPEN\nCARRY ON' : this.leg.gateKind === 'rail' ? 'RAIL CROSSING\nSTOP\nHANDBRAKE ON' : 'TOLL AHEAD\nSTOP\nHANDBRAKE ON',
+          { fontFamily: TEXT, fontStyle: 'bold', fontSize: '28px', color: C.ink, align: 'center', lineSpacing: 0, letterSpacing: 0.5 },
+        )
         .setOrigin(0.5)
         .setDepth(-5.9)
         .setRotation(tilt);
       words.setScale(Math.min(1, (OFFICIAL_SIGN.text.w * 0.8) / words.width, (OFFICIAL_SIGN.text.h * 0.8) / words.height));
-      this.gates.push({ x, body, arm, state: 'closed', timer: 0, announced: false, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 100, y: y - 180 }, red, green, beacon, flashers });
+      // A little variety in how long the check takes, so thirteen stops across the trip do not all
+      // feel exactly the same length.
+      const checkTime = isFinal ? 0 : 0.9 + Math.random() * 0.7;
+      this.gates.push({ x, body, arm, state: isFinal ? 'open' : 'closed', timer: 0, announced: isFinal, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 100, y: y - 180 }, red, green, beacon, flashers, checkTime });
     }
   }
 
@@ -607,7 +625,7 @@ export class PlayScene extends Phaser.Scene {
         // Let the handbrake off too soon and the attendant starts over.
         if (!this.handbrake) g.state = 'closed';
         g.timer += dt;
-        if (g.timer > 1.3) {
+        if (g.timer > g.checkTime) {
           g.state = 'open';
           this.matter.world.remove(g.body);
           play('ratchet');
