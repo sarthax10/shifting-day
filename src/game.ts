@@ -810,15 +810,24 @@ export class PlayScene extends Phaser.Scene {
     const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(250);
     this.lostFoundPanel = panel;
     const scrim = this.add.rectangle(x, H / 2, W, H, 0x120d1f, 0.55).setInteractive();
-    const board = this.add.rectangle(x, top + h / 2, 500, h, 0x7a4a2e).setStrokeStyle(6, 0x2a2140);
+    const board = this.add.rectangle(x, top + h / 2, 500, h, 0x7a4a2e).setStrokeStyle(6, 0x2a2140).setInteractive();
+    // Clicks on the board itself just stop there - only the darkened area outside it, caught by the
+    // scrim below, should close the panel.
+    board.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
     const paper = this.add.rectangle(x, top + h / 2 + 8, 460, h - 60, 0xfff4e0).setStrokeStyle(4, 0x2a2140);
     const sign = this.add.rectangle(x, top + 4, 330, 64, 0xd8572a).setStrokeStyle(5, 0x2a2140).setAngle(-2);
     const title = this.add.text(x, top, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '40px', color: C.cream }).setOrigin(0.5).setAngle(-2);
     title.setScale(Math.min(1, (300 * 0.85) / title.width));
     const purse = this.add.text(x, top + 66, '', { fontFamily: TEXT, fontSize: '23px', color: C.walnut }).setOrigin(0.5);
-    // A small close button, well clear of the ribbon, in the board's own corner.
-    const closeBtn = this.add.circle(x + 222, top + 12, 23, 0x2a2140).setStrokeStyle(3, 0xfff2da, 0.5).setInteractive({ cursor: CURSOR.open });
-    const closeX = this.add.text(x + 222, top + 11, 'X', { fontFamily: TITLE, fontSize: '22px', color: C.cream }).setOrigin(0.5);
+    // Three ways to close it, since one small button was apparently not enough to find: a bigger X in
+    // the board's corner, a click anywhere outside the board, and Escape.
+    scrim.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      this.closeLostFound();
+    });
+    // A tab sitting above the board itself, clear of both the ribbon and the corner rivets.
+    const closeBtn = this.add.circle(x + 200, top - 22, 30, 0x2a2140).setStrokeStyle(3, 0xfff2da, 0.6).setInteractive({ cursor: CURSOR.open });
+    const closeX = this.add.text(x + 200, top - 23, 'X', { fontFamily: TITLE, fontSize: '28px', color: C.cream }).setOrigin(0.5);
     closeBtn.on('pointerover', () => closeBtn.setScale(1.1));
     closeBtn.on('pointerout', () => closeBtn.setScale(1));
     closeBtn.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
@@ -1364,6 +1373,9 @@ export class PlayScene extends Phaser.Scene {
 
   /** ESC: a pause menu over everything, the engine silenced, Matter and tweens frozen while it's up. */
   private togglePause() {
+    // Escape closes whatever is on top first - the Lost & Found, if that's what is open - rather than
+    // opening the pause menu underneath it.
+    if (this.lostFoundPanel) return this.closeLostFound();
     if (this.phase === 'done' || this.phase === 'intro') return;
     if (this.pauseUi) this.closePause();
     else this.openPause();
@@ -2272,7 +2284,11 @@ export class PlayScene extends Phaser.Scene {
         for (const b of [c, ...this.wheels]) M.Body.setVelocity(b, { x: b.velocity.x + dir.x * kick, y: b.velocity.y + dir.y * kick });
       }
       if (out.jolt) this.jolted(out.jolt);
-      for (const w of this.wheels) M.Body.setAngularVelocity(w, forward / TRUCK.wheelR);
+      // While the clutch slips - pulling away, or spinning for grip rather than gripping - the wheels
+      // spin at the engine's own speed, not the truck's: real wheelspin, not a wheel that just sits
+      // still because the truck has not gone anywhere yet.
+      const wheelSpeed = this.drive.slipping && !this.drive.shifting && this.drive.gear !== 'N' && !this.drive.stalled ? this.drive.slipSpeed : forward;
+      for (const w of this.wheels) M.Body.setAngularVelocity(w, wheelSpeed / TRUCK.wheelR);
       if (this.drive.stalled) this.engine.rev(30, -0.75);
       else this.engine.rev(this.drive.rpm, this.drive.throttle, this.drive.limiting, this.drive.lugging);
       if (this.phase === 'drive') {

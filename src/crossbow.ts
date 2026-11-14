@@ -208,9 +208,12 @@ export class Crossbow {
       const uy = dy / d;
       let strain = 0;
       if (d > this.length) {
-        // Taut: take away any speed away from the anchor, and pull back towards it by how much it is stretched.
-        const pull = Math.min(1.6, (d - this.length) * 0.06);
-        strain = pull / 1.6;
+        // Taut: take away any speed away from the anchor, and pull back towards it. A firm floor on the
+        // pull, not just a share of the stretch, so the last stretch of a climb - the bit right under the
+        // lip, where there is the least slack left to pull against - does not go weak exactly when it is
+        // needed most.
+        const pull = Math.min(2.4, 0.45 + (d - this.length) * 0.07);
+        strain = pull / 2.4;
         for (const body of this.host.bodies()) {
           const away = -(body.velocity.x * ux + body.velocity.y * uy);
           const fix = Math.max(0, away) + pull;
@@ -233,17 +236,43 @@ export class Crossbow {
   }
 
   /** The cable: straight when taut, sagging when slack. */
-  /** The cable: straight when taut, sagging when slack, and glowing hot white under real load. */
+  /**
+   * The cable: a real twisted-steel look (a dark sheath, a lit core, and a herringbone of twist marks
+   * along it, not just a flat tinted line), sagging under its own weight when slack like an actual
+   * rope would, dead straight and glowing hot under real load.
+   */
   private cable(g: Phaser.GameObjects.Graphics, from: { x: number; y: number }, to: { x: number; y: number }, taut: boolean, tension = 0) {
-    const sag = taut ? 0 : Math.min(120, Math.max(0, this.length - Math.hypot(to.x - from.x, to.y - from.y)) * 0.5);
+    const span = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    const sag = taut ? 0 : Math.min(130, Math.max(0, this.length - span) * 0.55);
+    const n = 20;
     const pts: Phaser.Math.Vector2[] = [];
-    for (let i = 0; i <= 16; i++) {
-      const k = i / 16;
-      pts.push(new Phaser.Math.Vector2(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k + Math.sin(k * Math.PI) * sag));
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      // A proper catenary-ish droop (heaviest in the middle), not a plain sine belly.
+      const droop = sag * 4 * k * (1 - k);
+      pts.push(new Phaser.Math.Vector2(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k + droop));
     }
-    g.lineStyle(6 + tension * 2, 0x2a2140, 1).strokePoints(pts);
+    // A soft glow under real strain, so a taut, loaded cable reads as hot, not just a different colour.
+    if (tension > 0.05) {
+      g.lineStyle(14 + tension * 10, 0xffb060, tension * 0.35).strokePoints(pts);
+    }
+    g.lineStyle(8, 0x2a2140, 1).strokePoints(pts);
     const core = Phaser.Display.Color.Interpolate.ColorWithColor(COLOR_SLACK, COLOR_TAUT, 100, Math.round(tension * 100));
-    g.lineStyle(3 + tension * 2, Phaser.Display.Color.GetColor(core.r, core.g, core.b), 1).strokePoints(pts);
+    g.lineStyle(4 + tension * 2, Phaser.Display.Color.GetColor(core.r, core.g, core.b), 1).strokePoints(pts);
+    // The twist of a wound cable: short cross-ticks at a steady spacing along its length.
+    const ux = (to.x - from.x) / span;
+    const uy = (to.y - from.y) / span;
+    const px = -uy;
+    const py = ux;
+    const twistEvery = 26;
+    const count = Math.floor(span / twistEvery);
+    for (let i = 1; i < count; i++) {
+      const k = i / count;
+      const idx = Math.min(n, Math.round(k * n));
+      const p = pts[idx];
+      const w = 3.4;
+      g.lineStyle(2, 0x1a1428, 0.55).lineBetween(p.x - px * w, p.y - py * w, p.x + px * w, p.y + py * w);
+    }
   }
 
   stop() {

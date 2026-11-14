@@ -140,6 +140,16 @@ export class Drivetrain {
     return RATIO[String(this.gear)];
   }
 
+  /**
+   * The speed the wheels are actually turning at, by the engine's own revs and gear - not the ground
+   * speed, which lags behind it exactly while the clutch slips (pulling away, or spinning for grip on
+   * a climb). The two agree once the clutch locks up; a real wheel does the same.
+   */
+  get slipSpeed(): number {
+    const r = this.ratio;
+    return r ? (this.rpm / (Math.abs(r) * RPM_PER_SPEED)) * Math.sign(r) : 0;
+  }
+
   /** Engine rpm the wheels demand in a gear, at a forward speed in pixels a frame. */
   wheelRpm(speed: number, gear: Gear = this.gear) {
     return Math.abs(speed * RATIO[String(gear)] * RPM_PER_SPEED);
