@@ -94,11 +94,11 @@ export class Extras {
     }
     if (driving && this.fuel < 0.2 && this.fuel > 0 && !this.lowNagged) {
       this.lowNagged = true;
-      this.host.say('Fuel is low. Look out for a red can, and go easy on the revs.');
+      this.host.say('LOW FUEL');
     }
     if (driving && this.fuel <= 0 && !this.dryNagged) {
       this.dryNagged = true;
-      this.host.say('Out of fuel! The engine is coughing along. Find a can.');
+      this.host.say('OUT OF FUEL!');
     }
     // Pickups, collected by driving through them.
     const t = scene.time.now;
@@ -119,7 +119,7 @@ export class Extras {
             scene.tweens.add({ targets: bub, x: p.x + (Math.random() - 0.5) * 160, y: p.y - 40 - Math.random() * 120, scale: 0.3, alpha: 0, duration: 520, onComplete: () => bub.destroy() });
           }
           this.host.float(p.x, p.y - 60, this.coins === 1 ? 'Bubble wrap!' : 'Pop!', '#CFEFFF');
-          if (this.coins === 1) this.host.say('Bubble wrap! Another mover up ahead keeps losing it. The stops will use it to pack your lost things back up.');
+          if (this.coins === 1) this.host.say('BUBBLE WRAP!');
         } else {
           this.fuel = Math.min(1, this.fuel + 0.4);
           this.dryNagged = false;

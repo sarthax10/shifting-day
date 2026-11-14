@@ -16,11 +16,32 @@ const DARK = '#0A0712';
 
 type Ctx = CanvasRenderingContext2D;
 
+/** Every canvas painted here, so the scratch ones can be given back afterwards (see freeScratch). */
+let made: HTMLCanvasElement[] = [];
+
 function mk(w: number, h: number): [HTMLCanvasElement, Ctx] {
   const c = document.createElement('canvas');
   c.width = Math.ceil(w);
   c.height = Math.ceil(h);
+  made.push(c);
   return [c, c.getContext('2d', { willReadFrequently: true })!];
+}
+
+/**
+ * Gives back the memory of every scratch canvas painting left behind - masks, outlines, re-inked
+ * copies - keeping only those a texture is still using. Phones (iPhones above all) close the tab
+ * outright when a page holds too much canvas memory, and building the logo and the truck makes dozens
+ * of full-size scratch canvases; a canvas sized to nothing is freed at once rather than whenever the
+ * garbage collector gets round to it.
+ */
+export function freeScratch(textures: { getTextureKeys(): string[]; get(key: string): { getSourceImage(): unknown } }) {
+  const inUse = new Set(textures.getTextureKeys().map((k) => textures.get(k).getSourceImage()));
+  for (const c of made) {
+    if (inUse.has(c)) continue;
+    c.width = 0;
+    c.height = 0;
+  }
+  made = made.filter((c) => inUse.has(c));
 }
 
 /** A seeded random number generator, so the lettering is the same every time the game opens. */

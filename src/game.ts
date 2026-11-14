@@ -18,7 +18,9 @@ import type { BiomeKey } from './legs';
 export { CHUNK, CHUNK_TOP } from './prepare';
 import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg } from './prepare';
 import { applyBiomeFX } from './postfx';
-import { chip, hudText, uiText, toastText, headingText, INK_BG } from './ui';
+import { chip, hudText, uiText, INK_BG } from './ui';
+import { Prompter } from './prompts';
+import { PosterList, posterSheet, openControls, DISPLAY as POSTER_FONT, MONO as POSTER_MONO, BONE_CSS, EMBER_CSS, INK_CSS } from './poster';
 
 // The physics library that ships inside Phaser. Its own types are loose, so bodies are `any` here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -213,13 +215,11 @@ export class PlayScene extends Phaser.Scene {
   private paused = false;
   private pauseUi?: Phaser.GameObjects.Container;
   private hint!: Phaser.GameObjects.Text;
-  private toast!: Phaser.GameObjects.Text;
-  private toastChip!: Phaser.GameObjects.Rectangle;
-  private toastAccent!: Phaser.GameObjects.Rectangle;
-  /** Messages waiting their turn: one toast shows at a time, for as long as it takes to read it,
-   * rather than a pile of them overlapping or the next one cutting the last off mid-word. */
-  private toastQueue: string[] = [];
-  private toastShowing = false;
+  /** In-world prompts that teach the controls as they come up (there are no toast messages). */
+  private prompts!: Prompter;
+  private pauseList?: PosterList;
+  private closeControls?: () => void;
+  private lostFoundList?: PosterList;
   private goButton!: Phaser.GameObjects.Container;
   private ropeButton!: Phaser.GameObjects.Container;
   private ropeLabel!: Phaser.GameObjects.Text;
@@ -299,6 +299,7 @@ export class PlayScene extends Phaser.Scene {
     this.truck();
     this.household();
     this.hud();
+    this.prompts = new Prompter(this);
     this.controls();
     this.extras = new Extras({
       scene: this,
@@ -319,6 +320,8 @@ export class PlayScene extends Phaser.Scene {
       truckAngle: () => this.chassis.angle,
       phase: () => this.phase,
       say: (t) => this.say(t),
+      cliffAhead: (x) =>
+        this.prompts.show('cliff', ['AIM AT THE TOP', { key: 'fire' }, 'THEN', { key: 'reel' }], () => ({ x: x + 120, y: groundY(x + 120) - 170 }), () => this.chassis.position.x > x + 260),
       reeling: () => this.keys.w.isDown || !!this.input.gamepad?.pad1?.buttons[1]?.pressed || this.touchReel,
       ground: (x) => groundY(x),
       cliffs: this.leg.features.filter((f) => f.length > 3).map(([fx]) => fx),
@@ -401,7 +404,7 @@ export class PlayScene extends Phaser.Scene {
         const g = this.gates.find((x) => x.body === a || x.body === b);
         if (g && !g.bumped) {
           g.bumped = true;
-          this.say("Ow! It's a barrier, not a suggestion.");
+          this.say('OW!');
           this.lookStartled(700);
         }
       }
@@ -490,7 +493,8 @@ export class PlayScene extends Phaser.Scene {
     this.exhaust(true);
     this.lookStartled(900);
     this.stallNagged = false;
-    this.say('Stalled! Too high a gear to pull away. Shift to 1st (press 1), then D.');
+    this.say('STALLED!');
+    this.prompts.show('stall', [{ key: 'first' }, 'FIRST GEAR, THEN', { key: 'gas' }], () => this.overTruck(), () => !this.drive.stalled);
   }
 
   /** Turning the key: only in a low gear, as the clutch can not drag the truck off in 3rd or 4th. */
@@ -499,7 +503,7 @@ export class PlayScene extends Phaser.Scene {
     if (typeof g === 'number' && g >= 3) {
       if (!this.stallNagged) {
         this.stallNagged = true;
-        this.say('It will only start in 1st, 2nd, N or R. Press 1.');
+        this.say('TOO HIGH A GEAR');
       }
       return;
     }
@@ -621,7 +625,7 @@ export class PlayScene extends Phaser.Scene {
       }
       if (!g.announced && gap < 900 && gap > 0) {
         g.announced = true;
-        this.say(this.leg.gateKind === 'rail' ? 'Level crossing! Stop at the line and put the handbrake on (P).' : 'Toll gate! Stop at the line and put the handbrake on (P).');
+        this.gatePrompt(g);
       }
       const stopped = gap > -10 && gap < 340 && Math.abs(forward) < 0.15;
       g.still = stopped ? g.still + dt : 0;
@@ -633,7 +637,7 @@ export class PlayScene extends Phaser.Scene {
         play('beep');
       } else if (g.state === 'closed' && g.still > 1 && !this.handbrake && !g.nagged) {
         g.nagged = true;
-        this.say('"Handbrake on, please. Rules are rules." (P)');
+        this.gatePrompt(g);
       }
       if (g.state === 'checking') {
         // Let the handbrake off too soon and the attendant starts over.
@@ -656,8 +660,7 @@ export class PlayScene extends Phaser.Scene {
           }
           g.beacon?.setAlpha(0);
           this.floatText(g.booth.x, g.booth.y - 20, 'Off you go!', C.cream);
-          const quips = ['Mind the hill. Low gear.', 'Lovely handbrake work.', 'Pull away in 1st, or you will stall.'];
-          this.say(`"${quips[this.leg.gates.indexOf(g.x) % quips.length]}" Handbrake off (P), then go.`);
+          this.prompts.show('gateGo', [{ key: 'handbrake' }, 'OFF, THEN', { key: 'gas' }], () => this.overTruck(), () => !this.handbrake);
         }
       }
     }
@@ -687,11 +690,11 @@ export class PlayScene extends Phaser.Scene {
     const nose = this.onTruckAt(TRUCK_NOSE, 0).x;
     if (this.parkNote === 0 && nose > bay().from - 1400) {
       this.parkNote = 1;
-      this.say('Nearly home! Park in the bay between the cones, then handbrake on (P).');
+      this.prompts.show('park', ['PARK BETWEEN THE CONES', { key: 'handbrake' }], () => ({ x: (bay().from + bay().to) / 2, y: this.chassis.position.y - 330 }), () => this.phase !== 'drive');
     }
     if (this.parkNote === 1 && nose > bay().to + 40) {
       this.parkNote = 2;
-      this.say('Too far! Stop, press R, and back into the bay.');
+      this.prompts.show('reverse', [{ key: 'reverse' }, 'BACK INTO THE BAY'], () => this.overTruck(), () => this.phase !== 'drive' || this.onTruckAt(TRUCK_NOSE, 0).x < bay().to);
     }
     const inside = back > bay().from && nose < bay().to;
     if (inside && Math.abs(forward) < 0.1 && this.handbrake) {
@@ -815,90 +818,64 @@ export class PlayScene extends Phaser.Scene {
    */
   private openLostFound() {
     if (this.lostFoundPanel) return;
-    const x = W / 2;
     const nameOf = (key: string) => ITEMS.find((i) => i.key === key)?.name ?? key;
     const isPet = (key: string) => !!ITEMS.find((i) => i.key === key)?.pet;
-    const rowsCount = () => this.trip.lost.length + this.pendingBroken.length;
-    const rowH = 84;
-    const h = 220 + Math.max(1, rowsCount()) * rowH;
-    const top = Math.max(140, H / 2 - h / 2);
-    const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(250);
+    const count = this.trip.lost.length + this.pendingBroken.length;
+    // The Lost & Found, printed like the title: the same sheet and type. Each row is the thing, its
+    // name, and a price on torn tape you click to claim it; claimed rows go dim and read CLAIMED.
+    const panel = posterSheet(this, 'LOST & FOUND', 250, { alpha: 0.9 });
     this.lostFoundPanel = panel;
-    const scrim = this.add.rectangle(x, H / 2, W, H, 0x120d1f, 0.55).setInteractive();
-    const board = this.add.rectangle(x, top + h / 2, 500, h, 0x7a4a2e).setStrokeStyle(6, 0x2a2140).setInteractive();
-    // Clicks on the board itself just stop there - only the darkened area outside it, caught by the
-    // scrim below, should close the panel.
-    board.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
-    const paper = this.add.rectangle(x, top + h / 2 + 8, 460, h - 60, 0xfff4e0).setStrokeStyle(4, 0x2a2140);
-    const sign = this.add.rectangle(x, top + 4, 330, 64, 0xd8572a).setStrokeStyle(5, 0x2a2140).setAngle(-2);
-    const title = this.add.text(x, top, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '40px', color: C.cream }).setOrigin(0.5).setAngle(-2);
-    title.setScale(Math.min(1, (300 * 0.85) / title.width));
-    const purse = this.add.text(x, top + 66, '', { fontFamily: TEXT, fontSize: '23px', color: C.walnut }).setOrigin(0.5);
-    // Three ways to close it, since one small button was apparently not enough to find: a bigger X in
-    // the board's corner, a click anywhere outside the board, and Escape.
-    scrim.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-      e.stopPropagation();
-      this.closeLostFound();
-    });
-    // A tab sitting above the board itself, clear of both the ribbon and the corner rivets.
-    const closeBtn = this.add.circle(x + 200, top - 22, 30, 0x2a2140).setStrokeStyle(3, 0xfff2da, 0.6).setInteractive({ cursor: CURSOR.open });
-    const closeX = this.add.text(x + 200, top - 23, 'X', { fontFamily: TITLE, fontSize: '28px', color: C.cream }).setOrigin(0.5);
-    closeBtn.on('pointerover', () => closeBtn.setScale(1.1));
-    closeBtn.on('pointerout', () => closeBtn.setScale(1));
-    closeBtn.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-      e.stopPropagation();
-      play('click');
-      this.closeLostFound();
-    });
-    panel.add([scrim, board, paper, sign, title, purse, closeBtn, closeX]);
-    for (const [px, py] of [[x - 215, top + 46], [x + 215, top + 46], [x - 215, top + h - 24], [x + 215, top + h - 24]]) panel.add(this.add.circle(px, py, 7, 0xc9a24a).setStrokeStyle(3, 0x2a2140));
-    const showPurse = () => purse.setText(`You have ${this.extras.coins} roll${this.extras.coins === 1 ? '' : 's'} of bubble wrap`);
+    const purse = this.add.text(W / 2, 266, '', { fontFamily: POSTER_MONO, fontStyle: 'bold', fontSize: '26px', color: BONE_CSS, letterSpacing: 5 }).setOrigin(0.5);
+    const status = this.add.text(W / 2, H - 196, '', { fontFamily: POSTER_MONO, fontStyle: 'bold', fontSize: '22px', color: EMBER_CSS, letterSpacing: 3, backgroundColor: INK_CSS, padding: { x: 16, y: 8 } }).setOrigin(0.5);
+    panel.add([purse, status]);
+    const showPurse = () => purse.setText(`BUBBLE WRAP: ${this.extras.coins} ROLL${this.extras.coins === 1 ? '' : 'S'}`);
     showPurse();
-    this.tweens.add({ targets: panel, alpha: { from: 0, to: 1 }, duration: 220 });
-    const empty = this.add.text(x, top + 150, 'Nothing handed in.\nEverything made it!', { fontFamily: TEXT, fontSize: '26px', color: C.sageDark, align: 'center' }).setOrigin(0.5).setVisible(!rowsCount());
-    panel.add(empty);
-    let y = top + 124;
+    if (!count) panel.add(this.add.text(W / 2, 520, 'NOTHING HANDED IN.\nEVERYTHING MADE IT.', { fontFamily: POSTER_FONT, fontSize: '56px', color: BONE_CSS, align: 'center', letterSpacing: 2 }).setOrigin(0.5).setAlpha(0.8));
+    const rowH = Math.min(96, 560 / Math.max(1, count));
+    let y = 360 + rowH / 2;
     const dropXs = [260, 420, 580, 740, 900, 1060];
     let dropAt = 0;
+    const left = W / 2 - 420;
     const row = (key: string, label: string, cost: number, act: () => void) => {
       const ry = y;
       const tex = isPet(key) ? `${key}_calm` : key;
       const frame = this.textures.exists(`${tex}#0`) ? `${tex}#0` : tex;
-      if (this.textures.exists(frame)) {
-        const icon = this.add.image(x - 185, ry, frame);
-        icon.setScale(Math.min(60 / icon.width, 60 / icon.height));
-        panel.add(icon);
-      }
-      const text = this.add.text(x - 140, ry, label, { fontFamily: TEXT, fontSize: '22px', color: C.ink, wordWrap: { width: 185 } }).setOrigin(0, 0.5);
-      const tag = this.add.rectangle(x + 165, ry, 120, 50, cost ? 0xf2c14e : 0x9cc58a).setStrokeStyle(4, 0x2a2140);
-      const price = this.add.text(x + 165, ry - 2, cost ? `${cost} rolls` : 'Free', { fontFamily: TITLE, fontSize: '26px', color: C.ink }).setOrigin(0.5);
-      panel.add([text, tag, price]);
+      const icon = this.textures.exists(frame) ? this.add.image(left, ry, frame) : undefined;
+      if (icon) icon.setScale(Math.min((rowH - 14) / icon.width, (rowH - 14) / icon.height, 1));
+      const text = this.add.text(left + 70, ry, label.toUpperCase(), { fontFamily: POSTER_FONT, fontSize: '40px', color: BONE_CSS, letterSpacing: 1 }).setOrigin(0, 0.5);
+      const tag = this.add.image(left + 820, ry, 't_tape').setOrigin(1, 0.5).setAngle(-1.5).setScale(220 / 640, 0.8);
+      const price = this.add.text(left + 710, ry, cost ? `${cost} ROLLS` : 'FREE', { fontFamily: POSTER_FONT, fontSize: '34px', color: INK_CSS, letterSpacing: 2 }).setOrigin(0.5);
+      const rule = this.add.rectangle(left - 40, ry + rowH / 2, 900, 2, 0xf3e3cc, 0.15).setOrigin(0, 0.5);
+      panel.add([rule, text, tag, price]);
+      if (icon) panel.add(icon);
       let done = false;
       tag.setInteractive({ cursor: CURSOR.open });
-      tag.on('pointerover', () => !done && tag.setScale(1.06));
-      tag.on('pointerout', () => tag.setScale(1));
+      tag.on('pointerover', () => !done && tag.setAngle(1.5));
+      tag.on('pointerout', () => tag.setAngle(-1.5));
       tag.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
         event.stopPropagation();
         if (done) return;
         if (this.extras.coins < cost) {
           play('click');
           this.tweens.add({ targets: [tag, price], x: '+=8', duration: 50, yoyo: true, repeat: 3 });
-          return this.say('Not enough bubble wrap. It lies where the road gets tricky.');
+          status.setText('NOT ENOUGH BUBBLE WRAP  ·  IT LIES WHERE THE ROAD GETS TRICKY');
+          return;
         }
         done = true;
         this.extras.coins -= cost;
         act();
         showPurse();
+        status.setText('');
         play('stamp');
-        tag.setFillStyle(0xd7e8c8).setScale(1);
-        price.setText('Done!').setColor(C.sageDark);
-        text.setColor(C.sageDark);
-        if (!this.trip.lost.length && !this.pendingBroken.length) this.time.delayedCall(500, () => this.closeLostFound());
+        tag.setTint(0x6a5a5a).disableInteractive();
+        price.setText('CLAIMED');
+        for (const o of [text, icon]) o?.setAlpha(0.4);
+        if (!this.trip.lost.length && !this.pendingBroken.length) this.time.delayedCall(600, () => this.closeLostFound());
       });
       y += rowH;
     };
     [...this.trip.lost].forEach((key) => {
-      const spec = ITEMS.find((s) => s.key === key);
+      const spec = ITEMS.find((sp) => sp.key === key);
       if (!spec) return;
       row(key, nameOf(key), isPet(key) ? 0 : 3, () => {
         const at = this.trip.lost.indexOf(key);
@@ -920,9 +897,14 @@ export class PlayScene extends Phaser.Scene {
         if (brokenAt >= 0) this.trip.broken.splice(brokenAt, 1);
       });
     });
+    const list = new PosterList(this, W / 2 - 90, H - 120, [{ label: () => 'BACK', act: () => this.closeLostFound() }], { size: 54 });
+    this.lostFoundList = list;
+    panel.add(list.container);
   }
 
   private closeLostFound() {
+    this.lostFoundList?.destroy();
+    this.lostFoundList = undefined;
     this.lostFoundPanel?.destroy(true);
     this.lostFoundPanel = undefined;
     const pending = this.trip.lost.length + this.pendingBroken.length;
@@ -972,10 +954,10 @@ export class PlayScene extends Phaser.Scene {
   /** The start of a leg: its name, large, and the mood of the place, fading away. */
   private legCard() {
     const moods: Record<string, string> = { autumn: 'A misty autumn morning', snow: 'Blue hour on the high pass', town: 'A rainy night in town', coast: 'A bright morning by the sea', meadow: '' };
-    const t1 = this.add.text(W / 2, 330, `Leg ${this.leg.n}  ·  ${this.leg.title}`, { fontFamily: TITLE, fontSize: '96px', color: C.cream, stroke: C.ink, strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(150).setAlpha(0);
-    const t2 = this.add.text(W / 2, 430, moods[this.leg.biome], { fontFamily: TEXT, fontSize: '40px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setOrigin(0.5).setScrollFactor(0).setDepth(150).setAlpha(0);
+    // The leg's title card, in the poster's type: the place in Anton, the mood in small mono on an ink strip.
+    const t1 = this.add.text(W / 2, 330, `${this.leg.title.toUpperCase()}`, { fontFamily: POSTER_FONT, fontSize: '128px', color: BONE_CSS, stroke: INK_CSS, strokeThickness: 12, letterSpacing: 3 }).setOrigin(0.5).setScrollFactor(0).setDepth(150).setAlpha(0).setShadow(8, 10, '#E3263A', 0, true, false);
+    const t2 = this.add.text(W / 2, 450, `LEG ${this.leg.n}  ·  ${moods[this.leg.biome].toUpperCase()}`, { fontFamily: POSTER_MONO, fontStyle: 'bold', fontSize: '28px', color: BONE_CSS, letterSpacing: 6, backgroundColor: INK_CSS, padding: { x: 20, y: 10 } }).setOrigin(0.5).setScrollFactor(0).setDepth(150).setAlpha(0);
     this.tweens.add({ targets: [t1, t2], alpha: 1, y: '-=20', duration: 900, ease: 'Sine.easeOut', hold: 2200, yoyo: true, onComplete: () => (t1.destroy(), t2.destroy()) });
-    this.time.delayedCall(4600, () => this.phase === 'pack' && this.say("Check your load and re-tie anything loose, then Let's go!"));
   }
 
   /** Confetti and streamers over the new house when the truck pulls up. */
@@ -1149,9 +1131,10 @@ export class PlayScene extends Phaser.Scene {
       this.grassBands.push({ strips, prev: n !== this.leg.n });
     }
 
-    if (this.leg.n === 1) this.add.text(960, 70, 'Shifting Day', { fontFamily: TITLE, fontSize: '120px', color: C.terracotta, stroke: C.ink, strokeThickness: 12 }).setOrigin(0.5, 0).setDepth(-5);
-    if (this.leg.n === 1) this.add.text(960, 222, 'Moving day. One small truck. Everything shifts.', { fontFamily: TEXT, fontSize: '38px', color: C.ink }).setOrigin(0.5, 0).setDepth(-5);
-    if (!this.leg.stop) this.add.text(FINISH + 700, 16, 'Home!', { fontFamily: TITLE, fontSize: '96px', color: C.mustard, stroke: C.ink, strokeThickness: 10 }).setOrigin(0.5, 0).setDepth(-5);
+    // Over the old street, the game's own logo, as on the title screen (painted there, so it may be missing
+    // if a leg was opened directly while building).
+    if (this.leg.n === 1 && this.textures.exists('t_logo')) this.add.image(960, 250, 't_logo').setScale(0.36).setDepth(-5);
+    if (!this.leg.stop) this.add.text(FINISH + 700, 30, 'HOME!', { fontFamily: POSTER_FONT, fontSize: '120px', color: BONE_CSS, stroke: INK_CSS, strokeThickness: 12, letterSpacing: 3 }).setOrigin(0.5, 0).setDepth(-5).setShadow(8, 10, '#E3263A', 0, true, false);
   }
 
   private road() {
@@ -1334,9 +1317,6 @@ export class PlayScene extends Phaser.Scene {
   private hud() {
     const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
     this.hint = this.add.text(40, 1006, '', { ...style, fontSize: '32px', backgroundColor: C.cream, padding: { x: 20, y: 10 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
-    this.toastChip = this.add.rectangle(W / 2, 330, 10, 10, INK_BG, 0.68).setOrigin(0.5).setStrokeStyle(2, 0xfff2da, 0.3).setScrollFactor(0).setDepth(99).setAlpha(0);
-    this.toastAccent = this.add.rectangle(W / 2, 330, 10, 5, 0xee6a4d, 0.9).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
-    this.toast = this.add.text(W / 2, 330, '', toastText(36)).setOrigin(0.5).setScrollFactor(0).setDepth(101).setAlpha(0);
     this.ropeLines = this.add.graphics().setDepth(25);
 
     // Top right: the points on the truck, and how far along the road it is.
@@ -1452,52 +1432,74 @@ export class PlayScene extends Phaser.Scene {
 
   /** ESC: a pause menu over everything, the engine silenced, Matter and tweens frozen while it's up. */
   private togglePause() {
-    // Escape closes whatever is on top first - the Lost & Found, if that's what is open - rather than
-    // opening the pause menu underneath it.
+    // Escape closes whatever is on top first - the Controls sheet, then the Lost & Found - rather than
+    // the menu underneath it.
+    if (this.closeControls) return this.closeControls();
     if (this.lostFoundPanel) return this.closeLostFound();
     if (this.phase === 'done' || this.phase === 'intro') return;
     if (this.pauseUi) this.closePause();
     else this.openPause();
   }
 
+  /** The pause menu, printed like the title screen: the same sheet, type and torn-tape list. */
   private openPause() {
     this.paused = true;
     this.matter.pause();
     this.tweens.pauseAll();
     this.engine.stop();
     play('click');
-    const cx = W / 2;
-    const cy = H / 2;
-    const ui = this.add.container(0, 0).setScrollFactor(0).setDepth(300);
+    const ui = posterSheet(this, 'PAUSED', 300, { alpha: 0.9, kicker: `LEG ${this.leg.n}  ·  ${this.leg.title.toUpperCase()}` });
     this.pauseUi = ui;
-    ui.add(this.add.rectangle(cx, cy, W, H, 0x120d1f, 0.68).setScrollFactor(0));
-    ui.add(this.add.rectangle(cx, cy, 580, 560, 0x2a2140).setScrollFactor(0));
-    ui.add(this.add.rectangle(cx, cy, 554, 534, 0xfff4e0).setScrollFactor(0));
-    ui.add(this.add.text(cx, cy - 210, 'PAUSED', headingText(56, C.ink)).setOrigin(0.5).setScrollFactor(0));
-    const resume = this.button(cx, cy - 100, 'btn', 'Resume', 36, () => this.closePause());
-    ui.add([resume.box]);
-    const sound = this.button(cx, cy + 10, 'btn_rope', '', 28, () => {
-      audio.toggleMute();
-      showSound();
-    });
-    const showSound = () => sound.label.setText(`Sound: ${audio.muted ? 'off' : 'on'}`);
-    showSound();
-    ui.add([sound.box]);
-    const restart = this.button(cx, cy + 120, 'btn_rope', 'Restart leg', 30, () => {
-      this.closePause();
-      void this.scene.restart({ leg: this.leg.n, trip: this.trip });
-    });
-    ui.add([restart.box]);
-    const quit = this.button(cx, cy + 220, 'btn_rope', 'Quit to title', 30, () => {
-      this.closePause();
-      this.scene.start('title');
-    });
-    ui.add([quit.box]);
-    for (const box of [resume.box, sound.box, restart.box, quit.box]) box.setDepth(100);
+    const list = new PosterList(
+      this,
+      W / 2 - 200,
+      400,
+      [
+        { label: () => 'RESUME', act: () => this.closePause() },
+        {
+          label: () => 'CONTROLS',
+          act: () => {
+            list.setEnabled(false);
+            this.closeControls = openControls(this, 320, () => {
+              this.closeControls = undefined;
+              list.setEnabled(true);
+            }, this.prompts.mode);
+          },
+        },
+        {
+          label: () => `SOUND: ${audio.muted ? 'OFF' : 'ON'}`,
+          act: () => {
+            audio.toggleMute();
+            list.refresh();
+          },
+        },
+        {
+          label: () => 'RESTART LEG',
+          act: () => {
+            this.closePause();
+            void this.scene.restart({ leg: this.leg.n, trip: this.trip });
+          },
+        },
+        {
+          label: () => 'QUIT TO TITLE',
+          act: () => {
+            this.closePause();
+            this.scene.start('title');
+          },
+        },
+      ],
+      { step: 92, size: 62 },
+    );
+    this.pauseList = list;
+    ui.add(list.container);
+    ui.add(this.add.text(W / 2, H - 70, 'ESC / START  TO RESUME', { fontFamily: POSTER_MONO, fontStyle: 'bold', fontSize: '22px', color: BONE_CSS, letterSpacing: 5 }).setOrigin(0.5).setAlpha(0.55));
   }
 
   private closePause() {
     if (!this.pauseUi) return;
+    this.closeControls?.();
+    this.pauseList?.destroy();
+    this.pauseList = undefined;
     this.pauseUi.destroy(true);
     this.pauseUi = undefined;
     this.paused = false;
@@ -1532,8 +1534,11 @@ export class PlayScene extends Phaser.Scene {
 
   /** A number that floats up from a point in the world and fades: points won or lost. */
   private floatText(x: number, y: number, text: string, colour: string) {
-    const t = this.add.text(x, y, text, { fontFamily: TITLE, fontSize: '40px', color: colour, stroke: C.ink, strokeThickness: 7 }).setOrigin(0.5).setDepth(130);
-    this.tweens.add({ targets: t, y: y - 90, alpha: 0, duration: 1400, ease: 'Sine.easeOut', onComplete: () => t.destroy() });
+    const t = this.add.text(x, y, text.toUpperCase(), { fontFamily: POSTER_FONT, fontSize: '42px', color: colour, stroke: INK_CSS, strokeThickness: 9, letterSpacing: 1 }).setOrigin(0.5).setDepth(130).setAngle(Math.random() * 6 - 3);
+    t.setShadow(4, 5, '#E3263A', 0, true, false);
+    t.setScale(0.6);
+    this.tweens.add({ targets: t, scale: 1, duration: 160, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: t, y: y - 90, alpha: 0, delay: 500, duration: 1100, ease: 'Sine.easeIn', onComplete: () => t.destroy() });
   }
 
   /** Sets the mouse pointer, only when it changes. */
@@ -1617,6 +1622,7 @@ export class PlayScene extends Phaser.Scene {
     // button each for the things a key-press does - handbrake, gears, fire. Gas/brake and reeling are
     // read every frame elsewhere (triggers and held buttons); this is just the press-once actions.
     this.input.gamepad?.on('down', (_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
+      if (this.paused && button.index !== 9) return;
       if (this.phase === 'drive' && button.index === 0) this.toggleHandbrake();
       else if (this.phase === 'drive' && button.index === 2) this.crossbow.fire();
       else if (button.index === 4) this.gearShift(-1);
@@ -1675,49 +1681,24 @@ export class PlayScene extends Phaser.Scene {
   }
 
   /**
-   * Queues a line to say: one toast shows at a time, however many are waiting, each for as long as it
-   * takes to actually read it rather than a flat timer that clips a long line short. The same line
-   * waiting twice in a row is dropped, and the queue is capped so a burst of events cannot pile up
-   * toasts the player will never catch up to reading.
+   * A word or two popped up over the truck - what just happened, in the moment. There are no toast
+   * messages any more: anything that teaches is an in-world prompt (see prompts.ts), and anything that
+   * just happened is said right where it happened, in a couple of words, not a sentence to stop and read.
    */
   private say(text: string) {
-    if (this.toastQueue[this.toastQueue.length - 1] === text || (this.toastShowing && this.toast.text === text)) return;
-    this.toastQueue.push(text);
-    if (this.toastQueue.length > 4) this.toastQueue.shift();
-    this.drainToast();
+    const p = this.onTruckAt(240, -250);
+    this.floatText(p.x, p.y, text, C.cream);
   }
 
-  private drainToast() {
-    if (this.toastShowing) return;
-    const text = this.toastQueue.shift();
-    if (text === undefined) return;
-    this.toastShowing = true;
-    const baseY = 330;
-    this.toast.setText(text).setPosition(W / 2, baseY - 20);
-    const w = Math.min(820, this.toast.width + 70);
-    const h = this.toast.height + 40;
-    this.toastChip.setSize(w, h).setPosition(W / 2, baseY - 20);
-    this.toastAccent.setSize(Math.min(220, w * 0.4), 5).setPosition(W / 2, baseY - 20 - h / 2 + 4);
-    const items = [this.toast, this.toastChip, this.toastAccent];
-    this.tweens.killTweensOf(items);
-    for (const o of items) o.setAlpha(0);
-    this.tweens.add({ targets: items, alpha: 1, y: `+=20`, duration: 240, ease: 'Back.easeOut' });
-    // Reading time, not a flat timer: roughly how long the line takes to actually read, floored and
-    // capped so a one-word line still shows for a beat and a long one never overstays its welcome.
-    const words = text.split(/\s+/).length;
-    const holdMs = Phaser.Math.Clamp(1000 + words * 280, 1700, 5200);
-    this.time.delayedCall(holdMs, () => {
-      this.tweens.add({
-        targets: items,
-        alpha: 0,
-        y: '-=14',
-        duration: 320,
-        onComplete: () => {
-          this.toastShowing = false;
-          this.drainToast();
-        },
-      });
-    });
+  /** Over the truck's cab, where prompts about driving it stand. */
+  private overTruck() {
+    const p = this.onTruckAt(150, -320);
+    return { x: p.x, y: p.y };
+  }
+
+  /** At a toll gate or level crossing: stop at the line, handbrake on, until the attendant starts checking. */
+  private gatePrompt(g: { booth: { x: number; y: number }; state: string }) {
+    this.prompts.show('gate', ['STOP AT THE LINE', { key: 'handbrake' }], () => ({ x: g.booth.x, y: g.booth.y - 230 }), () => g.state !== 'closed');
   }
 
   /** Where the middle of the top of the truck bed is. */
@@ -1740,8 +1721,8 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private tie(t: Thing) {
-    if (!this.onTruck(t)) return this.say('Rope only holds things that are on the truck.');
-    if (this.ropesLeft < 1) return this.say('No rope left. Untie something first.');
+    if (!this.onTruck(t)) return this.floatText(t.body.position.x, t.body.bounds.min.y - 30, 'NOT ON THE TRUCK', C.cream);
+    if (this.ropesLeft < 1) return this.floatText(t.body.position.x, t.body.bounds.min.y - 30, 'NO ROPE LEFT', C.cream);
     const bed = this.bed();
     const lo = TRUCK.bed.x + TRUCK.tailgate.w + 6;
     const hi = TRUCK.cab.x - 6;
@@ -1809,7 +1790,7 @@ export class PlayScene extends Phaser.Scene {
       this.held.thing.img.setDepth(20);
       this.held = null;
     }
-    if (!this.things.some((t) => this.onTruck(t))) return this.say('Put something on the truck first!');
+    if (!this.things.some((t) => this.onTruck(t))) return this.say('LOAD SOMETHING FIRST');
     for (const t of this.things) {
       if (!this.onTruck(t)) this.leave(t);
       else t.packed = true;
@@ -1831,7 +1812,15 @@ export class PlayScene extends Phaser.Scene {
     this.dash.show(true);
     for (const o of this.touchButtons) o.setVisible(true);
     this.handbrake = true;
-    this.say("Handbrake's on. Press P to let it off, then hold D. Change up with SHIFT when the gear goes red.");
+    // Teach driving one step at a time, each prompt waiting for the step before it to be done.
+    this.prompts.show('hb', [{ key: 'handbrake' }, 'HANDBRAKE OFF'], () => this.overTruck(), () => !this.handbrake, {
+      once: true,
+      onDone: () =>
+        this.prompts.show('gas', ['HOLD', { key: 'gas' }, 'TO DRIVE'], () => this.overTruck(), () => this.chassis.speed > 4, {
+          once: true,
+          onDone: () => this.prompts.show('shift', [{ key: 'gearUp' }, 'WHEN THE GEAR GOES RED'], () => this.overTruck(), () => typeof this.drive.target === 'number' && this.drive.target >= 2, { once: true }),
+        }),
+    });
     play('honk');
     this.engine.start();
     music.play('drive');
@@ -1862,7 +1851,7 @@ export class PlayScene extends Phaser.Scene {
     }
     if (!result.why) return;
     play('grind');
-    this.say(result.why);
+    this.say(result.why.toUpperCase());
     this.cameras.main.shake(120, 0.0015);
     this.lookStartled(500);
   }
@@ -1882,7 +1871,7 @@ export class PlayScene extends Phaser.Scene {
     if (jolt > 0.3) this.backfire();
     if (size > 0.7 && !this.joltTip) {
       this.joltTip = true;
-      this.say(jolt > 0 ? 'Lurch! Ease off the gas before you shift.' : 'Clunk! Too slow for that gear: rev a little first.');
+      this.say(jolt > 0 ? 'LURCH! EASE OFF FIRST' : 'CLUNK! REV IT UP');
     }
   }
 
@@ -2038,7 +2027,7 @@ export class PlayScene extends Phaser.Scene {
     this.leave(t);
     t.lost = true;
     this.floatText(t.body.position.x, t.body.position.y - 40, 'Lost!', C.cream);
-    this.say(t.spec.pet ? `${t.spec.name} fell off!` : `Oh no, ${this.name(t)}!`);
+    this.prompts.dismiss(false, 'catch');
     play('lost');
     if (t.spec.pet) this.time.delayedCall(250, () => play(t.spec.key === 'cat' ? 'meow' : 'chirp'));
     this.cameras.main.shake(120, 0.002);
@@ -2062,7 +2051,6 @@ export class PlayScene extends Phaser.Scene {
     M.Body.setAngularVelocity(t.body, 0);
     t.groundFrames = 0;
     this.floatText(t.body.position.x, t.body.position.y - 40, 'Saved!', C.sageDark);
-    this.say(t.spec.pet ? `${t.spec.name} is back aboard!` : `Caught ${this.name(t)}!`);
     play('stamp', 1, 1.3);
     return true;
   }
@@ -2074,7 +2062,6 @@ export class PlayScene extends Phaser.Scene {
     t.aboard = false;
     this.redraw(t.ink, `${t.spec.key}_broken`);
     if (!wasAboard) return;
-    this.say(`Crack! That was ${this.name(t)}.`);
     for (let i = 0; i < 12; i++) {
       const { x, y } = t.body.position;
       const shard = this.add.image(x, y, 'bit').setDepth(24).setScale(0.3 + Math.random() * 0.5, 0.25).setTint(i % 2 ? 0xfff2da : 0xb9bccb).setRotation(Math.random() * 6);
@@ -2190,7 +2177,11 @@ export class PlayScene extends Phaser.Scene {
       this.hint.setVisible(true);
       this.setRoping(false);
       play('honk');
-      this.say('Load up! Drag things on to the truck.');
+      const ropes = this.ropesLeft;
+      this.prompts.show('load', [{ key: 'drag' }, 'THINGS ONTO THE TRUCK'], () => this.overTruck(), () => this.things.some((t) => this.onTruck(t)), {
+        once: true,
+        onDone: () => this.prompts.show('rope', [{ key: 'rope' }, 'THEN CLICK A THING TO TIE IT'], () => this.overTruck(), () => this.ropesLeft < ropes || this.phase !== 'pack', { once: true }),
+      });
     }
   }
 
@@ -2375,6 +2366,7 @@ export class PlayScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     if (this.paused) return;
+    this.prompts.update();
     const cam = this.cameras.main;
     this.frame++;
     if (this.phase === 'intro') this.reverseIn(delta);
@@ -2488,6 +2480,7 @@ export class PlayScene extends Phaser.Scene {
           continue;
         }
         t.groundFrames = this.onRoad(t) ? t.groundFrames + 1 : 0;
+        if (t.groundFrames === 1 && t.aboard && t.packed) this.prompts.show('catch', [{ key: 'fire' }, 'IT TO CATCH IT'], () => ({ x: t.body.position.x, y: t.body.bounds.min.y - 80 }), () => t.groundFrames === 0);
         // A longer grace than it looks like it needs: long enough to actually aim the crossbow at
         // whatever just fell and reel it back, not just long enough to notice it happened.
         if (t.groundFrames <= 110 && t.body.position.x > cx - 1100) continue;

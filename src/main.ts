@@ -215,6 +215,13 @@ game.events.once('ready', async () => {
   game.scene.add('title', TitleScene, true);
 });
 
+// A phone held upright shows the 'turn your phone' card (index.html) over a game too small to play:
+// let the game sleep meanwhile, rather than keep drawing and holding memory through the rotation.
+const upright = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
+const rest = () => (upright.matches ? game.loop.sleep() : game.loop.wake());
+upright.addEventListener('change', rest);
+game.events.once('ready', rest);
+
 // Handy while building the game.
 (window as unknown as { game: Phaser.Game }).game = game;
 

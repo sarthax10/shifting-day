@@ -6,7 +6,8 @@ import { H, W } from './terrain';
 import { prepareLeg } from './prepare';
 import { clearTrip, loadTrip, type Trip } from './legs';
 import { ambience, audio, music, play } from './audio';
-import { BONE, INK, RAMP_DARK, buildLogo, catEye, halftoneBeam, halftoneSun, inked, mk, paperBackdrop, printRays, tape, type Logo } from './logo';
+import { openControls } from './poster';
+import { BONE, INK, RAMP_DARK, freeScratch, buildLogo, catEye, halftoneBeam, halftoneSun, inked, mk, paperBackdrop, printRays, tape, type Logo } from './logo';
 
 /**
  * The title screen, designed outward from the logo. The logo is a screen-printed punk gig poster -
@@ -112,6 +113,7 @@ export class TitleScene extends Phaser.Scene {
     this.buildWordmark();
     this.buildMenu();
     this.buildFrame();
+    freeScratch(this.textures);
     this.cameras.main.fadeIn(700, 0, 0, 0);
   }
 
@@ -127,8 +129,9 @@ export class TitleScene extends Phaser.Scene {
     logoMeta = buildLogo();
     this.addCanvas('t_logo', logoMeta.canvas);
     this.addCanvas('t_eye', catEye());
-    this.addCanvas('t_paper', paperBackdrop(W, H));
-    this.addCanvas('t_rays', printRays(2800, 28, '#3A0F22'));
+    // The paper and the rays are soft, so they are painted small and drawn large: a fraction of the memory.
+    if (!this.textures.exists('t_paper')) this.addCanvas('t_paper', paperBackdrop(W / 2, H / 2));
+    this.addCanvas('t_rays', printRays(1000, 28, '#3A0F22'));
     this.addCanvas('t_hsun', halftoneSun(900));
     this.addCanvas('t_beam', halftoneBeam(760, 320));
     this.addCanvas('t_tape', tape(640, 84, '#FF6A30', 11));
@@ -142,10 +145,10 @@ export class TitleScene extends Phaser.Scene {
 
   /** The black sheet, the rays and the sun, and the road band at the foot. */
   private buildSheet() {
-    this.add.image(0, 0, 't_paper').setOrigin(0).setDepth(-100);
+    this.add.image(0, 0, 't_paper').setOrigin(0).setDisplaySize(W, H).setDepth(-100);
 
-    const rays = this.add.image(W / 2, SUN_Y, 't_rays').setDepth(-95).setAlpha(0).setScale(0.6);
-    this.tweens.add({ targets: rays, alpha: 1, scale: 1, duration: 1400, ease: 'Expo.easeOut', delay: 150 });
+    const rays = this.add.image(W / 2, SUN_Y, 't_rays').setDepth(-95).setAlpha(0).setScale(1.7);
+    this.tweens.add({ targets: rays, alpha: 1, scale: 2.8, duration: 1400, ease: 'Expo.easeOut', delay: 150 });
     this.tweens.add({ targets: rays, angle: 360, duration: 160000, repeat: -1 });
     this.parallax(rays, 8);
 
@@ -374,6 +377,17 @@ export class TitleScene extends Phaser.Scene {
     if (saved) defs.push({ label: () => `CONTINUE — LEG ${saved.leg}`, act: () => this.start(saved) });
     defs.push({ label: () => (saved ? 'NEW TRIP' : 'START THE DRIVE'), act: () => this.start(null) });
     defs.push({
+      label: () => 'CONTROLS',
+      act: () => {
+        // The Controls sheet over the title; the menu under it sleeps until it closes.
+        this.ready = false;
+        play('click');
+        const pad = (this.input.gamepad?.total ?? 0) > 0;
+        const touch = this.sys.game.device.input.touch && !this.sys.game.device.os.desktop;
+        openControls(this, 200, () => (this.ready = true), pad ? 'pad' : touch ? 'touch' : 'keys');
+      },
+    });
+    defs.push({
       label: () => `SOUND: ${audio.muted ? 'OFF' : 'ON'}`,
       act: () => {
         audio.unlock();
@@ -407,7 +421,7 @@ export class TitleScene extends Phaser.Scene {
     });
 
     const touch = this.sys.game.device.input.touch;
-    const hint = touch ? 'TAP TO CHOOSE' : '↑↓ CHOOSE   ·   ENTER / Ⓐ GO   ·   M SOUND';
+    const hint = touch ? 'TAP TO CHOOSE' : 'UP / DOWN  CHOOSE   ·   ENTER / A  GO   ·   M  SOUND';
     const h = this.add.text(W - LEFT, ROAD + 46, hint, { fontFamily: MONO, fontStyle: 'bold', fontSize: '22px', color: BONE, letterSpacing: 4 }).setOrigin(1, 0.5).setDepth(60).setAlpha(0);
     this.tweens.add({ targets: h, alpha: 0.6, duration: 800, delay: 2600 });
 

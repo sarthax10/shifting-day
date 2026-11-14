@@ -24,6 +24,8 @@ export interface CrossbowHost {
   truckAngle(): number;
   phase(): string;
   say(text: string): void;
+  /** The first cliff of a leg is coming up, starting at this x: show how to climb it. */
+  cliffAhead(x: number): void;
   reeling(): boolean;
   /** The height of the road's surface at x. */
   ground(x: number): number;
@@ -237,7 +239,7 @@ export class Crossbow {
       const by = -b.velocity.y / speed;
       for (let i = 1; i <= 5; i++) g.fillStyle(0xfff0cc, 0.3 - i * 0.05).fillCircle(b.position.x + bx * i * 7, b.position.y + by * i * 7, 5 - i * 0.6);
       if (Math.hypot(b.position.x - m.x, b.position.y - m.y) > CABLE || b.position.y > m.y + 1400) {
-        this.host.say('Out of cable. Aim nearer.');
+        this.host.say('OUT OF CABLE');
         this.release();
       }
       this.cable(g, m, b.position, true);
@@ -275,9 +277,10 @@ export class Crossbow {
       if ((this.length <= SHORTEST + 1 && d < SHORTEST + 60) || an.x < m.x - 500) this.release();
     }
     // The first cliff of a leg, explained once.
-    if (driving && !this.taught && this.host.cliffs.some((c) => c > m.x && c - m.x < 1300)) {
+    const cliff = this.host.cliffs.find((c) => c > m.x && c - m.x < 1300);
+    if (driving && !this.taught && cliff !== undefined) {
       this.taught = true;
-      this.host.say('A cliff! Too steep to drive. Aim at the top with the mouse, click to fire, then hold W to reel in.');
+      this.host.cliffAhead(cliff);
     }
   }
 
