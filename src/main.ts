@@ -19,6 +19,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'm' || e.key === 'M') audio.toggleMute();
 });
 import { H, W } from './terrain';
+import { runQA } from './qa';
 
 /** Soft pictures that ink cannot draw: the sky, shadows, darker corners and paper grain. */
 function softTextures(textures: Phaser.Textures.TextureManager) {
@@ -227,4 +228,7 @@ if (import.meta.env.DEV) {
     await wait(1200);
     return n;
   };
+
+  // While building: window.__qa() plays the whole game, start to finish, and reports what it found.
+  (window as unknown as { __qa: () => ReturnType<typeof runQA> }).__qa = () => runQA(game);
 }
