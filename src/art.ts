@@ -1,4 +1,4 @@
-import { C, Pen, mix, type Pt } from './ink';
+import { C, Pen, ellipsePts, mix, type Pt } from './ink';
 import { FEATURES, type Feature } from './terrain';
 
 /** Room around every drawing for the ink line, which strays outside the shape. */
@@ -643,12 +643,23 @@ function archPts(cx: number, cy: number, r: number, from = 0): Pt[] {
 }
 
 /**
- * The truck, as a heavily modified, home-built rig: whoever owns it has been bolting things on for years, and
- * a lot of it came out of the house they are now moving out of. A teal wedge of a body, lifted on big tyres;
- * a hot-rod blower bursting up through the bonnet; an ironing board for a sun visor; a primer-grey door that
- * came off another truck; a riveted rust patch; duct tape over a crack; a side pipe; bungee cords; a spare
- * tyre strapped to the roll bar; and on the roll bar's turret the anchor crossbow, its cable running down to
- * a drum in the bed. Lines are deliberately a little crooked. The shapes the physics uses keep their places.
+ * The truck, designed from scratch in the title screen's inks - ember, bone, red and ink - by the three
+ * hands a vehicle like this needs:
+ *
+ * - as a car: one confident shape. A rounded fifties cab with a peaked brow over a raked windscreen, a
+ *   short hood sloping down to a chrome grille, body-colour arches sitting over big lifted wheels, and a
+ *   long straight belt line tying cab to bed. Mass sits low (ink chassis, sills and bumper); the cab stands
+ *   tall and light (bone roof).
+ * - as a poster: flat inks with a hard ink outline, a bone stripe with a red pinstripe running nose to
+ *   tail, halftone dots for shade along the lower body, a bone highlight down every top edge, and on the
+ *   door a roundel with the cat from the logo.
+ * - as a game piece: a silhouette that reads at the HUD's tiny size - a clear nose and tail, the headlight
+ *   (the truck's eye) in a proper chrome pod, a big window for the driver, stake sides so the cargo sits in
+ *   the bed rather than on a plank, and a turret for the crossbow on a roll hoop behind the cab.
+ *
+ * Every shape the physics uses, and every spot the game hangs something from (the eye, the driver, the
+ * freshener, the aerial, the exhaust, the crossbow's turret, the cable's fairlead), stays where it was.
+ * 'truck' is everything behind the cargo; 'truck_front' is the bed side, drawn in front of it.
  */
 export function truckArt(front = false): Art {
   const t = TRUCK;
@@ -656,160 +667,205 @@ export function truckArt(front = false): Art {
   const X = (n: number) => n + t.ox;
   const Y = (n: number) => n + t.oy;
   const P = (pts: Pt[]) => pts.map(([x, y]) => [X(x), Y(y)] as Pt);
-  const BODY = C.teal;
-  const SHADE = '#22707F';
-  const HILITE = '#8CD8E0';
-  const STEEL = '#3A3644';
-  const STEEL_LIT = '#5A5668';
-  const ACCENT = C.mustard;
-  const MUD = '#7A5444';
-  const PRIMER = '#A8A4B4';
-  const RUST = '#C2643A';
-  const TAPE = '#C9CCD6';
+  const INKT = '#231A2A';
+  const INK_LIT = '#3E3248';
+  const BODY = '#F0643A';
+  const BODY_SHADE = '#C8432F';
+  const BODY_DEEP = '#9E2F2A';
+  const BODY_LIGHT = '#FF9A6C';
+  const BONE = '#F3E3CC';
+  const BONE_SHADE = '#D8C1A2';
+  const RED = '#C8283A';
+  const AMBER = '#FFB23F';
   const done = (key: string): Art => ({ key, svg: p.svg(t.w, t.h), w: t.w, h: t.h });
-  const rivets = (pts: Pt[]) => {
-    for (const [x, y] of pts) p.dot(X(x), Y(y), 2.4, '#2A2733');
+  const solid = { stroke: INKT, raw: true } as const;
+
+  /** Whether a point is inside a polygon (truck coordinates). */
+  const inside = (poly: Pt[], x: number, y: number) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  /** Halftone shade: ink dots inside a shape, growing toward its foot, kept clear of its edge. */
+  const halftone = (poly: Pt[], y0: number, y1: number, step = 9, maxR = 3.2, color = BODY_DEEP, opacity = 0.55) => {
+    const xs = poly.map((q) => q[0]);
+    for (let y = y0, row = 0; y <= y1; y += step, row++) {
+      const r = maxR * ((y - y0) / (y1 - y0)) ** 1.2;
+      if (r < 0.6) continue;
+      for (let x = Math.min(...xs) + (row % 2) * (step / 2); x <= Math.max(...xs); x += step) {
+        if ([[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].every(([dx, dy]) => inside(poly, x + dx, y + dy))) {
+          p.shape(ellipsePts(X(x), Y(y), r, r), { fill: color, stroke: null, raw: true, wobble: 0.2, opacity });
+        }
+      }
+    }
+  };
+  /** A wheel arch in body colour: a thick band over the tyre, an ink well inside it, piping on its edge. */
+  const arch = (cx: number, cy: number, outer: number, inner: number, part: 'well' | 'band' | 'both' = 'both') => {
+    // The arch stops a little above the wheel's centre (the picture ends just there), with flat-cut feet.
+    const a0 = Math.PI + 0.16;
+    const span = Math.PI - 0.32;
+    const well: Pt[] = [];
+    for (let i = 0; i <= 18; i++) {
+      const a = a0 + (i / 18) * span;
+      well.push([cx + Math.cos(a) * inner, cy + Math.sin(a) * inner * 0.95]);
+    }
+    if (part !== 'band') p.shape(P(well), { fill: '#1A1420', raw: true, stroke: null });
+    if (part === 'well') return;
+    const band: Pt[] = [];
+    for (let i = 0; i <= 18; i++) {
+      const a = a0 + (i / 18) * span;
+      band.push([cx + Math.cos(a) * outer, cy + Math.sin(a) * outer * 0.92]);
+    }
+    for (let i = 18; i >= 0; i--) {
+      const a = a0 + (i / 18) * span;
+      band.push([cx + Math.cos(a) * inner, cy + Math.sin(a) * inner * 0.95]);
+    }
+    p.shape(P(band), { fill: BODY, ...solid, width: 5.5, shade: [{ pts: [[X(cx - outer), Y(cy - outer * 0.35)], [X(cx + outer), Y(cy - outer * 0.35)], [X(cx + outer), Y(cy + 4)], [X(cx - outer), Y(cy + 4)]], color: BODY_SHADE }] });
+    const top: Pt[] = [];
+    for (let i = 2; i <= 16; i++) {
+      const a = Math.PI + (i / 18) * Math.PI;
+      top.push([X(cx + Math.cos(a) * (outer - 5)), Y(cy + Math.sin(a) * (outer - 5) * 0.92)]);
+    }
+    p.line(top, { width: 2.6, color: BODY_LIGHT, raw: true, opacity: 0.9 });
   };
 
   if (front) {
-    // The bed's side: diamond plate, a teal rail, and bolted over the back of it, a fridge door from the old
-    // kitchen, magnets and all. The company name is painted on a board, crooked, by hand.
-    p.shape(P([[-196, -48], [192, -50], [192, 28], [-196, 28]]), { fill: STEEL, raw: true, width: 6, wobble: 1.2, shade: [{ pts: [[X(-200), Y(8)], [X(200), Y(4)], [X(200), Y(40)], [X(-200), Y(40)]], color: '#2A2733' }] });
-    for (let x = -186; x < 182; x += 16) {
-      for (let y = -38, row = 0; y < 20; y += 12, row++) {
-        const dx = row % 2 ? 8 : 0;
-        p.line([[X(x + dx), Y(y)], [X(x + 5 + dx), Y(y + 4)]], { width: 2, color: STEEL_LIT, raw: true, opacity: 0.5 });
-      }
+    // ---- The bed's near side, in front of the cargo: an ember panel, a stake rail on top, the livery
+    // stripe running on from the cab, a bone name plate (the game writes the company name on it), and
+    // the tail light and chevrons at the back.
+    const panel: Pt[] = [[-200, -56], [188, -56], [188, 22], [-194, 22], [-200, 14]];
+    p.shape(P(panel), { fill: BODY, ...solid, width: 6.5, shade: [{ pts: [[X(-210), Y(4)], [X(200), Y(4)], [X(200), Y(30)], [X(-210), Y(30)]], color: BODY_SHADE }] });
+    halftone(panel, -4, 20, 8, 2.8);
+    p.line(P([[-194, -50], [184, -50]]), { width: 2.6, color: BODY_LIGHT, raw: true });
+    // The stripe.
+    p.shape(P([[-200, -42], [188, -42], [188, -30], [-200, -30]]), { fill: BONE, raw: true, stroke: null });
+    p.line(P([[-200, -26], [188, -26]]), { width: 3, color: RED, raw: true });
+    // Stake posts and the top rail: ink posts, bone slats.
+    p.shape(P([[-204, -84], [192, -84], [192, -72], [-204, -72]]), { fill: BONE, ...solid, width: 4.5, shade: [{ pts: [[X(-210), Y(-77)], [X(200), Y(-77)], [X(200), Y(-70)], [X(-210), Y(-70)]], color: BONE_SHADE }] });
+    for (const x of [-196, -102, -8, 86, 180]) {
+      p.rect(X(x - 7), Y(-88), 14, 34, { fill: INKT, r: 3, stroke: INKT, width: 2 });
+      p.dot(X(x), Y(-78), 2.2, '#8A8090');
     }
-    p.shape(P([[-200, -58], [196, -60], [196, -46], [-200, -44]]), { fill: BODY, raw: true, width: 5, wobble: 1.2 });
-    // The fridge door.
-    p.shape(P([[-188, -40], [-104, -42], [-102, 22], [-186, 24]]), { fill: '#F2EEE2', raw: true, width: 4.5, wobble: 1.4, shade: [{ pts: [[X(-130), Y(-50)], [X(-96), Y(-50)], [X(-96), Y(30)], [X(-130), Y(30)]], color: '#D8D2C2' }] });
-    p.rect(X(-120), Y(-30), 7, 40, { fill: CHROME, r: 3, width: 3 });
-    for (const [mx, my, mc] of [[-170, -28, '#E8743E'], [-150, -6, '#3FA7B5'], [-176, 8, '#FFB23F'], [-140, 12, '#D8403A']] as const) p.ellipse(X(mx), Y(my), 6, 6, { fill: mc, width: 2.5 });
-    rivets([[-184, -36], [-106, -38], [-184, 20], [-106, 18]]);
-    // The name board, painted by hand.
-    p.shape(P([[-84, -28], [118, -32], [120, 10], [-82, 14]]), { fill: C.cream, raw: true, width: 4, wobble: 1.6 });
-    p.shape(P([[-78, -23], [113, -27], [115, 5], [-76, 9]]), { stroke: C.terracotta, raw: true, width: 1.6, wobble: 1.6 });
-    // Hazard stripes on the tailgate's edge, and a tail light.
-    for (let k = 0; k < 4; k++) p.shape(P([[-204, -44 + k * 18], [-196, -44 + k * 18], [-196, -36 + k * 18], [-204, -28 + k * 18]]), { fill: k % 2 ? '#2A2733' : ACCENT, raw: true, stroke: null });
-    p.rect(X(-212), Y(-14), 12, 18, { fill: '#D8403A', r: 3, width: 3 });
-    for (let i = 0; i < 14; i++) {
-      const x = -186 + ((i * 53) % 370);
-      const y = 22 - ((i * 7) % 12);
-      p.ellipse(X(x), Y(y), 3 + ((i * 5) % 7), 2 + ((i * 3) % 4), { fill: MUD, stroke: null, opacity: 0.6, wobble: 1.2 });
-    }
+    // The name plate.
+    p.shape(P([[-104, -20], [104, -20], [104, 8], [-104, 8]]), { fill: BONE, ...solid, width: 4 });
+    p.line(P([[-98, -16], [98, -16]]), { width: 1.6, color: BONE_SHADE, raw: true });
+    for (const [x, y] of [[-98, -14], [98, -14], [-98, 2], [98, 2]] as const) p.dot(X(x), Y(y), 2, INK_LIT);
+    // Tail: chevrons up the tailgate's edge, a round tail light in a chrome ring, and a reflector.
+    for (let k = 0; k < 4; k++) p.shape(P([[-208, -58 + k * 18], [-198, -58 + k * 18], [-198, -50 + k * 18], [-208, -42 + k * 18]]), { fill: k % 2 ? INKT : AMBER, raw: true, stroke: null });
+    p.ellipse(X(-212), Y(-8), 12, 12, { fill: '#E9E4DA', stroke: INKT, width: 3.5 });
+    p.ellipse(X(-212), Y(-8), 8, 8, { fill: RED, stroke: null });
+    p.dot(X(-214), Y(-11), 2.4, '#FFB0A0');
+    // The back wheel's arch sits over the panel's foot (its dark well is in the layer behind the wheel).
+    arch(t.wheels[0].x, t.wheels[0].y, 84, 66, 'band');
     return done('truck_front');
   }
 
-  const over = (cx: number, r: number, y: number): Pt[] => {
-    const out: Pt[] = [];
-    for (let i = 0; i <= 16; i++) {
-      const a = Math.PI + (i / 16) * Math.PI;
-      out.push([cx + Math.cos(a) * r, y + Math.sin(a) * r]);
-    }
-    return out;
-  };
   const [rw, fw] = t.wheels;
 
-  // The frame, a skid plate, and the exhaust: a side pipe running along under the doors.
-  p.rect(X(-190), Y(24), 600, 28, { fill: '#2A2733', r: 6, width: 5 });
-  p.rect(X(-216), Y(34), 40, 12, { fill: CHROME, r: 5, width: 4.5 });
+  // ---- Chassis: an ink frame, the tailpipe, and a tow hitch, all low and dark so the mass sits down.
+  p.rect(X(-194), Y(20), 606, 30, { fill: INKT, r: 8, stroke: INKT, width: 3 });
+  p.line(P([[-186, 26], [404, 26]]), { width: 2, color: INK_LIT, raw: true });
+  p.rect(X(-222), Y(31), 44, 12, { fill: '#E9E4DA', r: 6, stroke: INKT, width: 3.5 });
+  p.ellipse(X(-222), Y(37), 4, 5, { fill: INKT, stroke: null });
+  p.rect(X(-214), Y(42), 22, 10, { fill: INK_LIT, r: 3, stroke: INKT, width: 3 });
 
-  // The roll bar out of the bed's front corner, the spare tyre strapped to it, and the cable drum in its foot.
-  p.ellipse(X(124), Y(-108), 30, 30, { fill: TYRE, width: 4.5 });
-  p.ellipse(X(124), Y(-108), 16, 16, { fill: '#D8403A', width: 3.5 });
-  p.dot(X(124), Y(-108), 4, CHROME);
-  p.line(P([[96, -96], [154, -120]]), { width: 4, color: ACCENT });
-  p.shape(P([[150, 2], [150, -150], [160, -172], [200, -180], [214, -170], [180, -164], [168, -150], [168, 2]]), { fill: STEEL, raw: true, width: 5, wobble: 1, shade: [{ pts: [[X(158), Y(-200)], [X(240), Y(-200)], [X(240), Y(10)], [X(158), Y(10)]], color: '#2A2733' }] });
-  p.rect(X(118), Y(-62), 64, 50, { fill: '#2A2733', r: 8, width: 5 });
-  p.ellipse(X(150), Y(-37), 22, 22, { fill: STEEL_LIT, width: 4 });
-  for (let k = 0; k < 4; k++) p.ellipse(X(150), Y(-37), 18 - k * 4, 18 - k * 4, { stroke: '#B9BCCB', width: 1.8 });
-  p.dot(X(150), Y(-37), 4, ACCENT);
-  p.line(P([[160, -50], [166, -100], [170, -150], [184, -172]]), { width: 2.6, color: '#B9BCCB', opacity: 0.95 });
-  p.rect(X(176), Y(-196), 40, 18, { fill: STEEL, r: 5, width: 4.5 });
-  p.ellipse(X(196), Y(-198), 22, 7, { fill: ACCENT, width: 3.5 });
+  // ---- The far stake rail, behind the cargo, in shadow.
+  p.shape(P([[-196, -84], [184, -84], [184, -74], [-196, -74]]), { fill: BONE_SHADE, raw: true, stroke: INKT, width: 3.5, opacity: 0.85 });
+  for (const x of [-150, -56, 38, 132]) p.rect(X(x - 6), Y(-86), 12, 86, { fill: INK_LIT, r: 3, stroke: INKT, width: 2.5 });
 
-  // Fender flares over the wheels, bolted on.
-  for (const w of [rw, fw]) {
-    p.shape(P([...over(w.x, 74, w.y), [w.x + 74, w.y], [w.x - 74, w.y]]), { fill: '#2A2733', raw: true, width: 5, wobble: 1.2 });
-    p.shape(P([...over(w.x, 62, w.y), [w.x + 62, w.y + 2], [w.x - 62, w.y + 2]]), { fill: WELL, raw: true, stroke: null, wobble: 0.4 });
-    for (let k = 1; k < 8; k++) {
-      const a = Math.PI + (k / 8) * Math.PI;
-      p.dot(X(w.x + Math.cos(a) * 68), Y(w.y + Math.sin(a) * 68), 2.4, STEEL_LIT);
-    }
+  // ---- The roll hoop behind the cab, the crossbow's turret on top, spotlights, and the cable drum.
+  p.line(P([[164, 4], [164, -150], [170, -172], [186, -184]]), { width: 15, color: INKT });
+  p.line(P([[164, 0], [164, -150], [170, -172], [186, -184]]), { width: 7, color: INK_LIT });
+  p.ellipse(X(196), Y(-194), 22, 14, { fill: INKT, stroke: INKT, width: 3 });
+  p.ellipse(X(196), Y(-200), 18, 9, { fill: BODY, stroke: INKT, width: 3.5 });
+  p.dot(X(196), Y(-201), 4, AMBER);
+  for (const sx of [148, 176]) {
+    p.ellipse(X(sx), Y(-166), 11, 11, { fill: INKT, stroke: INKT, width: 3 });
+    p.ellipse(X(sx), Y(-166), 7, 7, { fill: '#FFF2C8', stroke: null });
   }
+  p.line(P([[140, -166], [184, -166]]), { width: 3.5, color: INKT, raw: true });
+  p.ellipse(X(140), Y(-30), 26, 26, { fill: INKT, stroke: INKT, width: 3 });
+  for (let k = 0; k < 3; k++) p.ellipse(X(140), Y(-30), 20 - k * 5, 20 - k * 5, { stroke: '#B7AFA6', width: 1.8 });
+  p.dot(X(140), Y(-30), 4, BODY);
+  p.line(P([[146, -50], [156, -110], [176, -180]]), { width: 2.4, color: '#B7AFA6', opacity: 0.9 });
 
-  // The body: a teal wedge, a little lumpy where it has been knocked about.
+  // ---- Wheel arch over the front wheel (the back one is on the bed side, in front of the cargo).
+  arch(fw.x, fw.y, 84, 66);
+  arch(rw.x, rw.y, 84, 66, 'well');
+
+  // ---- The body: one rounded shape from the back of the cab to the nose.
   const body: Pt[] = [
-    [186, 30], [184, -122], [192, -152], [272, -160], [298, -152], [350, -80], [426, -64], [460, -44], [466, -8], [448, 30],
+    [186, 22], [184, -110], [190, -140], [206, -152], [296, -158], [326, -154], [338, -126], [350, -86], [368, -72], [430, -64], [460, -56], [474, -38], [476, -6], [468, 16], [444, 24], [380, 24],
   ];
-  p.shape(P(body), { fill: BODY, raw: true, width: 6.5, wobble: 1.4, shade: [{ pts: [[X(180), Y(-30)], [X(480), Y(-34)], [X(480), Y(40)], [X(180), Y(40)]], color: SHADE }] });
-  p.shape(P([[184, -122], [192, -152], [272, -160], [298, -152], [306, -138], [210, -138], [198, -120]]), { fill: '#2A2733', raw: true, width: 4, wobble: 1 });
-  // The door, from another truck altogether: primer grey, with its own rivets.
-  p.shape(P([[210, -78], [338, -80], [338, 2], [210, 4]]), { fill: PRIMER, raw: true, width: 4.5, wobble: 1.6, shade: [{ pts: [[X(206), Y(-20)], [X(340), Y(-22)], [X(340), Y(8)], [X(206), Y(8)]], color: '#8E8A9C' }] });
-  rivets([[216, -72], [332, -74], [216, -4], [332, -4], [274, -76]]);
-  p.rect(X(300), Y(-60), 22, 8, { fill: '#2A2733', r: 3, width: 3 });
-  // The side window, angled at the front. The driver sits in it as a sprite of their own.
-  const win: Pt[] = [[214, -134], [290, -134], [334, -86], [214, -82]];
-  p.shape(P(win), { fill: GLASS, raw: true, width: 5, wobble: 1 });
-  p.shape(P([[214, -112], [226, -112], [226, -82], [214, -82]]), { fill: '#3A2E44', raw: true, stroke: null, opacity: 0.6 });
-  // A rust patch riveted over a hole on the cab's back corner, and duct tape over a crack in the bonnet.
-  p.shape(P([[188, -70], [206, -74], [208, -30], [190, -26]]), { fill: RUST, raw: true, width: 3.5, wobble: 1.8 });
-  rivets([[192, -66], [204, -68], [192, -32], [204, -34]]);
-  for (const [a, b] of [[[384, -70], [414, -56]], [[384, -56], [414, -70]]] as const) p.line(P([a as unknown as Pt, b as unknown as Pt]), { width: 7, color: TAPE, raw: true, wobble: 0.4 });
-  // The accent stripe (it stops at the borrowed door), and the crease along the nose.
-  p.shape(P([[340, -46], [460, -30], [462, -22], [340, -38]]), { fill: ACCENT, raw: true, stroke: null });
-  p.shape(P([[188, -44], [208, -44], [208, -36], [190, -36]]), { fill: ACCENT, raw: true, stroke: null });
-  // The blower, bursting up through the bonnet: chrome, ribbed, with its scoop and a belt.
-  p.shape(P([[352, -86], [402, -88], [404, -66], [350, -64]]), { fill: CHROME, raw: true, width: 4.5, wobble: 0.8, shade: [{ pts: [[X(378), Y(-100)], [X(410), Y(-100)], [X(410), Y(-60)], [X(380), Y(-60)]], color: CHROME_SHADE }] });
-  for (let k = 0; k < 4; k++) p.line(P([[358 + k * 12, -84], [358 + k * 12, -68]]), { width: 2, color: CHROME_SHADE, raw: true });
-  // A tall scoop on top, breaking the silhouette, with the butterfly flaps showing.
-  p.shape(P([[356, -86], [360, -128], [404, -132], [402, -88]]), { fill: '#2A2733', raw: true, width: 4.5, wobble: 0.8 });
-  p.rect(X(366), Y(-126), 30, 12, { fill: '#14121A', r: 2, stroke: null });
-  for (const fx of [372, 384]) p.line(P([[fx, -124], [fx + 6, -116]]), { width: 2.4, color: CHROME, raw: true });
-  p.line(P([[358, -104], [403, -108]]), { width: 3, color: ACCENT, raw: true });
-  p.line(P([[400, -70], [416, -40]]), { width: 3, color: '#2A2733' });
-  // The ironing board, bolted over the windscreen as a sun visor, its legs folded under it.
-  p.shape(P([[262, -170], [340, -160], [372, -150], [380, -142], [370, -136], [338, -140], [264, -152]]), { fill: '#F4F0E6', raw: true, width: 4.5, wobble: 1 });
-  for (const [fx, fy] of [[282, -160], [302, -158], [322, -154], [342, -150], [360, -145], [292, -154], [332, -146]] as const) p.ellipse(X(fx), Y(fy), 4, 3, { fill: '#F48C9A', stroke: null });
-  p.line(P([[290, -152], [300, -142], [320, -146]]), { width: 2.5, color: '#9AA0B5' });
-  // The snorkel up the windscreen pillar, and the light bar on the roof.
-  p.line(P([[352, -58], [342, -96], [304, -146], [300, -166]]), { width: 13, raw: true });
-  p.line(P([[352, -58], [342, -96], [304, -146], [300, -166]]), { width: 7, color: '#3A3644', raw: true });
-  p.rect(X(290), Y(-180), 22, 14, { fill: '#2A2733', r: 4, width: 3.5 });
-  p.rect(X(204), Y(-172), 64, 12, { fill: '#2A2733', r: 4, width: 4 });
-  for (let k = 0; k < 4; k++) p.rect(X(209 + k * 14), Y(-169), 10, 6, { fill: '#FFF2B0', r: 2, stroke: null });
-  // A wing mirror on a stalk, with a spotlight taped to it.
-  p.line([[X(338), Y(-96)], [X(354), Y(-106)]], { width: 4, raw: true });
-  p.shape(P([[350, -118], [366, -114], [362, -98], [348, -100]]), { fill: '#2A2733', raw: true, width: 3.5 });
-  p.ellipse(X(362), Y(-124), 8, 8, { fill: ACCENT, width: 3 });
-  p.ellipse(X(362), Y(-124), 4.5, 4.5, { fill: '#FFF6D8', stroke: null });
-  p.line(P([[354, -118], [366, -116]]), { width: 4, color: TAPE, raw: true });
-  // Rockers and the side pipe along them.
-  p.shape(P([[186, 6], [452, 4], [446, 30], [186, 30]]), { fill: '#2A2733', raw: true, width: 4, wobble: 1 });
-  p.rect(X(212), Y(30), 150, 12, { fill: CHROME, r: 6, width: 4 });
-  for (let k = 0; k < 6; k++) p.dot(X(222 + k * 24), Y(36), 2.2, CHROME_SHADE);
-  for (const [mx, my, mr] of [[232, 22, 7], [246, 14, 4], [390, 20, 6], [410, 12, 4]] as const) p.ellipse(X(mx), Y(my), mr, mr * 0.8, { fill: MUD, stroke: null, opacity: 0.7, wobble: 1.4 });
+  p.shape(P(body), { fill: BODY, stroke: INKT, width: 7, wobble: 1.2, shade: [{ pts: [[X(180), Y(-6)], [X(490), Y(-12)], [X(490), Y(40)], [X(180), Y(40)]], color: BODY_SHADE }, { pts: [[X(180), Y(-160)], [X(198), Y(-160)], [X(196), Y(30)], [X(180), Y(30)]], color: BODY_SHADE }] });
+  halftone([[196, -100], [340, -100], [360, -70], [460, -54], [470, -30], [466, 14], [196, 14]], -20, 16, 8, 3);
 
-  // The nose: a mesh grille, and the headlight (the eye sits in it) in a narrow, angled housing.
-  p.shape(P([[440, -48], [462, -40], [466, -8], [448, -4]]), { fill: '#1E1C26', raw: true, width: 4 });
-  for (let k = 0; k < 4; k++) p.line(P([[446, -40 + k * 9], [462, -36 + k * 9]]), { width: 1.8, color: '#4A4658', raw: true });
-  p.shape(P([[380, -42], [420, -50], [424, -10], [384, -14]]), { fill: '#2A2733', raw: true, width: 4.5, wobble: 1 });
-  p.ellipse(X(401), Y(-28), 15, 17, { fill: CHROME, width: 4 });
-  p.ellipse(X(401), Y(-28), 11, 13, { fill: WELL, stroke: null });
-  p.shape(P([[376, -46], [426, -56], [428, -46], [380, -38]]), { fill: BODY, raw: true, width: 3.5 });
-  // The bumper: a steel plate, a little bent, with the cable's fairlead, red shackles, and bungee cords.
-  p.shape(P([[396, 8], [474, 0], [482, 30], [404, 38]]), { fill: STEEL, raw: true, width: 5, wobble: 1.6, shade: [{ pts: [[X(390), Y(24)], [X(490), Y(20)], [X(490), Y(40)], [X(390), Y(40)]], color: '#2A2733' }] });
-  p.rect(X(426), Y(12), 26, 9, { fill: '#14121A', r: 4, stroke: null });
-  for (const [sx, sy] of [[404, 18], [470, 12]] as const) {
-    p.ellipse(X(sx), Y(sy), 6, 6, { fill: '#D8403A', width: 3 });
-    p.ellipse(X(sx), Y(sy), 2.5, 2.5, { fill: '#2A2733', stroke: null });
+  // The bone roof, two-tone, with three amber marker lights on its brow.
+  p.shape(P([[190, -136], [204, -150], [296, -156], [326, -152], [332, -140], [212, -140], [198, -128]]), { fill: BONE, ...solid, width: 5, wobble: 0.8 });
+  p.line(P([[208, -150], [296, -154]]), { width: 3, color: '#FFFFFF', raw: true, opacity: 0.7 });
+  for (const mx of [234, 258, 282]) p.rect(X(mx - 7), Y(-162), 14, 7, { fill: AMBER, r: 3, stroke: INKT, width: 2.5 });
+  // The brow: a peak over the windscreen.
+  p.shape(P([[300, -156], [354, -150], [356, -141], [328, -140]]), { fill: BODY, ...solid, width: 4.5 });
+
+  // Windows: the side glass (the driver sits in it) and a sliver of the raked windscreen.
+  const glass: Pt[] = [[214, -134], [318, -136], [336, -92], [214, -88]];
+  p.shape(P(glass), { fill: GLASS, ...solid, width: 5 });
+  p.shape(P([[226, -134], [252, -134], [228, -96], [214, -96], [214, -116]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.28 });
+  p.shape(P([[262, -135], [272, -135], [250, -90], [240, -90]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.2 });
+  p.shape(P([[330, -140], [342, -140], [356, -92], [344, -90]]), { fill: '#8FC0CC', ...solid, width: 3.5 });
+  // The B-pillar and the door's shut lines, handle and mirror.
+  p.line(P([[212, -132], [212, -86]]), { width: 4, color: INKT, raw: true });
+  p.shape(P([[208, -82], [344, -84], [356, -60], [352, 12], [208, 12]]), { stroke: INKT, width: 2.6, raw: true, opacity: 0.85 });
+  p.rect(X(306), Y(-70), 26, 7, { fill: BONE, r: 3, stroke: INKT, width: 2.5 });
+  p.line(P([[338, -100], [356, -114]]), { width: 4, color: INKT, raw: true });
+  p.ellipse(X(360), Y(-120), 10, 12, { fill: INKT, stroke: INKT, width: 2.5 });
+  p.ellipse(X(361), Y(-121), 6, 8, { fill: '#B7D8DE', stroke: null });
+
+  // The livery: a bone stripe with a red pinstripe, running back from a point on the fender.
+  p.shape(P([[186, -42], [366, -42], [382, -36], [366, -30], [186, -30]]), { fill: BONE, raw: true, stroke: null });
+  p.line(P([[186, -26], [372, -26]]), { width: 3, color: RED, raw: true });
+
+  // The door roundel: the cat from the logo, in ink on bone, in a red ring.
+  p.ellipse(X(276), Y(-4), 25, 25, { fill: RED, stroke: INKT, width: 3.5 });
+  p.ellipse(X(276), Y(-4), 19, 19, { fill: BONE, stroke: null });
+  p.shape(P([[262, 8], [262, -8], [258, -20], [268, -12], [284, -12], [294, -20], [290, -8], [290, 8]]), { fill: INKT, raw: true, stroke: null });
+  for (const ex of [270, 282]) p.ellipse(X(ex), Y(-3), 3.2, 2.2, { fill: AMBER, stroke: null });
+
+  // The hood: louvres, and a bone highlight down its top edge.
+  for (let k = 0; k < 3; k++) p.line(P([[372 + k * 12, -56], [380 + k * 12, -54]]), { width: 3, color: BODY_DEEP, raw: true });
+  p.line(P([[352, -82], [370, -70], [430, -62], [458, -54]]), { width: 3, color: BODY_LIGHT, opacity: 0.95 });
+
+  // The headlight pod (the eye sits in it): body-colour cowl, chrome ring, dark socket.
+  p.ellipse(X(401), Y(-28), 30, 30, { fill: BODY, stroke: INKT, width: 5, shade: [{ pts: [[X(370), Y(-24)], [X(434), Y(-28)], [X(434), Y(4)], [X(370), Y(4)]], color: BODY_SHADE }] });
+  p.ellipse(X(401), Y(-28), 23, 23, { fill: '#E9E4DA', stroke: INKT, width: 3.5 });
+  p.ellipse(X(401), Y(-28), 18, 18, { fill: '#2A2236', stroke: null });
+  p.shape(P([[372, -50], [424, -56], [430, -48], [376, -42]]), { fill: BODY, ...solid, width: 3.5 });
+
+  // The grille: a chrome surround and ink bars, set into the nose.
+  p.shape(P([[442, -48], [470, -40], [474, -4], [468, 10], [446, 12]]), { fill: '#E9E4DA', ...solid, width: 4.5 });
+  p.shape(P([[448, -40], [464, -35], [467, -4], [462, 4], [450, 5]]), { fill: INKT, raw: true, stroke: null });
+  for (let k = 0; k < 5; k++) p.line(P([[450, -32 + k * 8], [465, -29 + k * 8]]), { width: 2.4, color: '#B7AFA6', raw: true });
+
+  // Sills: an ink rocker with a bone pinstripe, and the fuel cap behind the door.
+  p.shape(P([[186, 10], [444, 10], [440, 26], [186, 26]]), { fill: INKT, ...solid, width: 3 });
+  p.line(P([[192, 14], [436, 14]]), { width: 2, color: BONE, raw: true, opacity: 0.8 });
+  p.ellipse(X(198), Y(-62), 7, 7, { fill: '#E9E4DA', stroke: INKT, width: 2.5 });
+
+  // The bumper: ink, chunky, with the winch's fairlead (the cable runs from here) and red tow hooks.
+  p.shape(P([[432, 6], [484, 2], [490, 32], [436, 38]]), { fill: INKT, ...solid, width: 4, shade: [{ pts: [[X(430), Y(26)], [X(494), Y(22)], [X(494), Y(40)], [X(430), Y(40)]], color: '#14101A' }] });
+  p.line(P([[440, 10], [482, 6]]), { width: 2.2, color: INK_LIT, raw: true });
+  p.rect(X(454), Y(16), 24, 10, { fill: '#E9E4DA', r: 4, stroke: INKT, width: 2.5 });
+  for (const hx of [442, 484]) {
+    p.ellipse(X(hx), Y(22), 6, 6, { fill: RED, stroke: INKT, width: 2.5 });
+    p.ellipse(X(hx), Y(22), 2.4, 2.4, { fill: INKT, stroke: null });
   }
-  p.line(P([[410, 26], [430, 38], [452, 30]]), { width: 3.5, color: '#E8743E' });
-  p.line(P([[440, 4], [456, 20], [474, 16]]), { width: 3.5, color: '#3FA7B5' });
-  p.shape(P([[196, -112], [204, -112], [194, -76], [190, -76]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.16 });
   return done('truck');
 }
+
 
 /**
  * The crossbow on its turret: a heavy stock on a rail, recurve limbs at the front with a cable-steel string,
@@ -855,9 +911,8 @@ export function boltArt(): Art {
 }
 
 /**
- * The wheels, mismatched, as on a truck built from whatever was going: at the back, big knobbies on dark
- * beadlock wheels with a mustard ring; at the front, an old red steel wheel with a chrome cap and a whitewall
- * that has seen better days. Same size, so the physics does not care.
+ * The wheels, as a matched pair: chunky ink tyres with bold tread blocks and a raised bone ring on the
+ * sidewall, on deep-dish ember steel wheels with a bone rim line, six ink holes and a chrome cap.
  */
 export function wheelArt(front = false): Art {
   const r = TRUCK.wheelR;
@@ -865,38 +920,39 @@ export function wheelArt(front = false): Art {
   const c = s / 2;
   const key = front ? 'wheel_front' : 'wheel';
   const p = pen(key);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + (front ? 0.1 : 0);
-    const b = a + 0.22;
-    p.shape([[c + Math.cos(a) * (r + 3), c + Math.sin(a) * (r + 3)], [c + Math.cos(b) * (r + 3), c + Math.sin(b) * (r + 3)], [c + Math.cos(b) * (r - 6), c + Math.sin(b) * (r - 6)], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { fill: '#2A2733', raw: true, width: 3 });
+  const INKT = '#231A2A';
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const b = a + 0.2;
+    p.shape([[c + Math.cos(a) * (r + 4), c + Math.sin(a) * (r + 4)], [c + Math.cos(b) * (r + 4), c + Math.sin(b) * (r + 4)], [c + Math.cos(b) * (r - 6), c + Math.sin(b) * (r - 6)], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { fill: INKT, raw: true, stroke: INKT, width: 2.5 });
   }
-  p.ellipse(c, c, r - 2, r - 2, { fill: TYRE, width: 4 });
-  if (front) {
-    // An old whitewall, scuffed, on a red steelie with a chrome cap.
-    p.ellipse(c, c, r * 0.78, r * 0.78, { fill: '#E8E2D4', width: 3 });
-    p.ellipse(c, c, r * 0.64, r * 0.64, { fill: TYRE, stroke: null });
-    p.ellipse(c, c, r * 0.58, r * 0.58, { fill: '#D8403A', width: 4, shade: [{ pts: [[c - r, c + 4], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: '#A82E2E' }] });
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2 + 0.3;
-      p.ellipse(c + Math.cos(a) * r * 0.4, c + Math.sin(a) * r * 0.4, r * 0.07, r * 0.07, { fill: '#7A2A2E', stroke: null });
+  p.ellipse(c, c, r - 1, r - 1, { fill: '#2E2638', stroke: INKT, width: 4 });
+  // A raised bone ring on the sidewall, broken like raised lettering.
+  for (let i = 0; i < 10; i++) {
+    const a0 = (i / 10) * Math.PI * 2;
+    const pts: [number, number][] = [];
+    for (let k = 0; k <= 4; k++) {
+      const a = a0 + (k / 4) * 0.45;
+      pts.push([c + Math.cos(a) * r * 0.84, c + Math.sin(a) * r * 0.84]);
     }
-    p.ellipse(c, c, r * 0.24, r * 0.24, { fill: CHROME, width: 3.5, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: CHROME_SHADE }] });
-    p.line([[c - r * 0.7, c - r * 0.3], [c - r * 0.6, c - r * 0.5]], { width: 3, color: '#8A8478', raw: true });
-    return { key, svg: p.svg(s, s), w: s, h: s };
+    p.line(pts, { width: 3, color: '#F3E3CC', raw: true, opacity: 0.85 });
   }
-  p.ellipse(c, c, r * 0.8, r * 0.8, { fill: '#3A3644', stroke: null });
-  p.ellipse(c, c, r * 0.62, r * 0.62, { fill: '#2A2733', width: 4 });
-  p.ellipse(c, c, r * 0.6, r * 0.6, { stroke: C.mustard, width: 5 });
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    p.dot(c + Math.cos(a) * r * 0.6, c + Math.sin(a) * r * 0.6, 1.8, '#2A2733');
-  }
+  // The deep-dish wheel.
+  p.ellipse(c, c, r * 0.66, r * 0.66, { fill: '#F0643A', stroke: INKT, width: 4, shade: [{ pts: [[c - r, c + 2], [c + r, c - 4], [c + r, c + r], [c - r, c + r]], color: '#C8432F' }] });
+  p.ellipse(c, c, r * 0.56, r * 0.56, { stroke: '#F3E3CC', width: 3.5 });
   for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    p.ellipse(c + Math.cos(a) * r * 0.36, c + Math.sin(a) * r * 0.36, r * 0.08, r * 0.08, { fill: '#14121A', stroke: null });
+    const a = (i / 6) * Math.PI * 2 + 0.26;
+    p.ellipse(c + Math.cos(a) * r * 0.38, c + Math.sin(a) * r * 0.38, r * 0.085, r * 0.085, { fill: INKT, stroke: null });
   }
-  p.ellipse(c, c, r * 0.18, r * 0.18, { fill: C.mustard, width: 3.5 });
-  p.ellipse(c - r * 0.05, c - r * 0.06, r * 0.06, r * 0.04, { fill: '#FFFFFF', stroke: null, opacity: 0.8 });
+  p.ellipse(c, c, r * 0.2, r * 0.2, { fill: '#E9E4DA', stroke: INKT, width: 3, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: '#B7AFA6' }] });
+  p.dot(c, c, r * 0.06, INKT);
+  // A highlight on the tyre's shoulder.
+  const hi: [number, number][] = [];
+  for (let k = 0; k <= 6; k++) {
+    const a = Math.PI * 1.05 + (k / 6) * 0.7;
+    hi.push([c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]);
+  }
+  p.line(hi, { width: 3, color: '#FFFFFF', raw: true, opacity: 0.22 });
   return { key, svg: p.svg(s, s), w: s, h: s };
 }
 

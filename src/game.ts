@@ -1260,7 +1260,8 @@ export class PlayScene extends Phaser.Scene {
     this.eye.img.setDepth(11.5);
     this.freshener = this.inked(0, 0, 'freshener').img.setOrigin(0.5, 2 / 62).setDepth(10.6);
     this.aerial = this.inked(0, 0, 'aerial').img.setOrigin(10 / 52, 96 / 100).setDepth(9.5);
-    this.decal = this.add.text(0, 0, 'SHIFT HAPPENS', { fontFamily: TITLE, fontSize: '22px', color: C.terracotta }).setOrigin(0.5).setDepth(21.5);
+    // The company name, in the logo's face, printed in ink on the bed's bone name plate.
+    this.decal = this.add.text(0, 0, 'SHIFT HAPPENS', { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '24px', color: '#231A2A', letterSpacing: 4 }).setOrigin(0.5).setDepth(21.5);
     this.decal.setScale(Math.min(1, 176 / this.decal.width));
   }
 

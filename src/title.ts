@@ -209,10 +209,11 @@ export class TitleScene extends Phaser.Scene {
         CW,
         CH,
       );
-      ctx.font = '22px "Fraunces", serif';
+      ctx.font = '24px "Anton", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#EE6A4D';
+      ctx.fillStyle = '#231A2A';
+      ctx.letterSpacing = '4px';
       const decal = Math.min(1, 176 / ctx.measureText('SHIFT HAPPENS').width);
       ctx.save();
       ctx.translate(OX, OY - 7);
