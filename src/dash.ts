@@ -1,49 +1,56 @@
 import Phaser from 'phaser';
-import { DASH, SPEEDO as DIAL } from './art';
 import { Drivetrain, REDLINE, gearName } from './drivetrain';
-import { C } from './ink';
 
-const TEXT = '"Karla", sans-serif';
-const TITLE = '"Fraunces", serif';
-const hex = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
-
-/** Where the dashboard sits on screen, and where its two gauges sit inside it. */
-const X0 = 20;
-const Y0 = 758;
-const SPD = { x: X0 + DASH.speedo.x, y: Y0 + DASH.speedo.y };
-const GEAR = { x: X0 + DASH.gear.x, y: Y0 + DASH.gear.y };
-/** The handbrake: its warning lamp, and the slot its handle slides in. */
-const LAMP = { x: X0 + DASH.lamp.x, y: Y0 + DASH.lamp.y };
-const SLOT = { x: X0 + DASH.slot.x, on: Y0 + DASH.slot.top - 4, off: Y0 + DASH.slot.bottom - 50 };
 /**
- * The dashboard is laid out at full size, then shrunk into the bottom-left corner as one piece,
- * so it stays out of the way of the truck.
+ * The dashboard, printed in the title's inks like everything else on the interface: an ink plate with
+ * an ember rule along its top and halftone dots fading in at one end, a dial with bone ticks and a red
+ * zone, an ember needle, a fuel arc, the gear as a big Anton numeral on a bone key-cap with a row of
+ * square shift lights over it, and the handbrake as a lamp and a lever in a slot. Same job as ever:
+ * speed, distance, fuel, gear, revs and the handbrake at a glance, in the bottom-left corner.
  */
-export const DASH_SCALE = 0.68;
-const CORNER = { x: 14, y: 1068 };
-/** Where the dashboard's right edge ends up on screen, for things placed beside it. */
-export const DASH_RIGHT = CORNER.x + (DASH.w - 8) * DASH_SCALE;
+const DISPLAY = '"Anton", "Impact", sans-serif';
+const MONO = '"Space Mono", monospace';
+const INK = 0x0a0712;
+const OX = 0x3a0f22;
+const RED = 0xe3263a;
+const EMBER = 0xff6a30;
+const BONE = 0xf3e3cc;
+const BONE_CSS = '#F3E3CC';
+const INK_CSS = '#0A0712';
+const EMBER_CSS = '#FF6A30';
+const RED_CSS = '#E3263A';
+
+/** The plate's size and where it sits: bottom-left, out of the truck's way. */
+const PW = 570;
+const PH = 250;
+const CORNER = { x: 14, y: 1066 };
+export const DASH_SCALE = 1;
+/** Where the dashboard's right edge is on screen, for things placed beside it. */
+export const DASH_RIGHT = CORNER.x + PW;
 /** Game speed (pixels a frame) to the number shown on the speedometer. */
 export const KMH = 5.6;
 
-/**
- * The dashboard: a vintage speedometer (needle, odometer, fuel) and a matching small gauge with the gear in it.
- * The gear number turns red when the engine is near the redline, as a nudge to change up.
- */
+/** The dial: its centre in the plate, radius, and sweep. */
+const SPD = { x: 132, y: 134, r: 104 };
+const MAX = 80;
+const FROM = Math.PI * 0.75;
+const SWEEP = Math.PI * 1.5;
+const GEAR = { x: 336, y: 128 };
+const HB = { x: 486, lamp: 64, top: 118, bottom: 222 };
+
 export class Dash {
-  private all: Phaser.GameObjects.GameObject[] = [];
   private box!: Phaser.GameObjects.Container;
   private needle!: Phaser.GameObjects.Graphics;
-  private odo: Phaser.GameObjects.Text[] = [];
+  private odo!: Phaser.GameObjects.Text;
   private gearText!: Phaser.GameObjects.Text;
+  private gearKey!: Phaser.GameObjects.Rectangle;
+  private leds: Phaser.GameObjects.Rectangle[] = [];
+  private cue!: Phaser.GameObjects.Text;
+  private stall!: Phaser.GameObjects.Text;
   private lamp!: Phaser.GameObjects.Arc;
   private lampGlow!: Phaser.GameObjects.Image;
   private lampText!: Phaser.GameObjects.Text;
-  private stallText!: Phaser.GameObjects.Text;
-  private handle!: Phaser.GameObjects.Image;
-  /** Shift lights: a row of LEDs over the gear that fills green, amber, red with the revs. */
-  private leds: { dot: Phaser.GameObjects.Arc; glow: Phaser.GameObjects.Image; colour: number }[] = [];
-  private cue!: Phaser.GameObjects.Text;
+  private handle!: Phaser.GameObjects.Rectangle;
   private braked = true;
   private shown = '1';
   /** The needle eases towards the speed rather than jumping, as a real one does. */
@@ -54,76 +61,80 @@ export class Dash {
     private drive: () => Drivetrain,
   ) {}
 
-  private keep<T extends Phaser.GameObjects.GameObject>(o: T): T {
-    (o as unknown as Phaser.GameObjects.Components.ScrollFactor).setScrollFactor(0);
-    (o as unknown as Phaser.GameObjects.Components.Depth).setDepth(100);
-    this.all.push(o);
-    return o;
-  }
-
   private angle(v: number) {
-    return DIAL.from + (Math.min(DIAL.max, Math.max(0, v)) / DIAL.max) * DIAL.sweep;
+    return FROM + (Math.min(MAX, Math.max(0, v)) / MAX) * SWEEP;
   }
 
   create() {
     const s = this.scene;
-    this.keep(s.add.image(X0, Y0, 'dash').setOrigin(0));
-    this.keep(s.add.image(SPD.x, SPD.y, 'speedo'));
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T) => (parts.push(o), o);
 
-    // Numbers round the dial; the red zone's in red.
-    for (let v = 0; v <= DIAL.max; v += 10) {
+    // ---- The plate.
+    add(s.add.rectangle(6, 8, PW, PH, 0x000000, 0.35).setOrigin(0));
+    add(s.add.rectangle(0, 0, PW, PH, INK, 0.94).setOrigin(0).setStrokeStyle(2, BONE, 0.25));
+    add(s.add.rectangle(0, 0, PW, 5, EMBER).setOrigin(0));
+    const dots = add(s.add.graphics());
+    for (let y = 14; y < PH - 6; y += 12) {
+      for (let x = PW - 150 + ((y / 12) % 2 ? 6 : 0); x < PW - 6; x += 12) {
+        const k = (x - (PW - 150)) / 150;
+        if (k * k * 4 > 0.4) dots.fillStyle(RED, 0.25 + k * 0.3).fillCircle(x, y, k * k * 4);
+      }
+    }
+    const marks = add(s.add.graphics().lineStyle(2, BONE, 0.45));
+    for (const [x, y, sx, sy] of [[8, 14, 1, 1], [PW - 8, 14, -1, 1], [8, PH - 8, 1, -1], [PW - 8, PH - 8, -1, -1]] as const) {
+      marks.lineBetween(x, y, x, y + sy * 14);
+      marks.lineBetween(x, y, x + sx * 14, y);
+    }
+
+    // ---- The speedometer.
+    const dial = add(s.add.graphics());
+    dial.fillStyle(OX, 1).fillCircle(SPD.x, SPD.y, SPD.r);
+    dial.lineStyle(4, BONE, 0.9).strokeCircle(SPD.x, SPD.y, SPD.r);
+    dial.lineStyle(10, RED, 1).beginPath().arc(SPD.x, SPD.y, SPD.r - 12, this.angle(60), this.angle(MAX)).strokePath();
+    for (let v = 0; v <= MAX; v += 5) {
       const a = this.angle(v);
-      const r = DIAL.r - 48;
-      this.keep(s.add.text(SPD.x + Math.cos(a) * r, SPD.y + Math.sin(a) * r, String(v), { fontFamily: TITLE, fontSize: '22px', color: v >= 60 ? C.terracottaDark : C.ink }).setOrigin(0.5));
+      const major = v % 10 === 0;
+      const r0 = SPD.r - (major ? 22 : 14);
+      dial.lineStyle(major ? 4 : 2, v >= 60 ? RED : BONE, major ? 1 : 0.7);
+      dial.lineBetween(SPD.x + Math.cos(a) * r0, SPD.y + Math.sin(a) * r0, SPD.x + Math.cos(a) * (SPD.r - 6), SPD.y + Math.sin(a) * (SPD.r - 6));
+      if (major) add(s.add.text(SPD.x + Math.cos(a) * (SPD.r - 40), SPD.y + Math.sin(a) * (SPD.r - 40), String(v), { fontFamily: DISPLAY, fontSize: '22px', color: v >= 60 ? RED_CSS : BONE_CSS }).setOrigin(0.5));
     }
-    this.keep(s.add.text(SPD.x, SPD.y + 22, 'km/h', { fontFamily: TEXT, fontSize: '16px', color: C.walnut }).setOrigin(0.5));
-    // Fuel letters at each end of the little fuel scale.
-    for (const [k, letter] of [[0, 'E'], [10, 'F']] as const) {
-      const a = Math.PI * 0.62 - (k / 10) * Math.PI * 0.24;
-      this.keep(s.add.text(SPD.x + Math.cos(a) * (DIAL.r - 30), SPD.y + Math.sin(a) * (DIAL.r - 30), letter, { fontFamily: TITLE, fontSize: '15px', color: C.walnut }).setOrigin(0.5));
-    }
-    // The odometer's five drums: whole kilometres, and tenths in red at the end.
-    for (let i = 0; i < 5; i++) {
-      this.odo.push(this.keep(s.add.text(SPD.x - 33 + 6.6 + i * 13.2, SPD.y + 41, '0', { fontFamily: TEXT, fontSize: '18px', color: i === 4 ? '#F2B9A4' : C.cream }).setOrigin(0.5)));
-    }
-    this.needle = this.keep(s.add.graphics());
-    this.keep(s.add.image(SPD.x, SPD.y, 'speedo_glass'));
+    add(s.add.text(SPD.x, SPD.y + 26, 'KM/H', { fontFamily: MONO, fontStyle: 'bold', fontSize: '13px', color: BONE_CSS, letterSpacing: 3 }).setOrigin(0.5).setAlpha(0.7));
+    // The odometer: digits on a bone strip.
+    add(s.add.rectangle(SPD.x, SPD.y + 52, 82, 22, BONE).setStrokeStyle(2, INK));
+    this.odo = add(s.add.text(SPD.x, SPD.y + 52, '00000', { fontFamily: MONO, fontStyle: 'bold', fontSize: '16px', color: INK_CSS, letterSpacing: 2 }).setOrigin(0.5));
+    // Fuel: a small arc at the foot of the dial, E to F.
+    dial.lineStyle(6, INK, 1).beginPath().arc(SPD.x, SPD.y, SPD.r + 16, Math.PI * 0.62, Math.PI * 0.38, true).strokePath();
+    add(s.add.text(SPD.x - 52, SPD.y + SPD.r + 2, 'E', { fontFamily: DISPLAY, fontSize: '16px', color: RED_CSS }).setOrigin(0.5));
+    add(s.add.text(SPD.x + 52, SPD.y + SPD.r + 2, 'F', { fontFamily: DISPLAY, fontSize: '16px', color: BONE_CSS }).setOrigin(0.5));
+    this.needle = add(s.add.graphics());
 
-    // The gear gauge.
-    this.keep(s.add.image(GEAR.x, GEAR.y, 'gear_badge'));
-    this.gearText = this.keep(s.add.text(GEAR.x, GEAR.y + 2, '1', { fontFamily: TITLE, fontSize: '70px', color: C.ink }).setOrigin(0.5));
-    this.keep(s.add.text(GEAR.x, GEAR.y + 84, 'GEAR', { fontFamily: TITLE, fontSize: '20px', color: C.cream }).setOrigin(0.5));
-    this.keep(s.add.text(GEAR.x, GEAR.y + 106, 'SHIFT ▲   CTRL ▼', { fontFamily: TEXT, fontSize: '17px', color: '#CDEFF0' }).setOrigin(0.5));
-    // The shift lights, in an arc over the gear gauge, and a cue that says which way to change.
-    for (let i = 0; i < 9; i++) {
-      const a = Math.PI * (1.18 + (i / 8) * 0.64);
-      const colour = i < 5 ? 0x5aff8a : i < 7 ? 0xffc43a : 0xff4a3a;
-      const x = GEAR.x + Math.cos(a) * 92;
-      const y = GEAR.y + 6 + Math.sin(a) * 92;
-      const glow = this.keep(s.add.image(x, y, 'halo').setDisplaySize(44, 44).setTint(colour).setAlpha(0));
-      const dot = this.keep(s.add.circle(x, y, 8, 0x2a2238).setStrokeStyle(3, hex(C.ink)));
-      this.leds.push({ dot, glow, colour });
-    }
-    this.cue = this.keep(s.add.text(GEAR.x, GEAR.y - 128, '', { fontFamily: TITLE, fontSize: '22px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setOrigin(0.5));
-    this.stallText = this.keep(s.add.text(GEAR.x, GEAR.y - 62, 'STALLED', { fontFamily: TITLE, fontSize: '20px', color: C.cream, backgroundColor: C.terracottaDark, padding: { x: 8, y: 2 } }).setOrigin(0.5));
+    // ---- The gear: a big numeral on a bone key-cap, shift lights over it, a cue under it.
+    add(s.add.rectangle(GEAR.x + 5, GEAR.y + 7, 112, 112, 0x8a7864).setStrokeStyle(4, INK));
+    this.gearKey = add(s.add.rectangle(GEAR.x, GEAR.y, 112, 112, BONE).setStrokeStyle(4, INK));
+    this.gearText = add(s.add.text(GEAR.x, GEAR.y - 2, '1', { fontFamily: DISPLAY, fontSize: '86px', color: INK_CSS }).setOrigin(0.5));
+    for (let i = 0; i < 9; i++) this.leds.push(add(s.add.rectangle(GEAR.x - 56 + i * 14 + 1, GEAR.y - 82, 11, 14, OX).setOrigin(0, 0.5).setStrokeStyle(1.5, INK)));
+    add(s.add.text(GEAR.x, GEAR.y + 76, 'GEAR', { fontFamily: MONO, fontStyle: 'bold', fontSize: '15px', color: BONE_CSS, letterSpacing: 5 }).setOrigin(0.5).setAlpha(0.75));
+    add(s.add.text(GEAR.x, GEAR.y + 98, 'SHIFT UP · CTRL DOWN', { fontFamily: MONO, fontStyle: 'bold', fontSize: '11px', color: BONE_CSS, letterSpacing: 1 }).setOrigin(0.5).setAlpha(0.5));
+    this.cue = add(s.add.text(GEAR.x, -22, '', { fontFamily: DISPLAY, fontSize: '28px', color: INK_CSS, letterSpacing: 2, backgroundColor: EMBER_CSS, padding: { x: 12, y: 2 } }).setOrigin(0.5));
+    this.stall = add(s.add.text(GEAR.x, GEAR.y - 2, 'STALLED', { fontFamily: DISPLAY, fontSize: '26px', color: BONE_CSS, letterSpacing: 2, backgroundColor: RED_CSS, padding: { x: 8, y: 2 } }).setOrigin(0.5).setAngle(-8));
 
-    // The handbrake lamp: a round red warning light with a (P) on it, lit while the handbrake is on.
-    // The lamp sits in the dashboard's chrome ring; the handle slides up its slot when pulled on.
-    this.lampGlow = this.keep(s.add.image(LAMP.x, LAMP.y, 'halo').setDisplaySize(190, 190).setTint(0xff5a3c));
-    this.lamp = this.keep(s.add.circle(LAMP.x, LAMP.y, 31, hex(C.terracotta)));
-    this.keep(s.add.ellipse(LAMP.x - 10, LAMP.y - 12, 22, 12, 0xffffff, 0.35));
-    this.lampText = this.keep(s.add.text(LAMP.x, LAMP.y + 1, '(P)', { fontFamily: TITLE, fontSize: '28px', color: C.cream }).setOrigin(0.5));
-    this.handle = this.keep(s.add.image(SLOT.x, SLOT.on, 'hb_handle').setOrigin(0.5, 0.2));
-    this.keep(s.add.text(SLOT.x - 46, Y0 + (DASH.slot.top + DASH.slot.bottom) / 2, 'HANDBRAKE · P', { fontFamily: TITLE, fontSize: '16px', color: C.cream }).setOrigin(0.5).setRotation(-Math.PI / 2));
-    // Everything goes into one container, scaled about the panel's bottom-left corner.
-    const bottom = Y0 + DASH.h - 12;
-    this.box = s.add.container(CORNER.x - X0 * DASH_SCALE, CORNER.y - bottom * DASH_SCALE, this.all).setScale(DASH_SCALE).setScrollFactor(0).setDepth(100);
+    // ---- The handbrake: a P lamp, and the lever in its slot (up is on).
+    this.lampGlow = add(s.add.image(HB.x, HB.lamp, 'halo').setDisplaySize(150, 150).setTint(RED).setBlendMode(Phaser.BlendModes.ADD));
+    this.lamp = add(s.add.circle(HB.x, HB.lamp, 30, RED).setStrokeStyle(4, BONE));
+    this.lampText = add(s.add.text(HB.x, HB.lamp, 'P', { fontFamily: DISPLAY, fontSize: '34px', color: BONE_CSS }).setOrigin(0.5));
+    add(s.add.rectangle(HB.x, (HB.top + HB.bottom) / 2, 16, HB.bottom - HB.top, 0x000000).setStrokeStyle(2, BONE, 0.4));
+    this.handle = add(s.add.rectangle(HB.x, HB.top + 10, 46, 22, EMBER).setStrokeStyle(3, INK));
+    add(s.add.text(HB.x + 38, (HB.top + HB.bottom) / 2, 'HANDBRAKE', { fontFamily: MONO, fontStyle: 'bold', fontSize: '11px', color: BONE_CSS, letterSpacing: 3 }).setOrigin(0.5).setRotation(-Math.PI / 2).setAlpha(0.55));
+
+    this.box = s.add.container(CORNER.x, CORNER.y - PH, parts).setScrollFactor(0).setDepth(100);
     this.show(false);
   }
 
   show(on: boolean) {
-    for (const o of this.all) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(on);
-    if (on && this.stallText) this.stallText.setVisible(this.drive().stalled);
+    this.box?.setVisible(on);
+    if (on) this.stall.setVisible(this.drive().stalled);
   }
 
   /** `km` is how far the truck has come, for the odometer; `fuel` is 0 to 1. */
@@ -132,59 +143,53 @@ export class Dash {
     const kmh = Math.abs(speed) * KMH;
     this.shownSpeed += (kmh - this.shownSpeed) * 0.18;
 
-    // The needle: a tapered pointer with a counterweight, its shadow on the face, and a chrome cap.
+    // The needle: an ember blade with an ink edge, over a bone hub.
     const a = this.angle(this.shownSpeed);
-    const pointer = (cx: number, cy: number) => {
-      const along = (r: number, side: number, w: number) => new Phaser.Math.Vector2(cx + Math.cos(a) * r + Math.cos(a + Math.PI / 2) * w * side, cy + Math.sin(a) * r + Math.sin(a + Math.PI / 2) * w * side);
-      return [along(-24, -1, 6), along(DIAL.r - 22, -1, 1.2), along(DIAL.r - 18, 0, 0), along(DIAL.r - 22, 1, 1.2), along(-24, 1, 6)];
-    };
+    const along = (r: number, side: number, w: number) => new Phaser.Math.Vector2(SPD.x + Math.cos(a) * r + Math.cos(a + Math.PI / 2) * w * side, SPD.y + Math.sin(a) * r + Math.sin(a + Math.PI / 2) * w * side);
+    const pts = [along(-22, -1, 7), along(SPD.r - 20, -1, 1.5), along(SPD.r - 14, 0, 0), along(SPD.r - 20, 1, 1.5), along(-22, 1, 7)];
     const g = this.needle.clear();
-    g.fillStyle(hex(C.ink), 0.22).fillPoints(pointer(SPD.x + 4, SPD.y + 5), true);
-    const pts = pointer(SPD.x, SPD.y);
-    g.fillStyle(hex(C.terracotta)).fillPoints(pts, true).lineStyle(3.5, hex(C.ink)).strokePoints(pts, true);
-    g.fillStyle(hex('#E6E8DF')).fillCircle(SPD.x, SPD.y, 14).lineStyle(4, hex(C.ink)).strokeCircle(SPD.x, SPD.y, 14);
-    g.fillStyle(hex(C.ink)).fillCircle(SPD.x, SPD.y, 4);
+    g.fillStyle(EMBER).fillPoints(pts, true).lineStyle(3, INK).strokePoints(pts, true);
+    g.fillStyle(BONE).fillCircle(SPD.x, SPD.y, 13).lineStyle(4, INK).strokeCircle(SPD.x, SPD.y, 13);
+    g.fillStyle(INK).fillCircle(SPD.x, SPD.y, 4);
+    // Fuel: the arc fills from E to F, ember while there is plenty, red when it is low.
+    const f = Math.max(0, Math.min(1, fuel));
+    if (f > 0.01) g.lineStyle(6, f < 0.25 ? RED : EMBER, 1).beginPath().arc(SPD.x, SPD.y, SPD.r + 16, Math.PI * 0.62, Math.PI * 0.62 - f * Math.PI * 0.24, true).strokePath();
 
-    // Fuel: a red marker on the little scale, from F down towards E as the trip goes on.
-    const fa = Math.PI * 0.62 - Math.max(0, Math.min(1, fuel)) * Math.PI * 0.24;
-    g.fillStyle(hex(C.terracotta)).fillCircle(SPD.x + Math.cos(fa) * (DIAL.r - 10), SPD.y + Math.sin(fa) * (DIAL.r - 10), 6).lineStyle(2.5, hex(C.ink)).strokeCircle(SPD.x + Math.cos(fa) * (DIAL.r - 10), SPD.y + Math.sin(fa) * (DIAL.r - 10), 6);
+    this.odo.setText(String(Math.floor(km * 10) % 100000).padStart(5, '0'));
 
-    // Odometer.
-    const digits = String(Math.floor(km * 10) % 100000).padStart(5, '0');
-    this.odo.forEach((t, i) => t.setText(digits[i]));
-
-    // The gear: shown as the gear you are going into while the clutch is in.
+    // The gear, shown as the gear you are going into while the clutch is in.
     const label = gearName(d.target);
     if (label !== this.shown) {
       this.shown = label;
-      this.scene.tweens.add({ targets: this.gearText, scale: { from: 1.3, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+      this.scene.tweens.add({ targets: this.gearText, scale: { from: 1.35, to: 1 }, duration: 220, ease: 'Back.easeOut' });
     }
     const high = typeof d.gear === 'number' && d.gear < 4 && d.rpm > REDLINE - 400;
-    this.gearText.setText(label).setColor(high ? C.terracotta : d.shifting ? C.walnut : C.ink);
-    this.stallText.setVisible(d.stalled);
+    this.gearText.setText(label).setColor(high ? RED_CSS : INK_CSS).setAlpha(d.shifting ? 0.5 : 1);
+    this.gearKey.setFillStyle(high ? EMBER : BONE);
+    this.stall.setVisible(d.stalled);
 
-    // Shift lights: lit in proportion to the revs; all flashing red at the limit, time to change up.
+    // Shift lights: bone, then ember, then red, filling with the revs; all flashing at the limit.
     const k = Math.max(0, Math.min(1, d.rpm / REDLINE));
     const lit = Math.round(k * this.leds.length);
     const limit = k > 0.93 && Math.floor(this.scene.time.now / 120) % 2 === 0;
     this.leds.forEach((l, i) => {
       const on = d.stalled ? false : limit ? true : i < lit;
-      const c = limit ? 0xff4a3a : l.colour;
-      l.dot.setFillStyle(on ? c : 0x2a2238);
-      l.glow.setAlpha(on ? 0.55 : 0).setTint(c);
+      const c = limit ? RED : i < 5 ? BONE : i < 7 ? EMBER : RED;
+      l.setFillStyle(on ? c : OX);
     });
     const up = typeof d.gear === 'number' && d.gear < 4 && d.rpm > REDLINE - 400 && !d.stalled;
     const down = typeof d.gear === 'number' && d.gear > 1 && d.lugging > 0.3 && !d.stalled;
-    this.cue.setText(up ? '▲ SHIFT UP' : down ? '▼ SHIFT DOWN' : '').setColor(up ? '#9CFFB8' : '#FFD27A');
+    this.cue.setText(up ? 'SHIFT UP' : down ? 'SHIFT DOWN' : '').setVisible(up || down);
+    if (up || down) this.cue.setBackgroundColor(up ? EMBER_CSS : BONE_CSS);
 
     // The lamp glows while the handbrake is on, and flashes if you try to drive against it.
     const flash = handbrake && d.throttle > 0.5 ? (Math.floor(this.scene.time.now / 160) % 2 === 0 ? 1 : 0.35) : 1;
-    this.lamp.setFillStyle(hex(handbrake ? C.terracotta : '#7A5E66'), handbrake ? flash : 1);
-    this.lampGlow.setVisible(handbrake).setAlpha(0.55 * flash);
-    this.lampText.setColor(handbrake ? C.cream : '#B9A9AE');
+    this.lamp.setFillStyle(handbrake ? RED : OX, handbrake ? flash : 1);
+    this.lampGlow.setVisible(handbrake).setAlpha(0.5 * flash);
+    this.lampText.setAlpha(handbrake ? 1 : 0.4);
     if (handbrake !== this.braked) {
       this.braked = handbrake;
-      this.scene.tweens.add({ targets: this.handle, y: handbrake ? SLOT.on : SLOT.off, duration: 180, ease: 'Back.easeOut' });
+      this.scene.tweens.add({ targets: this.handle, y: handbrake ? HB.top + 10 : HB.bottom - 10, duration: 180, ease: 'Back.easeOut' });
     }
   }
 }

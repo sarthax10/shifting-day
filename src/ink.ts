@@ -6,23 +6,23 @@ import { getStroke } from 'perfect-freehand';
  * palette so every drawing picks the new colours up.
  */
 export const C = {
-  ink: '#2A2140',
-  walnut: '#5B3A4E',
+  ink: '#17101C',
+  walnut: '#4A2232',
   woodDark: '#A0603E',
   wood: '#E6AA6C',
   woodLine: '#C98552',
   wall: '#C98A62',
-  paper: '#FFF3DE',
+  paper: '#F3E3CC',
   oat: '#F7DDB4',
-  cream: '#FFF2DA',
-  creamShade: '#F2CFA8',
+  cream: '#F3E3CC',
+  creamShade: '#D9C3A6',
   sage: '#5DAA7A',
   sageLight: '#9CD49A',
   sageDark: '#2F7F6A',
   moss: '#1F5C57',
-  terracotta: '#EE6A4D',
-  terracottaDark: '#B8403F',
-  mustard: '#FFB23F',
+  terracotta: '#F0643A',
+  terracottaDark: '#C8283A',
+  mustard: '#FFA23A',
   sticky: '#FFD67A',
   teal: '#3FA7B5',
   dusk: '#3E3F78',
@@ -196,6 +196,8 @@ export class Pen {
   private count = 0;
   private clips = 0;
   private gradients = new Map<string, string>();
+  /** Halftone screens, one per shade colour: shading is printed as dots, as on the title's poster. */
+  private screens = new Map<string, string>();
   /** Even line weight, for machined things like the chair's frame. */
   steady = false;
   /** Interface pieces are drawn flat: no gradients, no grain, plain ink lines. */
@@ -256,11 +258,30 @@ export class Pen {
     if (o.shade?.length) {
       const id = `c${this.clips++}`;
       this.parts.push(`<clipPath id="${id}"><path d="${d}"/></clipPath><g clip-path="url(#${id})">`);
-      for (const s of o.shade) this.parts.push(`<path d="${toPath(catmull(s.pts, true), true)}" fill="${s.color}"/>`);
+      for (const s of o.shade) {
+        const sd = toPath(catmull(s.pts, true), true);
+        if (this.plain) {
+          this.parts.push(`<path d="${sd}" fill="${s.color}"/>`);
+          continue;
+        }
+        // A light tint of the shade, then the shade itself as a halftone dot screen over it.
+        this.parts.push(`<path d="${sd}" fill="${s.color}" opacity="0.35"/><path d="${sd}" fill="url(#${this.screen(s.color)})"/>`);
+      }
       this.parts.push('</g>');
     }
-    const line = o.stroke ?? (!this.plain && o.fill && SOLID.test(o.fill) ? mix(o.fill, C.ink, 0.74) : C.ink);
+    // Outlines in near-black ink, with just a breath of the fill's colour in them: the poster's hard line.
+    const line = o.stroke ?? (!this.plain && o.fill && SOLID.test(o.fill) ? mix(o.fill, '#120A16', 0.9) : C.ink);
     if (o.stroke !== null) this.outline(pts, true, o.width ?? 7, line);
+  }
+
+  /** A halftone dot screen in a colour, made once per drawing. */
+  private screen(color: string): string {
+    let id = this.screens.get(color);
+    if (!id) {
+      id = `h${this.screens.size}`;
+      this.screens.set(color, id);
+    }
+    return id;
   }
 
   /** Pins the next shape's hand-drawn wobble, so it stays the same when draw order changes. */
@@ -294,11 +315,14 @@ export class Pen {
     const head = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
     if (this.plain) return `${head}${this.parts.join('')}</svg>`;
     const grads = [...this.gradients]
-      .map(([colour, id]) => `<linearGradient id="${id}" x1="0" y1="0" x2="0.25" y2="1"><stop offset="0" stop-color="${mix(colour, '#FFF4D6', 0.16)}"/><stop offset="0.55" stop-color="${colour}"/><stop offset="1" stop-color="${mix(colour, C.ink, 0.16)}"/></linearGradient>`)
+      .map(([colour, id]) => `<linearGradient id="${id}" x1="0" y1="0" x2="0.25" y2="1"><stop offset="0" stop-color="${mix(colour, '#FFF4D6', 0.08)}"/><stop offset="0.6" stop-color="${colour}"/><stop offset="1" stop-color="${mix(colour, C.ink, 0.1)}"/></linearGradient>`)
+      .join('');
+    const screens = [...this.screens]
+      .map(([colour, id]) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(30)"><circle cx="3" cy="3" r="3.1" fill="${colour}"/><circle cx="9" cy="9" r="3.1" fill="${colour}"/></pattern>`)
       .join('');
     // Fine grain, kept inside the drawing's own shapes, multiplied gently over the colours.
     const seed = hash(this.asset) % 97;
     const grain = `<filter id="grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="${seed}" result="n"/><feColorMatrix in="n" type="saturate" values="0" result="g"/><feComponentTransfer in="g" result="soft"><feFuncR type="linear" slope="0.3" intercept="0.78"/><feFuncG type="linear" slope="0.3" intercept="0.78"/><feFuncB type="linear" slope="0.3" intercept="0.8"/><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer><feBlend in="SourceGraphic" in2="soft" mode="multiply" result="m"/><feComposite in="m" in2="SourceGraphic" operator="in"/></filter>`;
-    return `${head}<defs>${grads}${grain}</defs><g filter="url(#grain)">${this.parts.join('')}</g></svg>`;
+    return `${head}<defs>${grads}${screens}${grain}</defs><g filter="url(#grain)">${this.parts.join('')}</g></svg>`;
   }
 }

@@ -126,7 +126,13 @@ export class PosterList {
     };
     scene.input.gamepad?.on('down', pad);
     this.off.push(() => scene.input.gamepad?.off('down', pad));
+    this.arrow = scene.add.triangle(x, y, 0, -12, 0, 12, 16, 0, INK);
+    this.container.add(this.arrow);
     this.select(0, true);
+    this.tapeY = this.texts[0].y + 2;
+    this.tapeW = this.texts[0].width + 64;
+    scene.events.on('update', this.tick);
+    this.off.push(() => scene.events.off('update', this.tick));
   }
 
   setEnabled(v: boolean) {
@@ -150,19 +156,81 @@ export class PosterList {
     this.sel = i;
     this.texts.forEach((t, k) => {
       const on = k === i;
-      t.setColor(on ? INK_CSS : BONE_CSS).setAlpha(on ? 1 : 0.5).setX(this.x + (on ? 32 : 16));
+      t.setColor(on ? INK_CSS : BONE_CSS);
       this.nums[k].setAlpha(on ? 1 : 0.4);
     });
-    const t = this.texts[i];
-    this.tapeImg.setY(t.y + 2).setScale((t.width + 56) / 640, 1);
+    // A little kick on every move: the tape gets a fresh tilt to settle out of, the item a pop.
+    this.kick = 1;
+    this.tilt = (Math.random() - 0.5) * 7;
   }
 
   activate() {
     if (!this.enabled) return;
-    this.items[this.sel].act();
+    // Pressed: the item squashes, the tape flashes bone, then the action runs a beat later so the
+    // press is actually seen.
+    this.press = 1;
+    play('click', 0.5, 0.9);
+    const item = this.items[this.sel];
+    window.setTimeout(() => {
+      if (!this.dead) item.act();
+    }, 90);
   }
 
+  // ---- motion: run from the scene's update event with its own clock, so it keeps moving while the
+  // game itself (and every tween in it) is paused under the pause menu.
+  private tapeY = 0;
+  private tapeVY = 0;
+  private tapeW = 0;
+  private tapeVW = 0;
+  private kick = 0;
+  private tilt = 0;
+  private press = 0;
+  private last = 0;
+  private born = 0;
+  private dead = false;
+  private arrow?: Phaser.GameObjects.Triangle;
+  private xs: number[] = [];
+
+  private tick = () => {
+    const now = performance.now();
+    const dt = Math.min(0.05, this.last ? (now - this.last) / 1000 : 0.016);
+    this.last = now;
+    if (!this.born) this.born = now;
+    const t = this.texts[this.sel];
+    if (!t) return;
+    // Springs for the tape's height and width: quick, with a touch of overshoot.
+    const spring = (x: number, v: number, to: number) => {
+      const a = (to - x) * 520 - v * 26;
+      v += a * dt;
+      return [x + v * dt, v];
+    };
+    [this.tapeY, this.tapeVY] = spring(this.tapeY, this.tapeVY, t.y + 2);
+    [this.tapeW, this.tapeVW] = spring(this.tapeW, this.tapeVW, t.width + 64);
+    this.kick = Math.max(0, this.kick - dt * 4);
+    this.press = Math.max(0, this.press - dt * 6);
+    this.tilt *= Math.pow(0.0005, dt);
+    const flash = this.press > 0.5;
+    this.tapeImg
+      .setY(this.tapeY)
+      .setScale(Math.max(0.05, this.tapeW) / 640, 1 + this.kick * 0.12 - this.press * 0.15)
+      .setAngle(-1.5 + this.tilt)
+      .setTint(flash ? 0xf3e3cc : 0xffffff);
+    this.texts.forEach((tx, k) => {
+      const on = k === this.sel;
+      const want = this.x + (on ? 34 : 16);
+      this.xs[k] = this.xs[k] === undefined ? want : this.xs[k] + (want - this.xs[k]) * Math.min(1, dt * 16);
+      const s = on ? 1 + this.kick * 0.08 - this.press * 0.08 : 1;
+      tx.setX(this.xs[k]).setScale(s).setAlpha(on ? 1 : 0.45 + 0.05 * Math.sin(now / 400 + k));
+    });
+    // A pulsing pointer at the tape's left end.
+    if (this.arrow) {
+      const pulse = Math.sin(now / 170) * 4;
+      this.arrow.setPosition(this.x - 2 + pulse + this.kick * 10, this.tapeY);
+    }
+  };
+
   destroy() {
+    this.dead = true;
     for (const f of this.off) f();
     this.off = [];
     this.container.destroy(true);
@@ -185,8 +253,18 @@ export function openControls(scene: Phaser.Scene, depth: number, onClose: () => 
     const t = scene.add.text(x, 300, label, { fontFamily: MONO, fontStyle: 'bold', fontSize: '24px', color: BONE_CSS, letterSpacing: 5, padding: { x: 18, y: 8 } }).setOrigin(0.5).setInteractive({ cursor: CURSOR.open });
     t.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
+      play('click', 0.4, 1.3);
       mode = m;
       draw();
+    });
+    // Hover: the tab lifts and brightens, so it reads as something to press.
+    t.on('pointerover', () => {
+      t.setScale(1.08).setAlpha(1);
+      if (m !== mode) t.setBackgroundColor('rgba(255, 106, 48, 0.25)');
+    });
+    t.on('pointerout', () => {
+      t.setScale(1).setAlpha(m === mode ? 1 : 0.6);
+      if (m !== mode) t.setBackgroundColor('rgba(0,0,0,0)');
     });
     sheet.add(t);
     return { t, m };

@@ -20,15 +20,16 @@ import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg } from './prepare';
 import { applyBiomeFX } from './postfx';
 import { chip, hudText, uiText, INK_BG } from './ui';
 import { Prompter } from './prompts';
-import { PosterList, posterSheet, openControls, DISPLAY as POSTER_FONT, MONO as POSTER_MONO, BONE_CSS, EMBER_CSS, INK_CSS } from './poster';
+import { PosterList, posterSheet, openControls, ensurePosterTextures, DISPLAY as POSTER_FONT, MONO as POSTER_MONO, BONE_CSS, EMBER_CSS, INK_CSS } from './poster';
 
 // The physics library that ships inside Phaser. Its own types are loose, so bodies are `any` here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const M = (Phaser.Physics.Matter as any).Matter;
 type Body = any;
 
-const TEXT = '"Karla", sans-serif';
-const TITLE = '"Fraunces", serif';
+/** The poster's two faces: Anton for words that matter, Space Mono for small labels. */
+const TEXT = '"Space Mono", monospace';
+const TITLE = '"Anton", "Impact", sans-serif';
 /** How hard the brakes slow the truck, in pixels a frame each frame. */
 const BRAKE = 0.3;
 const hexOf = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
@@ -147,7 +148,7 @@ export class PlayScene extends Phaser.Scene {
   private byBody = new Map<number, Thing>();
   /** Broken things restored on the truck, in the same order as trip.lost's broken cargo, waiting to be taped up. */
   private pendingBroken: Thing[] = [];
-  private lostFoundBtn?: { box: Phaser.GameObjects.Container; label: Phaser.GameObjects.Text };
+  private lostFoundBoard?: { sign: Phaser.GameObjects.Container; show: () => void };
   private lostFoundPanel?: Phaser.GameObjects.Container;
   private chassis!: Body;
   private wheels: Body[] = [];
@@ -335,10 +336,10 @@ export class PlayScene extends Phaser.Scene {
     const wrapIcon = this.add.image(78, hudY, 'bubble_wrap').setScale(0.46).setScrollFactor(0).setDepth(101).setVisible(false);
     this.extrasLabel = this.add.text(108, hudY, '', hudText(1.1)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
     const fuelIcon = this.add.image(208, hudY, 'fuel_can').setScale(0.4).setScrollFactor(0).setDepth(101).setVisible(false);
-    const fuelBarBg = this.add.rectangle(238, hudY, 92, 16, 0x14101f, 0.8).setOrigin(0, 0.5).setStrokeStyle(2, 0xfff2da, 0.3).setScrollFactor(0).setDepth(101).setVisible(false);
-    const fuelBar = this.add.rectangle(240, hudY, 88, 12, 0x9cc58a).setOrigin(0, 0.5).setScrollFactor(0).setDepth(102).setVisible(false);
+    const fuelBarBg = this.add.rectangle(238, hudY, 92, 16, 0x3a0f22, 1).setOrigin(0, 0.5).setStrokeStyle(2, 0xf3e3cc, 0.5).setScrollFactor(0).setDepth(101).setVisible(false);
+    const fuelBar = this.add.rectangle(240, hudY, 88, 12, 0xff6a30).setOrigin(0, 0.5).setScrollFactor(0).setDepth(102).setVisible(false);
     this.extrasIcons = { wrap: wrapIcon, fuel: fuelIcon, fuelBarBg, fuelBar };
-    this.fuelPctText = this.add.text(240, hudY + 18, '', { fontFamily: TEXT, fontSize: '16px', color: C.cream }).setOrigin(0, 0).setScrollFactor(0).setDepth(101).setVisible(false);
+    this.fuelPctText = this.add.text(240, hudY + 14, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '12px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0).setScrollFactor(0).setDepth(101).setVisible(false);
 
     this.matter.world.on('collisionstart', (event: { pairs: { bodyA: Body; bodyB: Body }[] }) => this.knocks(event.pairs));
 
@@ -798,16 +799,83 @@ export class PlayScene extends Phaser.Scene {
     this.time.delayedCall(900, () => this.checkpointCard(trip, lostNow.length, brokeNow.length, worth));
   }
 
-  /** A button over the pile, only when there is something to claim: what fell off or broke on earlier legs. */
+  /**
+   * The stop's Lost & Found billboard, standing behind the pile at every stop once you have reached it:
+   * a printed board on two posts, lit by a pair of lamps, with the count of what is waiting on a red
+   * badge. Hover lifts it and brightens the lamps; click it to open the Lost & Found.
+   */
   private maybeOfferLostFound() {
     const pending = () => this.trip.lost.length + this.pendingBroken.length;
-    if (!pending()) return;
-    const mk = () => {
-      const btn = this.button(W / 2, 60, 'btn_rope', `Lost & Found (${pending()})`, 28, () => this.openLostFound());
-      btn.box.setScrollFactor(0).setDepth(100);
-      this.lostFoundBtn = btn;
+    ensurePosterTextures(this);
+    const x = 640;
+    const gy = GROUND + 6;
+    const bw = 440;
+    const bh = 236;
+    const top = -640;
+    const sign = this.add.container(x, gy).setDepth(-4);
+    const posts = this.add.graphics();
+    posts.fillStyle(0x0a0712, 1);
+    for (const px of [-150, 150]) posts.fillRect(px - 9, top + bh - 10, 18, -top - bh + 10);
+    posts.lineStyle(8, 0x0a0712, 1).lineBetween(-150, -200, 150, -330).lineBetween(-150, -330, 150, -200);
+    for (const px of [-150, 150]) for (const py of [-210, -320]) posts.fillStyle(0xff6a30, 1).fillCircle(px, py, 4);
+    sign.add(posts);
+    // The lamps on their arms over the board, and their light on it.
+    const lights: Phaser.GameObjects.Image[] = [];
+    for (const lx of [-120, 120]) {
+      sign.add(this.add.rectangle(lx, top - 26, 6, 30, 0x0a0712));
+      sign.add(this.add.rectangle(lx, top - 40, 30, 14, 0x0a0712).setStrokeStyle(2, 0xf3e3cc, 0.4));
+      const l = this.add.image(lx, top + 70, 'halo').setDisplaySize(260, 220).setTint(0xffc07a).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
+      lights.push(l);
+    }
+    // The board: ink, a bone border, halftone in a corner, the words, a count badge and a strip of tape.
+    const board = this.add.rectangle(0, top + bh / 2, bw, bh, 0x0a0712).setStrokeStyle(4, 0x0a0712);
+    sign.add(this.add.rectangle(8, top + bh / 2 + 10, bw, bh, 0x000000, 0.35));
+    sign.add(board);
+    sign.add(this.add.rectangle(0, top + bh / 2, bw - 20, bh - 20).setStrokeStyle(2, 0xf3e3cc, 0.5));
+    const dots = this.add.graphics();
+    for (let yy = top + 20; yy < top + bh - 14; yy += 12) {
+      for (let xx = bw / 2 - 140 + ((yy / 12) % 2 ? 6 : 0); xx < bw / 2 - 14; xx += 12) {
+        const k = (xx - (bw / 2 - 140)) / 140;
+        if (k * k * 4.5 > 0.5) dots.fillStyle(0xe3263a, 0.3 + k * 0.4).fillCircle(xx, yy, k * k * 4.5);
+      }
+    }
+    sign.add(dots);
+    const title = this.add.text(-bw / 2 + 30, top + 68, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '66px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5).setShadow(5, 6, '#E3263A', 0, true, false);
+    const sub = this.add.text(-bw / 2 + 32, top + 128, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '16px', color: '#F3E3CC', letterSpacing: 3 }).setOrigin(0, 0.5).setAlpha(0.8);
+    const tapeImg = this.add.image(-bw / 2 + 24, top + 186, 't_tape').setOrigin(0, 0.5).setDisplaySize(200, 52).setAngle(-3);
+    const claim = this.add.text(-bw / 2 + 50, top + 184, 'CLAIM IT', { fontFamily: TITLE, fontSize: '34px', color: '#0A0712', letterSpacing: 2 }).setOrigin(0, 0.5).setAngle(-3);
+    const badge = this.add.circle(bw / 2 - 52, top + 4, 34, 0xe3263a).setStrokeStyle(4, 0x0a0712);
+    const count = this.add.text(bw / 2 - 52, top + 2, '', { fontFamily: TITLE, fontSize: '40px', color: '#F3E3CC' }).setOrigin(0.5);
+    sign.add([title, sub, tapeImg, claim, badge, count, ...lights]);
+    const show = () => {
+      const n = pending();
+      count.setText(String(n));
+      badge.setFillStyle(n ? 0xe3263a : 0x3a0f22);
+      sub.setText(n ? `${n} THING${n === 1 ? '' : 'S'} HANDED IN` : 'NOTHING HANDED IN');
+      claim.setText(n ? 'CLAIM IT' : 'ALL CLEAR');
     };
-    mk();
+    show();
+    this.lostFoundBoard = { sign, show };
+    board.setInteractive({ cursor: CURSOR.open });
+    board.on('pointerover', () => {
+      this.tweens.killTweensOf(sign);
+      this.tweens.add({ targets: sign, scale: 1.03, duration: 160, ease: 'Back.easeOut' });
+      for (const l of lights) l.setAlpha(0.6);
+    });
+    board.on('pointerout', () => {
+      this.tweens.killTweensOf(sign);
+      this.tweens.add({ targets: sign, scale: 1, duration: 160 });
+      for (const l of lights) l.setAlpha(0.35);
+    });
+    board.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      play('click');
+      this.prompts.dismiss(true, 'lostfound');
+      this.openLostFound();
+    });
+    // The lamps flicker on as you arrive.
+    for (const l of lights) this.tweens.add({ targets: l, alpha: { from: 0, to: 0.35 }, duration: 90, yoyo: true, repeat: 2, delay: 600 });
+    if (pending()) this.time.delayedCall(2200, () => this.prompts.show('lostfound', [{ key: 'fire' }, 'THE BILLBOARD TO CLAIM'], () => ({ x, y: gy + top - 110 }), () => this.phase !== 'pack' || !pending(), { once: true }));
   }
 
   /**
@@ -908,13 +976,8 @@ export class PlayScene extends Phaser.Scene {
     this.lostFoundPanel?.destroy(true);
     this.lostFoundPanel = undefined;
     const pending = this.trip.lost.length + this.pendingBroken.length;
-    if (this.lostFoundBtn) {
-      if (pending) this.lostFoundBtn.label.setText(`Lost & Found (${pending})`);
-      else {
-        this.lostFoundBtn.box.destroy(true);
-        this.lostFoundBtn = undefined;
-      }
-    }
+    void pending;
+    this.lostFoundBoard?.show();
   }
 
   private checkpointCard(trip: Trip, lost: number, broke: number, worth: number) {
@@ -1133,7 +1196,7 @@ export class PlayScene extends Phaser.Scene {
 
     // Over the old street, the game's own logo, as on the title screen (painted there, so it may be missing
     // if a leg was opened directly while building).
-    if (this.leg.n === 1 && this.textures.exists('t_logo')) this.add.image(960, 250, 't_logo').setScale(0.36).setDepth(-5);
+    if (this.leg.n === 1 && this.textures.exists('t_logo_small')) this.add.image(960, 250, 't_logo_small').setScale(0.9).setDepth(-5);
     if (!this.leg.stop) this.add.text(FINISH + 700, 30, 'HOME!', { fontFamily: POSTER_FONT, fontSize: '120px', color: BONE_CSS, stroke: INK_CSS, strokeThickness: 12, letterSpacing: 3 }).setOrigin(0.5, 0).setDepth(-5).setShadow(8, 10, '#E3263A', 0, true, false);
   }
 
@@ -1297,40 +1360,83 @@ export class PlayScene extends Phaser.Scene {
     this.byBody.set(body.id, thing);
   }
 
+  /**
+   * A button in the poster's style. The main action ('btn') is printed in ink on a strip of torn ember
+   * tape; a secondary one ('btn_rope') is bone type on an ink chip with an ember edge. Both lift and
+   * tilt on hover and squash and flash when pressed, and size themselves to their label.
+   */
   private button(x: number, y: number, key: string, text: string, size: number, onClick: () => void) {
-    const bg = this.add.image(0, 0, key);
-    const label = this.add.text(0, -6, text, { fontFamily: TITLE, fontSize: `${size}px`, color: C.ink }).setOrigin(0.5);
-    bg.setScrollFactor(0);
-    label.setScrollFactor(0);
-    const box = this.add.container(x, y, [bg, label]).setScrollFactor(0).setDepth(100);
+    ensurePosterTextures(this);
+    const primary = key === 'btn';
+    const h = Math.round(size * 1.7);
+    const label = this.add.text(0, 0, text.toUpperCase(), { fontFamily: POSTER_FONT, fontSize: `${Math.round(size * 1.05)}px`, color: primary ? INK_CSS : BONE_CSS, letterSpacing: 2 }).setOrigin(0.5);
+    const tapeBg = this.add.image(0, 0, 't_tape').setAngle(-1.5);
+    const chip = this.add.rectangle(0, 0, 10, h, 0x0a0712, 0.9).setStrokeStyle(2, 0xf3e3cc, 0.35);
+    const edge = this.add.rectangle(0, 0, 7, h, 0xff6a30).setOrigin(0, 0.5);
+    const bg: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle = primary ? tapeBg : chip;
+    (primary ? chip : tapeBg).setVisible(false);
+    edge.setVisible(!primary);
+    const fit = () => {
+      const w = label.width + size * 1.6;
+      if (primary) tapeBg.setDisplaySize(w, h * 1.08);
+      else {
+        chip.setSize(w, h);
+        chip.setDisplaySize(w, h);
+        edge.setX(-w / 2);
+      }
+      bg.input?.hitArea.setTo?.(0, 0, bg.width, bg.height);
+    };
+    const setText = label.setText.bind(label);
+    label.setText = ((v: string | string[]) => {
+      setText(String(v).toUpperCase());
+      fit();
+      return label;
+    }) as typeof label.setText;
+    fit();
+    const box = this.add.container(x, y, [tapeBg, chip, edge, label]).setScrollFactor(0).setDepth(100);
+    for (const o of [tapeBg, chip, edge, label]) o.setScrollFactor(0);
     bg.setInteractive({ cursor: CURSOR.open });
     bg.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
       play('click');
+      this.tweens.killTweensOf(box);
+      box.setScale(0.92);
+      if (primary) tapeBg.setTint(0xf3e3cc);
+      else chip.setFillStyle(0xff6a30, 0.9);
+      this.tweens.add({ targets: box, scale: 1, duration: 220, ease: 'Back.easeOut', onComplete: () => (tapeBg.clearTint(), chip.setFillStyle(0x0a0712, 0.9)) });
       onClick();
     });
-    bg.on('pointerover', () => box.setScale(1.05));
-    bg.on('pointerout', () => box.setScale(1));
+    bg.on('pointerover', () => {
+      this.tweens.killTweensOf(box);
+      this.tweens.add({ targets: box, scale: 1.07, angle: primary ? 1.2 : 0, duration: 160, ease: 'Back.easeOut' });
+      if (!primary) chip.setStrokeStyle(2, 0xff6a30, 0.9);
+    });
+    bg.on('pointerout', () => {
+      this.tweens.killTweensOf(box);
+      this.tweens.add({ targets: box, scale: 1, angle: 0, duration: 160, ease: 'Sine.easeOut' });
+      if (!primary) chip.setStrokeStyle(2, 0xf3e3cc, 0.35);
+    });
     return { box, label };
   }
 
   private hud() {
     const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
-    this.hint = this.add.text(40, 1006, '', { ...style, fontSize: '32px', backgroundColor: C.cream, padding: { x: 20, y: 10 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
+    this.hint = this.add.text(40, 1006, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '24px', color: '#F3E3CC', letterSpacing: 1, backgroundColor: 'rgba(10, 7, 18, 0.88)', padding: { x: 20, y: 12 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
     this.ropeLines = this.add.graphics().setDepth(25);
 
     // Top right: the points on the truck, and how far along the road it is.
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) => o.setScrollFactor(0).setDepth(100);
-    fixed(this.add.image(W - 8, 4, 'card').setOrigin(1, 0));
-    fixed(this.add.image(W - 530, 64, 'coin').setScale(0.9));
-    this.hudHearts = fixed(this.add.text(W - 500, 64, '', { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0, 0.5));
-    this.hudLabel = fixed(this.add.text(W - 330, 64, '', { ...style, fontSize: '30px', color: C.walnut }).setOrigin(0, 0.5));
+    fixed(this.add.rectangle(W - 14, 18, 566, 96, 0x0a0712, 0.9).setOrigin(1, 0).setStrokeStyle(2, 0xf3e3cc, 0.3));
+    fixed(this.add.rectangle(W - 14, 18, 566, 5, 0xff6a30).setOrigin(1, 0));
+    fixed(this.add.text(W - 560, 40, 'POINTS', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(0, 0.5));
+    this.hudHearts = fixed(this.add.text(W - 560, 76, '', { fontFamily: TITLE, fontSize: '46px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
+    this.hudLabel = fixed(this.add.text(W - 390, 66, '', { fontFamily: TITLE, fontSize: '32px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
     this.hudBar = fixed(this.add.graphics());
     this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.08)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.066))];
     this.hudTruck = fixed(this.add.image(W - 330, 54, 'truck#0').setScale(0.1));
 
     this.tag = this.add
-      .text(0, 0, '', { fontFamily: TEXT, fontSize: '28px', color: C.ink, align: 'center', backgroundColor: C.cream, padding: { x: 16, y: 8 }, lineSpacing: -2 })
+      .text(0, 0, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '22px', color: '#F3E3CC', align: 'center', backgroundColor: 'rgba(10, 7, 18, 0.92)', padding: { x: 16, y: 10 }, lineSpacing: 2 })
       .setOrigin(0.5, 1)
       .setDepth(120)
       .setVisible(false);
@@ -1353,7 +1459,7 @@ export class PlayScene extends Phaser.Scene {
     const soundChip = chip(this, 40, soundY, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
     const soundLabel = this.add.text(56, soundY, '', uiText(22)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
     const showSound = () => {
-      soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
+      soundLabel.setText(`SOUND ${audio.muted ? 'OFF' : 'ON'}  · M`);
       soundChip.setSize(soundLabel.width + 32, 44);
     };
     soundChip.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
@@ -1515,7 +1621,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private showFx() {
-    this.fxLabel.setText(`Effects: ${this.fx.enabled ? 'on' : 'off'}  (F)`);
+    this.fxLabel.setText(`EFFECTS ${this.fx.enabled ? 'ON' : 'OFF'}  · F`);
     this.fxChip.setSize(this.fxLabel.width + 32, 44);
   }
 
@@ -1568,9 +1674,9 @@ export class PlayScene extends Phaser.Scene {
   /** Rope mode: the next click ties a thing down, or unties it. */
   private setRoping(on: boolean) {
     this.roping = on && this.phase === 'pack';
-    this.ropeLabel.setText(`Rope × ${this.ropesLeft}`).setColor(this.roping ? C.terracottaDark : C.ink);
+    this.ropeLabel.setText(`Rope × ${this.ropesLeft}`).setColor(this.roping ? '#FF6A30' : '#F3E3CC');
     if (this.phase !== 'pack') return;
-    this.hint.setText(this.roping ? 'Click a thing on the truck to tie it down.   Click a tied thing to untie it.' : 'Drag things on to the truck.   Scroll or Q / E to turn them.   R for rope.');
+    this.hint.setText(this.roping ? 'CLICK A THING ON THE TRUCK TO TIE IT · CLICK A TIED THING TO UNTIE IT' : 'DRAG THINGS ONTO THE TRUCK · Q / E TURN · R ROPE');
     this.pointer(this.roping ? 'rope' : 'point');
   }
 
@@ -1808,7 +1914,7 @@ export class PlayScene extends Phaser.Scene {
     this.goButton.setVisible(false);
     this.ropeButton.setVisible(false);
     this.pointer('point');
-    this.hint.setPosition(DASH_RIGHT + 24, 1046).setFontSize(24).setText('D gas    A brake    P handbrake    SHIFT / CTRL gears    CLICK fire anchor    W reel in    RIGHT-CLICK let go');
+    this.hint.setPosition(DASH_RIGHT + 20, 1040).setFontSize(17).setText('D GAS · A BRAKE · P HANDBRAKE · SHIFT/CTRL GEARS · CLICK FIRE · W REEL · ESC CONTROLS');
     this.dash.show(true);
     for (const o of this.touchButtons) o.setVisible(true);
     this.handbrake = true;
@@ -1974,16 +2080,18 @@ export class PlayScene extends Phaser.Scene {
   private updateHud(onTruck: number, points: number, pct: number) {
     this.hudHearts.setText(String(points));
     const packing = this.phase === 'pack' || this.phase === 'intro';
-    this.hudLabel.setVisible(packing).setText(`${onTruck} of ${this.things.length} on the truck`);
+    this.hudLabel.setVisible(packing).setText(`${onTruck} / ${this.things.length} ON THE TRUCK`);
     this.hudTruck.setVisible(!packing);
     for (const h of this.hudHomes) h.setVisible(!packing);
     const g = this.hudBar.clear();
     if (packing) return;
     const x0 = W - 330;
     const x1 = W - 96;
-    g.lineStyle(14, Phaser.Display.Color.HexStringToColor(C.ink).color).lineBetween(x0, 70, x1, 70);
-    g.lineStyle(8, Phaser.Display.Color.HexStringToColor(C.creamShade).color).lineBetween(x0, 70, x1, 70);
-    g.lineStyle(8, Phaser.Display.Color.HexStringToColor(C.sage).color).lineBetween(x0, 70, x0 + (x1 - x0) * pct, 70);
+    // The road as a printed strip: dashed bone centre line, the distance covered inked over it in ember.
+    g.fillStyle(0x3a0f22, 1).fillRect(x0, 64, x1 - x0, 12);
+    g.fillStyle(0xf3e3cc, 0.6);
+    for (let x = x0 + 4; x < x1 - 10; x += 22) g.fillRect(x, 69, 11, 2);
+    g.fillStyle(0xff6a30, 1).fillRect(x0, 64, (x1 - x0) * pct, 12);
     this.hudTruck.setX(x0 + (x1 - x0) * pct);
   }
 
@@ -2418,7 +2526,7 @@ export class PlayScene extends Phaser.Scene {
       const fuelPct = Math.round(this.extras.fuel * 100);
       this.fuelPctText.setText(`${fuelPct}%`);
       this.extrasIcons.fuelBar.width = 88 * Phaser.Math.Clamp(this.extras.fuel, 0, 1);
-      this.extrasIcons.fuelBar.setFillStyle(this.extras.fuel < 0.25 ? 0xd8572a : this.extras.fuel < 0.5 ? 0xf2c14e : 0x9cc58a);
+      this.extrasIcons.fuelBar.setFillStyle(this.extras.fuel < 0.25 ? 0xe3263a : 0xff6a30);
       for (const o of [this.extrasChip, this.extrasLabel, this.extrasIcons.wrap, this.extrasIcons.fuel, this.extrasIcons.fuelBarBg, this.extrasIcons.fuelBar, this.fuelPctText]) o.setVisible(showExtras);
       const out = this.drive.step(Math.min(0.05, delta / 1000), forward, pedal);
       if (out.stalled) this.stalledOut();

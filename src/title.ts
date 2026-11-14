@@ -128,7 +128,24 @@ export class TitleScene extends Phaser.Scene {
     if (logoMeta && this.textures.exists('t_logo')) return;
     logoMeta = buildLogo();
     this.addCanvas('t_logo', logoMeta.canvas);
-    this.addCanvas('t_eye', catEye());
+    const eye = catEye();
+    this.addCanvas('t_eye', eye);
+    // The logo as the game shows it over Old Street: smaller, and with the cat's eyes painted in, since
+    // there is no blinking overlay there to supply them.
+    {
+      const k = 0.4;
+      const [c, ctx] = mk(logoMeta.canvas.width * k, logoMeta.canvas.height * k);
+      ctx.drawImage(logoMeta.canvas, 0, 0, c.width, c.height);
+      for (const e of logoMeta.eyes) {
+        const g = ctx.createRadialGradient(e.x * k, e.y * k, 0, e.x * k, e.y * k, 34 * k * 1.6);
+        g.addColorStop(0, 'rgba(255, 170, 60, 0.75)');
+        g.addColorStop(1, 'rgba(255, 170, 60, 0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(e.x * k - 60, e.y * k - 60, 120, 120);
+        ctx.drawImage(eye, e.x * k - (eye.width * k) / 2, e.y * k - (eye.height * k) / 2, eye.width * k, eye.height * k);
+      }
+      this.addCanvas('t_logo_small', c);
+    }
     // The paper and the rays are soft, so they are painted small and drawn large: a fraction of the memory.
     if (!this.textures.exists('t_paper')) this.addCanvas('t_paper', paperBackdrop(W / 2, H / 2));
     this.addCanvas('t_rays', printRays(1000, 28, '#3A0F22'));

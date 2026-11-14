@@ -1,54 +1,40 @@
 import Phaser from 'phaser';
-import { C } from './ink';
 
 /**
- * A small, shared UI kit, so every screen (HUD, toasts, the pause menu, Lost & Found) reads as one
- * considered interface instead of a pile of ad hoc stroked text. The rule that keeps it from looking
- * like a cartoon sticker: heavy painted outlines are for the hand-drawn *world* (signboards, the receipt,
- * the title lettering) only. Anything that is plainly an interface - a readout, a toast, a menu label -
- * sits on its own dark chip and uses a soft drop shadow instead of a thick white/black outline, the same
- * way a considered mobile or indie-PC HUD does (see the "typography in game interfaces" and "menu UX
- * mistakes" pieces referenced in the design notes). One font pair throughout: Fraunces for anything that
- * is a heading or a moment, Karla for everything you read quickly.
+ * The small UI kit every interface piece in the game is built from - HUD chips, readouts, labels -
+ * now in the title's printed identity: ink chips with a bone hairline, Anton for anything you read as
+ * a word or a number that matters, Space Mono for small labels, bone on ink, ember and red for accents.
+ * No soft drop shadows or rounded app chips any more: flat inks, hard edges, like the poster.
  */
-export const TITLE = '"Fraunces", serif';
-export const TEXT = '"Karla", sans-serif';
+export const TITLE = '"Anton", "Impact", sans-serif';
+export const TEXT = '"Space Mono", monospace';
 
-export const INK_BG = 0x241c38;
-export const PANEL_BG = 0xfff4e0;
+export const INK_BG = 0x0a0712;
+export const PANEL_BG = 0xf3e3cc;
+const BONE = '#F3E3CC';
+const INK = '#0A0712';
 
-/** A rounded, translucent dark chip: the one consistent backing for interface text over the scene. */
+/** An ink chip with a bone hairline: the one backing for interface text over the scene. */
 export function chip(scene: Phaser.Scene, x: number, y: number, w: number, h: number, originX = 0, originY = 0.5) {
-  return scene.add.rectangle(x, y, w, h, INK_BG, 0.5).setOrigin(originX, originY).setStrokeStyle(2, 0xfff2da, 0.22);
+  return scene.add.rectangle(x, y, w, h, INK_BG, 0.88).setOrigin(originX, originY).setStrokeStyle(2, 0xf3e3cc, 0.3);
 }
 
-/** A HUD readout label: small, clean, legible on any backdrop, no comic outline. */
+/** A HUD readout: Anton, bone, with an ink edge so it holds up over any backdrop. */
 export function hudText(scale = 1): Phaser.Types.GameObjects.Text.TextStyle {
-  return {
-    fontFamily: TEXT,
-    fontSize: `${Math.round(26 * scale)}px`,
-    color: C.cream,
-    shadow: { offsetX: 0, offsetY: 2, blur: 3, color: '#120d1f', fill: true },
-  };
+  return { fontFamily: TITLE, fontSize: `${Math.round(30 * scale)}px`, color: BONE, letterSpacing: 1 };
 }
 
-/** A toast/callout: still Fraunces for a little character, a thin controlled stroke, and wrapped to a
- * column so a long line reads as a short paragraph instead of one giant banner across the screen. */
-export function toastText(size = 36): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TITLE, fontSize: `${size}px`, color: C.cream, stroke: C.ink, strokeThickness: 3.5, align: 'center', wordWrap: { width: 760 }, lineSpacing: 2 };
+/** A menu heading. */
+export function headingText(size = 44, color: string = BONE): Phaser.Types.GameObjects.Text.TextStyle {
+  return { fontFamily: TITLE, fontSize: `${size}px`, color, stroke: INK, strokeThickness: 6, letterSpacing: 2 };
 }
 
-/** A menu heading: display font, a thin stroke for separation from busy art, letter-spaced caps read calmer. */
-export function headingText(size = 44, color: string = C.cream): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TITLE, fontSize: `${size}px`, color, stroke: C.ink, strokeThickness: 5 };
-}
-
-/** A button label: flat ink on the button's own paper colour, no outline needed. */
+/** A button label: ink on the button's tape. */
 export function buttonText(size = 32): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TITLE, fontSize: `${size}px`, color: C.ink };
+  return { fontFamily: TITLE, fontSize: `${size}px`, color: INK };
 }
 
-/** A plain interface label (menu rows, hints): Karla, a soft shadow, slight letter-spacing for polish. */
-export function uiText(size = 24, color: string = C.cream): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TEXT, fontSize: `${size}px`, color, letterSpacing: 0.2, shadow: { offsetX: 0, offsetY: 1, blur: 2, color: '#120d1f', fill: true } };
+/** A small interface label (chips, hints): Space Mono, bold, a little tracked. */
+export function uiText(size = 24, color: string = BONE): Phaser.Types.GameObjects.Text.TextStyle {
+  return { fontFamily: TEXT, fontStyle: 'bold', fontSize: `${Math.round(size * 0.82)}px`, color, letterSpacing: 2 };
 }
