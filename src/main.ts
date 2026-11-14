@@ -157,6 +157,7 @@ game.events.once('ready', async () => {
     art.milestoneArt(),
     art.homeSignArt(),
     art.plankSignArt(),
+    art.officialSignArt(),
     ...Object.keys(art.TOLL_SKINS).flatMap((k) => [art.tollBoothArt(k), art.tollCanopyArt(k)]),
     art.tollArmArt(),
     art.railSignalArt(),

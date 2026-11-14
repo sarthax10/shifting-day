@@ -40,6 +40,9 @@ const REEL = 260;
 const SHORTEST = 140;
 /** Gravity on the bolt, pixels a frame per frame (matches the physics world's). */
 const G = 0.001 * 16.67 * 16.67;
+/** The cable's colour at rest, and glowing hot white at full strain. */
+const COLOR_SLACK = new Phaser.Display.Color(216, 216, 228);
+const COLOR_TAUT = new Phaser.Display.Color(255, 142, 58);
 
 export class Crossbow {
   private bow!: Phaser.GameObjects.Image;
@@ -52,6 +55,9 @@ export class Crossbow {
   private length = 0;
   private reloadLeft = 0;
   private taught = false;
+  private reloadLabel!: Phaser.GameObjects.Text;
+  /** How hard the cable is straining right now, smoothed, 0 to 1: drives the cable's glow and colour. */
+  private tension = 0;
 
   constructor(private host: CrossbowHost) {}
 
@@ -60,6 +66,7 @@ export class Crossbow {
     this.g = scene.add.graphics().setDepth(11.7);
     this.bow = scene.add.image(0, 0, 'crossbow').setOrigin(CROSSBOW.pivot.x / CROSSBOW.w, CROSSBOW.pivot.y / CROSSBOW.h).setDepth(11.6);
     this.boltImg = scene.add.image(0, 0, 'anchor_bolt').setOrigin(0.92, 0.5).setDepth(11.65).setVisible(false);
+    this.reloadLabel = scene.add.text(0, 0, 'RELOADING…', { fontFamily: '"Karla", sans-serif', fontSize: '18px', color: '#FFF2DA', stroke: '#2A2140', strokeThickness: 4 }).setOrigin(0.5).setDepth(11.8).setVisible(false);
     scene.matter.world.on('collisionstart', (e: { pairs: { bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }[] }) => {
       if (this.state !== 'flying' || !this.bolt) return;
       for (const pr of e.pairs) {
@@ -94,6 +101,10 @@ export class Crossbow {
     this.boltImg.setVisible(true);
     play('bang', 0.5, 1.6);
     scene.cameras.main.shake(90, 0.002);
+    // A quick muzzle flash at the tip, so firing reads as a real release of tension, not just a click.
+    const flash = scene.add.circle(t.x, t.y, 10, 0xfff6d0).setDepth(11.75).setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({ targets: flash, scale: 2.6, alpha: 0, duration: 160, onComplete: () => flash.destroy() });
+    scene.tweens.add({ targets: this.bow, scale: 0.94, duration: 60, yoyo: true });
   }
 
   /** The bolt bites into the ground: it becomes the anchor, and the cable goes taut where it is. */
@@ -108,6 +119,12 @@ export class Crossbow {
     this.state = 'stuck';
     play('clunk', 1, 0.8);
     scene.cameras.main.shake(70, 0.0025);
+    // Grit kicked up where the bolt bit in, so the catch reads as a solid hit, not just a stop.
+    for (let i = 0; i < 5; i++) {
+      const a = Math.PI + (Math.random() - 0.5) * 1.8;
+      const puff = scene.add.image(this.anchor.x, this.anchor.y, 'puff').setDepth(11.4).setScale(0.3 + Math.random() * 0.2).setTint(0xb9b0a0).setAlpha(0.8);
+      scene.tweens.add({ targets: puff, x: puff.x + Math.cos(a) * 60, y: puff.y + Math.sin(a) * 40 - 20, scale: puff.scaleX + 0.5, alpha: 0, duration: 420 + Math.random() * 200, onComplete: () => puff.destroy() });
+    }
   }
 
   release() {
@@ -118,6 +135,7 @@ export class Crossbow {
     this.boltImg.setVisible(false);
     this.state = 'reload';
     this.reloadLeft = 0.7;
+    this.tension = 0;
     play('ratchet', 0.6);
   }
 
@@ -150,12 +168,14 @@ export class Crossbow {
         if (i % 2 === 0) g.fillStyle(0xfff6e4, 0.75 - i * 0.01).fillCircle(x, y, 4);
       }
     }
-    // Reloading.
+    // Reloading: a label so the pause reads as "winding up again", not "broken", and a little pop when ready.
+    this.reloadLabel.setPosition(m.x, m.y - 90).setVisible(this.state === 'reload');
     if (this.state === 'reload') {
       this.reloadLeft -= dt;
       if (this.reloadLeft <= 0) {
         this.state = 'ready';
         this.bow.setTexture('crossbow');
+        scene.tweens.add({ targets: this.bow, scale: 1.12, duration: 90, yoyo: true, ease: 'Sine.easeOut' });
       }
     }
     // In flight: the bolt points along its path; the cable pays out, and if it runs out the bolt falls back.
@@ -186,9 +206,11 @@ export class Crossbow {
       const d = Math.hypot(dx, dy);
       const ux = dx / d;
       const uy = dy / d;
+      let strain = 0;
       if (d > this.length) {
         // Taut: take away any speed away from the anchor, and pull back towards it by how much it is stretched.
         const pull = Math.min(1.6, (d - this.length) * 0.06);
+        strain = pull / 1.6;
         for (const body of this.host.bodies()) {
           const away = -(body.velocity.x * ux + body.velocity.y * uy);
           const fix = Math.max(0, away) + pull;
@@ -196,7 +218,9 @@ export class Crossbow {
         }
         if (this.host.reeling() && scene.time.now % 200 < 20) play('ratchet', 0.25, 1.4);
       }
-      this.cable(g, m, an, d >= this.length - 2);
+      // Smoothed, so the cable's colour eases rather than flickering frame to frame.
+      this.tension += (strain - this.tension) * Math.min(1, dt * 6);
+      this.cable(g, m, an, d >= this.length - 2, this.tension);
       this.boltImg.setPosition(an.x, an.y);
       // Wound all the way in, or driven past the anchor: the bolt lets go and reels home.
       if ((this.length <= SHORTEST + 1 && d < SHORTEST + 60) || an.x < m.x - 500) this.release();
@@ -209,15 +233,17 @@ export class Crossbow {
   }
 
   /** The cable: straight when taut, sagging when slack. */
-  private cable(g: Phaser.GameObjects.Graphics, from: { x: number; y: number }, to: { x: number; y: number }, taut: boolean) {
+  /** The cable: straight when taut, sagging when slack, and glowing hot white under real load. */
+  private cable(g: Phaser.GameObjects.Graphics, from: { x: number; y: number }, to: { x: number; y: number }, taut: boolean, tension = 0) {
     const sag = taut ? 0 : Math.min(120, Math.max(0, this.length - Math.hypot(to.x - from.x, to.y - from.y)) * 0.5);
     const pts: Phaser.Math.Vector2[] = [];
     for (let i = 0; i <= 16; i++) {
       const k = i / 16;
       pts.push(new Phaser.Math.Vector2(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k + Math.sin(k * Math.PI) * sag));
     }
-    g.lineStyle(6, 0x2a2140, 1).strokePoints(pts);
-    g.lineStyle(3, 0xd8d8e4, 1).strokePoints(pts);
+    g.lineStyle(6 + tension * 2, 0x2a2140, 1).strokePoints(pts);
+    const core = Phaser.Display.Color.Interpolate.ColorWithColor(COLOR_SLACK, COLOR_TAUT, 100, Math.round(tension * 100));
+    g.lineStyle(3 + tension * 2, Phaser.Display.Color.GetColor(core.r, core.g, core.b), 1).strokePoints(pts);
   }
 
   stop() {

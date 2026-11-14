@@ -1231,6 +1231,31 @@ export function plankSignArt(): Art {
   return { key: 'sign_plank', svg: p.svg(w, h), w, h };
 }
 
+/** The official sign's size, and the box within its plate that the words must fit inside. */
+export const OFFICIAL_SIGN = { w: 280, h: 236, text: { x: 140, y: 112, w: 232, h: 150 } };
+
+/**
+ * An official highway sign: a single galvanised post, a reflective white plate with a bold red
+ * border and four rivets, a little warning triangle up top - next to the locals' hand-painted jokes,
+ * this one means business. Used for the instructions that actually matter: stop, handbrake on.
+ */
+export function officialSignArt(): Art {
+  const p = pen('sign_official');
+  const { w, h } = OFFICIAL_SIGN;
+  // The post, and a flange bolted to the ground.
+  p.rect(w / 2 - 10, 160, 20, h - 160, { fill: '#8A8478', r: 3, width: 4.5, shade: [{ pts: [[w / 2, 160], [w / 2 + 10, 160], [w / 2 + 10, h], [w / 2, h]], color: '#5F5B50' }] });
+  p.rect(w / 2 - 26, h - 16, 52, 14, { fill: '#5F5B50', r: 3, width: 3.5 });
+  // The reflective plate: white, rounded, a thick red border.
+  p.rect(4, 4, w - 8, 172, { fill: '#F4F2EA', r: 16, width: 7, shade: [{ pts: [[0, 110], [w, 100], [w, 180], [0, 180]], color: '#D8D4C4' }] });
+  p.rect(18, 18, w - 36, 144, { stroke: '#C9483A', width: 9, r: 10 });
+  for (const [cx, cy] of [[24, 24], [w - 24, 24], [24, 154], [w - 24, 154]] as const) p.dot(cx, cy, 4.2, '#8A8478');
+  // A small warning triangle, top centre, above where the words go.
+  p.shape([[w / 2, 36], [w / 2 + 24, 70], [w / 2 - 24, 70]], { fill: '#F2C14E', raw: true, width: 4 });
+  p.rect(w / 2 - 3, 44, 6, 16, { fill: C.ink, r: 2, stroke: null });
+  p.dot(w / 2, 62, 3, C.ink);
+  return { key: 'sign_official', svg: p.svg(w, h), w, h };
+}
+
 /** The colours a toll plaza is painted in, per place: booth body and its shade, canopy fascia. */
 export const TOLL_SKINS: Record<string, [string, string, string]> = {
   meadow: ['#7EC4E0', '#4E96B4', '#2E5E86'],

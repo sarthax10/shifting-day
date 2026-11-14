@@ -34,7 +34,7 @@ export const CORNER: StopLook = {
   key: 'stopart_0',
   w: 900,
   h: 560,
-  sign: { x: 760, y: 92, w: 170, size: 30, color: '#FFF4DE', stroke: '#8E1E24', rot: -0.03 },
+  sign: { x: 760, y: 92, w: 128, size: 26, color: '#FFF4DE', stroke: '#8E1E24', rot: -0.03 },
   glows: [
     [180, 420, 300, 120, 0xffd27a],
     [560, 300, 300, 50, 0xfff6d8],
@@ -330,14 +330,23 @@ export function placeStop(scene: Phaser.Scene, index: number, x: number, ground:
   const look = STOP_LOOKS[index];
   const top = ground - look.h;
   scene.add.image(x, ground, look.key).setOrigin(0, 1).setDepth(-10);
+  // Each stop's lettering leans on what that kind of sign actually looks like: bold spaced-out caps
+  // on the gas station's metal pylon, a plain hand-lettered board at the mill, carved-looking serif at
+  // the lodge, and a leaning neon script at the diner - the same word would not suit all four alike.
+  const lettering: Record<number, { fontStyle?: string; letterSpacing?: number }> = {
+    0: { fontStyle: 'bold', letterSpacing: 1.5 },
+    3: { fontStyle: 'italic', letterSpacing: 1 },
+  };
   const label = scene.add
-    .text(x + look.sign.x, top + look.sign.y, name.toUpperCase(), { fontFamily: '"Fraunces", serif', fontSize: `${look.sign.size}px`, color: look.sign.color, stroke: look.sign.stroke, strokeThickness: 6, align: 'center' })
+    .text(x + look.sign.x, top + look.sign.y, name.toUpperCase(), { fontFamily: '"Fraunces", serif', fontSize: `${look.sign.size}px`, color: look.sign.color, stroke: look.sign.stroke, strokeThickness: 6, align: 'center', ...lettering[index] })
     .setOrigin(0.5)
     .setDepth(-9.8)
     .setRotation(look.sign.rot ?? 0);
-  label.setScale(Math.min(1, look.sign.w / label.width));
+  // A safety margin under the configured width: the stroke bleeds past the glyph box, and a couple of
+  // these plates are tapered rather than square, so fitting to the raw width alone can still overflow.
+  label.setScale(Math.min(1, (look.sign.w * 0.84) / label.width));
   // Neon (the diner) glows: a soft halo of its own colour round every letter.
-  if (index === 3) label.setShadow(0, 0, look.sign.color, 18, true, true);
+  if (index === 3) label.setShadow(0, 0, look.sign.color, 24, true, true);
   for (const [gx, gy, gw, gh, colour] of look.glows) {
     scene.add.image(x + gx, top + gy, 'halo').setDepth(-9.7).setDisplaySize(gw * 1.6, gh * 1.8).setTint(colour).setAlpha(0.42).setBlendMode(Phaser.BlendModes.ADD);
   }

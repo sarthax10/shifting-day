@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Engine, ambience, audio, chime, music, play, thud } from './audio';
-import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, TOLL_SKINS, CANOPY, RAIL_SIGNAL } from './art';
+import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, OFFICIAL_SIGN, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, TOLL_SKINS, CANOPY, RAIL_SIGNAL } from './art';
 import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
 import { Fx } from './fx';
@@ -18,6 +18,7 @@ import type { BiomeKey } from './legs';
 export { CHUNK, CHUNK_TOP } from './prepare';
 import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg } from './prepare';
 import { applyBiomeFX } from './postfx';
+import { chip, hudText, uiText, toastText, headingText, INK_BG } from './ui';
 
 // The physics library that ships inside Phaser. Its own types are loose, so bodies are `any` here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -140,6 +141,10 @@ export class PlayScene extends Phaser.Scene {
   private phase: Phase = 'pack';
   private things: Thing[] = [];
   private byBody = new Map<number, Thing>();
+  /** Broken things restored on the truck, in the same order as trip.lost's broken cargo, waiting to be taped up. */
+  private pendingBroken: Thing[] = [];
+  private lostFoundBtn?: { box: Phaser.GameObjects.Container; label: Phaser.GameObjects.Text };
+  private lostFoundPanel?: Phaser.GameObjects.Container;
   private chassis!: Body;
   private wheels: Body[] = [];
   private truckImg!: Phaser.GameObjects.Image;
@@ -151,10 +156,14 @@ export class PlayScene extends Phaser.Scene {
   private slabsIn = new Set<Body>();
   private roadAt = -1e9;
   private fxLabel!: Phaser.GameObjects.Text;
+  private fxChip!: Phaser.GameObjects.Rectangle;
   /** Fuel and bubble wrap; and the anchor crossbow. */
   private crossbow!: Crossbow;
   private extras!: Extras;
   private extrasLabel!: Phaser.GameObjects.Text;
+  private extrasChip!: Phaser.GameObjects.Rectangle;
+  private extrasIcons!: { wrap: Phaser.GameObjects.Image; fuel: Phaser.GameObjects.Image; fuelBarBg: Phaser.GameObjects.Rectangle; fuelBar: Phaser.GameObjects.Rectangle };
+  private fuelPctText!: Phaser.GameObjects.Text;
   private headlight!: Phaser.GameObjects.Image;
   private drive = new Drivetrain();
   private eye!: Inked;
@@ -184,16 +193,18 @@ export class PlayScene extends Phaser.Scene {
   private joltTip = false;
   private scenery2: { sails: Phaser.GameObjects.Image[]; clouds: { img: Phaser.GameObjects.Image; speed: number }[] } = { sails: [], clouds: [] };
   private chimneys: { x: number; y: number; kind: 'old' | 'new'; n: number }[] = [];
-  private milestone = 0;
   private boiling: Inked[] = [];
   private cursorNow = '';
   private boilFrame = 0;
   /** From the truck's centre of mass to the (0, 0) its picture is drawn around. */
   private anchor = { x: 0, y: 0 };
   private held: { thing: Thing; dx: number; dy: number; angle: number } | null = null;
-  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four' | 'p' | 'space' | 'w', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four' | 'p' | 'space' | 'w' | 'esc', Phaser.Input.Keyboard.Key>;
+  private paused = false;
+  private pauseUi?: Phaser.GameObjects.Container;
   private hint!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
+  private toastChip!: Phaser.GameObjects.Rectangle;
   private goButton!: Phaser.GameObjects.Container;
   private ropeButton!: Phaser.GameObjects.Container;
   private ropeLabel!: Phaser.GameObjects.Text;
@@ -251,7 +262,6 @@ export class PlayScene extends Phaser.Scene {
     this.boiling = [];
     this.cursorNow = '';
     this.boilFrame = 0;
-    this.milestone = 0;
     this.roadAt = -1e9;
     this.drive = new Drivetrain();
     this.swing = { fa: 0, fv: 0, aa: 0, av: 0 };
@@ -300,7 +310,16 @@ export class PlayScene extends Phaser.Scene {
     });
     this.crossbow.build();
     this.input.mouse?.disableContextMenu();
-    this.extrasLabel = this.add.text(40, 130, '', { fontFamily: TITLE, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setScrollFactor(0).setDepth(100);
+    // The resource readout: its own clear chip, icons instead of just words, a fuel bar that reddens when low.
+    const hudY = 146;
+    this.extrasChip = chip(this, 40, hudY, 320, 58).setScrollFactor(0).setDepth(100).setVisible(false);
+    const wrapIcon = this.add.image(78, hudY, 'bubble_wrap').setScale(0.46).setScrollFactor(0).setDepth(101).setVisible(false);
+    this.extrasLabel = this.add.text(108, hudY, '', hudText(1.1)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+    const fuelIcon = this.add.image(208, hudY, 'fuel_can').setScale(0.4).setScrollFactor(0).setDepth(101).setVisible(false);
+    const fuelBarBg = this.add.rectangle(238, hudY, 92, 16, 0x14101f, 0.8).setOrigin(0, 0.5).setStrokeStyle(2, 0xfff2da, 0.3).setScrollFactor(0).setDepth(101).setVisible(false);
+    const fuelBar = this.add.rectangle(240, hudY, 88, 12, 0x9cc58a).setOrigin(0, 0.5).setScrollFactor(0).setDepth(102).setVisible(false);
+    this.extrasIcons = { wrap: wrapIcon, fuel: fuelIcon, fuelBarBg, fuelBar };
+    this.fuelPctText = this.add.text(240, hudY + 18, '', { fontFamily: TEXT, fontSize: '16px', color: C.cream }).setOrigin(0, 0).setScrollFactor(0).setDepth(101).setVisible(false);
 
     this.matter.world.on('collisionstart', (event: { pairs: { bodyA: Body; bodyB: Body }[] }) => this.knocks(event.pairs));
 
@@ -437,18 +456,17 @@ export class PlayScene extends Phaser.Scene {
       this.tweens.add({ targets: puff, x: puff.x - 90, y: puff.y - 70, scale: 1.6, alpha: 0, duration: 900, onComplete: () => puff.destroy() });
     }
     if (this.frame % 30 === 0) play('squeal');
+    // The smoke and squeal say it; the driver's startled look says it again. No toast needed.
     if (this.time.now - this.brakeNagged > 4000) {
       this.brakeNagged = this.time.now;
-      this.say('Smell that? The handbrake is still on. Press P!');
       this.lookStartled(600);
     }
   }
 
-  /** The engine labouring in too high a gear: the truck judders. */
+  /** The engine labouring in too high a gear: the truck judders. The shudder and sound are the warning. */
   private truckShudder(how: number) {
     const c = this.chassis;
     M.Body.setAngularVelocity(c, c.angularVelocity + (Math.random() - 0.5) * 0.004 * how);
-    if (this.frame % 40 === 0) this.say('The engine is struggling. Change down!');
   }
 
   private stalledOut() {
@@ -538,10 +556,14 @@ export class PlayScene extends Phaser.Scene {
       line.fillStyle(0xfff6e4, 0.9);
       for (let k = 0; k < 4; k++) line.fillRect(x - 230 + k * 8, groundY(x - 230 + k * 8) + 2, 6, 16);
       const sx = x - 900;
-      const tilt = -0.02;
-      this.add.image(sx, groundY(sx) + 10, 'sign_plank').setOrigin(0.5, 1).setDepth(-6).setScale(0.8).setRotation(tilt);
-      const words = this.add.text(sx, groundY(sx) + 10 - (PLANK.h - PLANK.text.y) * 0.8, this.leg.gateKind === 'rail' ? 'RAIL CROSSING.\nSTOP. HANDBRAKE ON.\nTRAINS DO NOT BRAKE.' : 'TOLL AHEAD.\nSTOP. HANDBRAKE ON.\nNO EXCEPTIONS.', { fontFamily: TITLE, fontSize: '26px', color: C.terracottaDark, align: 'center', lineSpacing: -2 }).setOrigin(0.5).setDepth(-5.9).setRotation(tilt);
-      words.setScale(Math.min(1, (PLANK.text.w * 0.8) / words.width, (PLANK.text.h * 0.8) / words.height));
+      const tilt = -0.01;
+      this.add.image(sx, groundY(sx) + 10, 'sign_official').setOrigin(0.5, 1).setDepth(-6).setScale(0.8).setRotation(tilt);
+      const words = this.add
+        .text(sx, groundY(sx) + 10 - (OFFICIAL_SIGN.h - OFFICIAL_SIGN.text.y) * 0.8, this.leg.gateKind === 'rail' ? 'RAIL CROSSING\nSTOP\nHANDBRAKE ON' : 'TOLL AHEAD\nSTOP\nHANDBRAKE ON', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '28px', color: C.ink, align: 'center', lineSpacing: 0, letterSpacing: 0.5 })
+        .setOrigin(0.5)
+        .setDepth(-5.9)
+        .setRotation(tilt);
+      words.setScale(Math.min(1, (OFFICIAL_SIGN.text.w * 0.8) / words.width, (OFFICIAL_SIGN.text.h * 0.8) / words.height));
       this.gates.push({ x, body, arm, state: 'closed', timer: 0, announced: false, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 100, y: y - 180 }, red, green, beacon, flashers });
     }
   }
@@ -694,6 +716,7 @@ export class PlayScene extends Phaser.Scene {
   private restoreCargo() {
     const b = this.bed();
     const restored: { t: Thing; tied: boolean }[] = [];
+    this.pendingBroken = [];
     for (const c of this.trip.cargo) {
       const spec = ITEMS.find((s) => s.key === c.key);
       if (!spec) continue;
@@ -704,12 +727,14 @@ export class PlayScene extends Phaser.Scene {
         t.wasBroken = true;
         t.aboard = false;
         this.redraw(t.ink, `${spec.key}_broken`);
+        this.pendingBroken.push(t);
       }
       restored.push({ t, tied: c.tied });
     }
     this.time.delayedCall(450, () => {
       for (const r of restored) if (r.tied && this.ropesLeft > 0 && !r.t.rope) this.tie(r.t);
     });
+    this.maybeOfferLostFound();
   }
 
   /** Parked at a stop: the trip is saved there, with the load as it sits, and the next leg is offered. */
@@ -734,59 +759,77 @@ export class PlayScene extends Phaser.Scene {
     saveTrip(trip);
     void prepareLeg(this.textures, trip.leg);
     const worth = onBoard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
-    this.time.delayedCall(900, () => {
-      this.checkpointCard(trip, lostNow.length, brokeNow.length, worth);
-      this.lostAndFound(trip);
-    });
+    this.time.delayedCall(900, () => this.checkpointCard(trip, lostNow.length, brokeNow.length, worth));
+  }
+
+  /** A button over the pile, only when there is something to claim: what fell off or broke on earlier legs. */
+  private maybeOfferLostFound() {
+    const pending = () => this.trip.lost.length + this.pendingBroken.length;
+    if (!pending()) return;
+    const mk = () => {
+      const btn = this.button(W / 2, 60, 'btn_rope', `Lost & Found (${pending()})`, 28, () => this.openLostFound());
+      btn.box.setScrollFactor(0).setDepth(100);
+      this.lostFoundBtn = btn;
+    };
+    mk();
   }
 
   /**
-   * The stop's Lost & Found: a counter at every checkpoint, beside the receipt. Locals bring in whatever fell
-   * off the truck on the trip so far, and the stop has tape for broken things. Getting a thing back costs a
-   * few rolls of bubble wrap; pets always find their own way back, for free. Whatever is found or fixed goes
-   * back on the truck for the next leg.
+   * The stop's Lost & Found, opened from the pile: whatever fell off or broke on earlier legs. Claiming a
+   * lost thing has it dropped off by a passing truck - literally, it falls out of the sky onto the ground -
+   * so it still has to be dragged onto the truck like everything else. Pets always find their own way back,
+   * for free; the stop has tape for broken things, fixed on the spot. Both cost a few rolls of bubble wrap.
    */
-  private lostAndFound(trip: Trip) {
-    const x = W - 268;
-    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 202) => o.setScrollFactor(0).setDepth(d);
+  private openLostFound() {
+    if (this.lostFoundPanel) return;
+    const x = W / 2;
     const nameOf = (key: string) => ITEMS.find((i) => i.key === key)?.name ?? key;
     const isPet = (key: string) => !!ITEMS.find((i) => i.key === key)?.pet;
-    const lost = trip.lost.slice(0, 5);
-    const broken = trip.cargo.filter((c) => c.broken).slice(0, 3);
-    const rows = lost.length + broken.length;
+    const rowsCount = () => this.trip.lost.length + this.pendingBroken.length;
     const rowH = 84;
-    const h = 200 + Math.max(1, rows) * rowH;
-    const top = H / 2 - h / 2 - 20;
-    const coins = () => trip.coins ?? 0;
-    // The counter: a wooden board with a paper sign, slid in from the side.
-    const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(201);
-    const board = this.add.rectangle(x, top + h / 2, 470, h, 0x7a4a2e).setStrokeStyle(6, 0x2a2140);
-    const paper = this.add.rectangle(x, top + h / 2 + 8, 430, h - 60, 0xfff4e0).setStrokeStyle(4, 0x2a2140);
+    const h = 220 + Math.max(1, rowsCount()) * rowH;
+    const top = Math.max(140, H / 2 - h / 2);
+    const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(250);
+    this.lostFoundPanel = panel;
+    const scrim = this.add.rectangle(x, H / 2, W, H, 0x120d1f, 0.55).setInteractive();
+    const board = this.add.rectangle(x, top + h / 2, 500, h, 0x7a4a2e).setStrokeStyle(6, 0x2a2140);
+    const paper = this.add.rectangle(x, top + h / 2 + 8, 460, h - 60, 0xfff4e0).setStrokeStyle(4, 0x2a2140);
     const sign = this.add.rectangle(x, top + 4, 330, 64, 0xd8572a).setStrokeStyle(5, 0x2a2140).setAngle(-2);
     const title = this.add.text(x, top, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '40px', color: C.cream }).setOrigin(0.5).setAngle(-2);
+    title.setScale(Math.min(1, (300 * 0.85) / title.width));
     const purse = this.add.text(x, top + 66, '', { fontFamily: TEXT, fontSize: '23px', color: C.walnut }).setOrigin(0.5);
-    panel.add([board, paper, sign, title, purse]);
-    for (const [px, py] of [[x - 200, top + 46], [x + 200, top + 46], [x - 200, top + h - 24], [x + 200, top + h - 24]]) panel.add(this.add.circle(px, py, 7, 0xc9a24a).setStrokeStyle(3, 0x2a2140));
-    const showPurse = () => purse.setText(`You have ${coins()} roll${coins() === 1 ? '' : 's'} of bubble wrap`);
+    // A small close button, well clear of the ribbon, in the board's own corner.
+    const closeBtn = this.add.circle(x + 222, top + 12, 23, 0x2a2140).setStrokeStyle(3, 0xfff2da, 0.5).setInteractive({ cursor: CURSOR.open });
+    const closeX = this.add.text(x + 222, top + 11, 'X', { fontFamily: TITLE, fontSize: '22px', color: C.cream }).setOrigin(0.5);
+    closeBtn.on('pointerover', () => closeBtn.setScale(1.1));
+    closeBtn.on('pointerout', () => closeBtn.setScale(1));
+    closeBtn.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      play('click');
+      this.closeLostFound();
+    });
+    panel.add([scrim, board, paper, sign, title, purse, closeBtn, closeX]);
+    for (const [px, py] of [[x - 215, top + 46], [x + 215, top + 46], [x - 215, top + h - 24], [x + 215, top + h - 24]]) panel.add(this.add.circle(px, py, 7, 0xc9a24a).setStrokeStyle(3, 0x2a2140));
+    const showPurse = () => purse.setText(`You have ${this.extras.coins} roll${this.extras.coins === 1 ? '' : 's'} of bubble wrap`);
     showPurse();
-    this.tweens.add({ targets: panel, x: { from: 560, to: 0 }, duration: 520, delay: 150, ease: 'Back.easeOut' });
-    if (!rows) {
-      panel.add(this.add.text(x, top + 150, 'Nothing handed in.\nEverything made it!', { fontFamily: TEXT, fontSize: '26px', color: C.sageDark, align: 'center' }).setOrigin(0.5));
-      return;
-    }
+    this.tweens.add({ targets: panel, alpha: { from: 0, to: 1 }, duration: 220 });
+    const empty = this.add.text(x, top + 150, 'Nothing handed in.\nEverything made it!', { fontFamily: TEXT, fontSize: '26px', color: C.sageDark, align: 'center' }).setOrigin(0.5).setVisible(!rowsCount());
+    panel.add(empty);
     let y = top + 124;
+    const dropXs = [260, 420, 580, 740, 900, 1060];
+    let dropAt = 0;
     const row = (key: string, label: string, cost: number, act: () => void) => {
+      const ry = y;
       const tex = isPet(key) ? `${key}_calm` : key;
       const frame = this.textures.exists(`${tex}#0`) ? `${tex}#0` : tex;
       if (this.textures.exists(frame)) {
-        const icon = this.add.image(x - 170, y, frame);
+        const icon = this.add.image(x - 185, ry, frame);
         icon.setScale(Math.min(60 / icon.width, 60 / icon.height));
         panel.add(icon);
       }
-      const text = this.add.text(x - 128, y, label, { fontFamily: TEXT, fontSize: '22px', color: C.ink, wordWrap: { width: 170 } }).setOrigin(0, 0.5);
-      // A price tag to click: it reads the cost, then "Back!" once paid.
-      const tag = this.add.rectangle(x + 140, y, 120, 50, cost ? 0xf2c14e : 0x9cc58a).setStrokeStyle(4, 0x2a2140);
-      const price = this.add.text(x + 140, y - 2, cost ? `${cost} rolls` : 'Free', { fontFamily: TITLE, fontSize: '26px', color: C.ink }).setOrigin(0.5);
+      const text = this.add.text(x - 140, ry, label, { fontFamily: TEXT, fontSize: '22px', color: C.ink, wordWrap: { width: 185 } }).setOrigin(0, 0.5);
+      const tag = this.add.rectangle(x + 165, ry, 120, 50, cost ? 0xf2c14e : 0x9cc58a).setStrokeStyle(4, 0x2a2140);
+      const price = this.add.text(x + 165, ry - 2, cost ? `${cost} rolls` : 'Free', { fontFamily: TITLE, fontSize: '26px', color: C.ink }).setOrigin(0.5);
       panel.add([text, tag, price]);
       let done = false;
       tag.setInteractive({ cursor: CURSOR.open });
@@ -795,37 +838,59 @@ export class PlayScene extends Phaser.Scene {
       tag.on('pointerdown', (_p: unknown, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
         event.stopPropagation();
         if (done) return;
-        if (coins() < cost) {
+        if (this.extras.coins < cost) {
           play('click');
           this.tweens.add({ targets: [tag, price], x: '+=8', duration: 50, yoyo: true, repeat: 3 });
           return this.say('Not enough bubble wrap. It lies where the road gets tricky.');
         }
         done = true;
-        trip.coins = coins() - cost;
+        this.extras.coins -= cost;
         act();
-        saveTrip(trip);
         showPurse();
         play('stamp');
         tag.setFillStyle(0xd7e8c8).setScale(1);
-        price.setText('Back!').setColor(C.sageDark);
+        price.setText('Done!').setColor(C.sageDark);
         text.setColor(C.sageDark);
+        if (!this.trip.lost.length && !this.pendingBroken.length) this.time.delayedCall(500, () => this.closeLostFound());
       });
       y += rowH;
     };
-    lost.forEach((key, i) => {
+    [...this.trip.lost].forEach((key) => {
+      const spec = ITEMS.find((s) => s.key === key);
+      if (!spec) return;
       row(key, nameOf(key), isPet(key) ? 0 : 3, () => {
-        trip.cargo.push({ key, broken: false, dx: -150 + i * 80, dy: -110, angle: 0, tied: false });
-        const at = trip.lost.indexOf(key);
-        if (at >= 0) trip.lost.splice(at, 1);
+        const at = this.trip.lost.indexOf(key);
+        if (at >= 0) this.trip.lost.splice(at, 1);
+        const dx = dropXs[dropAt++ % dropXs.length];
+        this.addThing(spec, dx, -420, Math.random() * 0.8 - 0.4);
+        play('honk', 0.5);
+        this.cameras.main.shake(80, 0.0015);
       });
     });
-    broken.forEach((c) => {
-      row(c.key, `Tape up the ${nameOf(c.key).toLowerCase()}`, 2, () => {
-        c.broken = false;
-        const at = trip.broken.indexOf(c.key);
-        if (at >= 0) trip.broken.splice(at, 1);
+    [...this.pendingBroken].forEach((t) => {
+      row(t.spec.key, `Tape up the ${nameOf(t.spec.key).toLowerCase()}`, 2, () => {
+        const at = this.pendingBroken.indexOf(t);
+        if (at >= 0) this.pendingBroken.splice(at, 1);
+        t.broken = false;
+        t.aboard = true;
+        this.redraw(t.ink, t.spec.pet ? `${t.spec.key}_calm` : t.spec.key);
+        const brokenAt = this.trip.broken.indexOf(t.spec.key);
+        if (brokenAt >= 0) this.trip.broken.splice(brokenAt, 1);
       });
     });
+  }
+
+  private closeLostFound() {
+    this.lostFoundPanel?.destroy(true);
+    this.lostFoundPanel = undefined;
+    const pending = this.trip.lost.length + this.pendingBroken.length;
+    if (this.lostFoundBtn) {
+      if (pending) this.lostFoundBtn.label.setText(`Lost & Found (${pending})`);
+      else {
+        this.lostFoundBtn.box.destroy(true);
+        this.lostFoundBtn = undefined;
+      }
+    }
   }
 
   private checkpointCard(trip: Trip, lost: number, broke: number, worth: number) {
@@ -1223,7 +1288,8 @@ export class PlayScene extends Phaser.Scene {
   private hud() {
     const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
     this.hint = this.add.text(40, 1006, '', { ...style, fontSize: '32px', backgroundColor: C.cream, padding: { x: 20, y: 10 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
-    this.toast = this.add.text(W / 2, 330, '', { ...style, fontSize: '56px', color: C.terracottaDark, stroke: C.cream, strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
+    this.toastChip = this.add.rectangle(W / 2, 330, 10, 10, INK_BG, 0.55).setOrigin(0.5).setStrokeStyle(2, 0xfff2da, 0.25).setScrollFactor(0).setDepth(99).setAlpha(0);
+    this.toast = this.add.text(W / 2, 330, '', toastText(46)).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
     this.ropeLines = this.add.graphics().setDepth(25);
 
     // Top right: the points on the truck, and how far along the road it is.
@@ -1245,18 +1311,25 @@ export class PlayScene extends Phaser.Scene {
     // The dashboard appears when the truck sets off.
     this.dash = new Dash(this, () => this.drive);
     this.dash.create();
+    // The sound and effects toggles: small chips, not shouting for attention next to the resource HUD.
     if (this.fx.available) {
-      this.fxLabel = this.add.text(40, 34, '', { ...style, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
-      this.fxLabel.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      this.fxChip = chip(this, 40, 34, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
+      this.fxLabel = this.add.text(56, 34, '', uiText(22)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+      this.fxChip.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
         e.stopPropagation();
         this.toggleFx();
       });
       this.showFx();
     }
 
-    const soundLabel = this.add.text(40, this.fx.available ? 76 : 34, '', { ...style, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 6 }).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
-    const showSound = () => soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
-    soundLabel.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+    const soundY = this.fx.available ? 86 : 34;
+    const soundChip = chip(this, 40, soundY, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
+    const soundLabel = this.add.text(56, soundY, '', uiText(22)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+    const showSound = () => {
+      soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
+      soundChip.setSize(soundLabel.width + 32, 44);
+    };
+    soundChip.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
       audio.toggleMute();
       showSound();
@@ -1271,6 +1344,60 @@ export class PlayScene extends Phaser.Scene {
     this.setRoping(false);
   }
 
+  /** ESC: a pause menu over everything, the engine silenced, Matter and tweens frozen while it's up. */
+  private togglePause() {
+    if (this.phase === 'done' || this.phase === 'intro') return;
+    if (this.pauseUi) this.closePause();
+    else this.openPause();
+  }
+
+  private openPause() {
+    this.paused = true;
+    this.matter.pause();
+    this.tweens.pauseAll();
+    this.engine.stop();
+    play('click');
+    const cx = W / 2;
+    const cy = H / 2;
+    const ui = this.add.container(0, 0).setScrollFactor(0).setDepth(300);
+    this.pauseUi = ui;
+    ui.add(this.add.rectangle(cx, cy, W, H, 0x120d1f, 0.68).setScrollFactor(0));
+    ui.add(this.add.rectangle(cx, cy, 580, 560, 0x2a2140).setScrollFactor(0));
+    ui.add(this.add.rectangle(cx, cy, 554, 534, 0xfff4e0).setScrollFactor(0));
+    ui.add(this.add.text(cx, cy - 210, 'PAUSED', headingText(56, C.ink)).setOrigin(0.5).setScrollFactor(0));
+    const resume = this.button(cx, cy - 100, 'btn', 'Resume', 36, () => this.closePause());
+    ui.add([resume.box]);
+    const sound = this.button(cx, cy + 10, 'btn_rope', '', 28, () => {
+      audio.toggleMute();
+      showSound();
+    });
+    const showSound = () => sound.label.setText(`Sound: ${audio.muted ? 'off' : 'on'}`);
+    showSound();
+    ui.add([sound.box]);
+    const restart = this.button(cx, cy + 120, 'btn_rope', 'Restart leg', 30, () => {
+      this.closePause();
+      void this.scene.restart({ leg: this.leg.n, trip: this.trip });
+    });
+    ui.add([restart.box]);
+    const quit = this.button(cx, cy + 220, 'btn_rope', 'Quit to title', 30, () => {
+      this.closePause();
+      this.scene.start('title');
+    });
+    ui.add([quit.box]);
+    for (const box of [resume.box, sound.box, restart.box, quit.box]) box.setDepth(100);
+  }
+
+  private closePause() {
+    if (!this.pauseUi) return;
+    this.pauseUi.destroy(true);
+    this.pauseUi = undefined;
+    this.paused = false;
+    this.matter.resume();
+    this.tweens.resumeAll();
+    if (this.phase === 'drive') this.engine.start();
+    play('click');
+  }
+
   private toggleFx() {
     this.fx.toggle();
     this.showFx();
@@ -1278,6 +1405,7 @@ export class PlayScene extends Phaser.Scene {
 
   private showFx() {
     this.fxLabel.setText(`Effects: ${this.fx.enabled ? 'on' : 'off'}  (F)`);
+    this.fxChip.setSize(this.fxLabel.width + 32, 44);
   }
 
   private valueOf(t: Thing) {
@@ -1355,7 +1483,9 @@ export class PlayScene extends Phaser.Scene {
       p: kb.addKey('P'),
       w: kb.addKey('W'),
       space: kb.addKey('SPACE'),
+      esc: kb.addKey('ESC'),
     };
+    this.keys.esc.on('down', () => this.togglePause());
     this.keys.p.on('down', () => this.toggleHandbrake());
     this.keys.space.on('down', () => this.toggleHandbrake());
     this.input.mouse?.disableContextMenu();
@@ -1414,8 +1544,9 @@ export class PlayScene extends Phaser.Scene {
 
   private say(text: string) {
     this.toast.setText(text).setAlpha(1).setY(330);
-    this.tweens.killTweensOf(this.toast);
-    this.tweens.add({ targets: this.toast, alpha: 0, y: 290, delay: 1100, duration: 500 });
+    this.toastChip.setSize(this.toast.width + 64, this.toast.height + 34).setAlpha(1).setY(330);
+    this.tweens.killTweensOf([this.toast, this.toastChip]);
+    this.tweens.add({ targets: [this.toast, this.toastChip], alpha: 0, y: 290, delay: 1100, duration: 500 });
   }
 
   /** Where the middle of the top of the truck bed is. */
@@ -2048,6 +2179,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    if (this.paused) return;
     const cam = this.cameras.main;
     this.frame++;
     if (this.phase === 'intro') this.reverseIn(delta);
@@ -2088,8 +2220,14 @@ export class PlayScene extends Phaser.Scene {
       const ptr = this.input.activePointer;
       ptr.updateWorldPoint(cam);
       this.crossbow.update(Math.min(0.05, delta / 1000), { x: ptr.worldX, y: ptr.worldY });
-      const fuelText = `Bubble wrap ${this.extras.coins}    Fuel ${Math.round(this.extras.fuel * 100)}%`;
-      if (this.extrasLabel.text !== fuelText) this.extrasLabel.setText(fuelText).setVisible(this.phase === 'drive');
+      const showExtras = this.phase === 'drive';
+      const wrapText = `${this.extras.coins}`;
+      if (this.extrasLabel.text !== wrapText) this.extrasLabel.setText(wrapText);
+      const fuelPct = Math.round(this.extras.fuel * 100);
+      this.fuelPctText.setText(`${fuelPct}%`);
+      this.extrasIcons.fuelBar.width = 88 * Phaser.Math.Clamp(this.extras.fuel, 0, 1);
+      this.extrasIcons.fuelBar.setFillStyle(this.extras.fuel < 0.25 ? 0xd8572a : this.extras.fuel < 0.5 ? 0xf2c14e : 0x9cc58a);
+      for (const o of [this.extrasChip, this.extrasLabel, this.extrasIcons.wrap, this.extrasIcons.fuel, this.extrasIcons.fuelBarBg, this.extrasIcons.fuelBar, this.fuelPctText]) o.setVisible(showExtras);
       const out = this.drive.step(Math.min(0.05, delta / 1000), forward, pedal);
       if (out.stalled) this.stalledOut();
       if (this.drive.stalled && pedal) this.tryRestart();
@@ -2196,10 +2334,6 @@ export class PlayScene extends Phaser.Scene {
     const aboard = this.things.filter((t) => t.aboard && ((this.phase !== 'pack' && this.phase !== 'intro') || this.onTruck(t)));
     const points = aboard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
     const pct = Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1);
-    if (this.phase === 'drive') {
-      const marks: [number, string][] = [[0.25, 'A quarter of the way! The cat is not impressed.'], [0.5, 'Halfway! Everything still attached? Ish?'], [0.75, 'Nearly home! Do not get cocky.']];
-      if (this.milestone < marks.length && pct >= marks[this.milestone][0]) this.say(marks[this.milestone++][1]);
-    }
     this.updateHud(aboard.length, points, pct);
   }
 }
