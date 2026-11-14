@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Engine, ambience, audio, chime, music, play, thud } from './audio';
-import { BOIL_FRAMES, HOUSE, ITEMS, PLANK, OFFICIAL_SIGN, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, TOLL_SKINS, CANOPY, RAIL_SIGNAL } from './art';
+import { BOIL_FRAMES, HOUSE, MANOR, ITEMS, PLANK, OFFICIAL_SIGN, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, TOLL_SKINS, CANOPY, RAIL_SIGNAL } from './art';
 import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
 import { Fx } from './fx';
@@ -202,11 +202,24 @@ export class PlayScene extends Phaser.Scene {
   private anchor = { x: 0, y: 0 };
   private held: { thing: Thing; dx: number; dy: number; angle: number } | null = null;
   private keys!: Record<'left' | 'right' | 'a' | 'd' | 'q' | 'e' | 'r' | 'f' | 'shift' | 'ctrl' | 'up' | 'down' | 'n' | 'one' | 'two' | 'three' | 'four' | 'p' | 'space' | 'w' | 'esc', Phaser.Input.Keyboard.Key>;
+  // A touchscreen's stand-ins for held keys: on-screen buttons set these each frame instead.
+  private touchGas = false;
+  private touchBrake = false;
+  private touchReel = false;
+  /** A touch aiming the crossbow fires on release, once it has had a chance to drag the aim first,
+   * rather than firing the instant a finger lands wherever it happens to touch down. */
+  private touchAiming = false;
+  private touchButtons: (Phaser.GameObjects.Arc | Phaser.GameObjects.Text)[] = [];
   private paused = false;
   private pauseUi?: Phaser.GameObjects.Container;
   private hint!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
   private toastChip!: Phaser.GameObjects.Rectangle;
+  private toastAccent!: Phaser.GameObjects.Rectangle;
+  /** Messages waiting their turn: one toast shows at a time, for as long as it takes to read it,
+   * rather than a pile of them overlapping or the next one cutting the last off mid-word. */
+  private toastQueue: string[] = [];
+  private toastShowing = false;
   private goButton!: Phaser.GameObjects.Container;
   private ropeButton!: Phaser.GameObjects.Container;
   private ropeLabel!: Phaser.GameObjects.Text;
@@ -306,9 +319,10 @@ export class PlayScene extends Phaser.Scene {
       truckAngle: () => this.chassis.angle,
       phase: () => this.phase,
       say: (t) => this.say(t),
-      reeling: () => this.keys.w.isDown,
+      reeling: () => this.keys.w.isDown || !!this.input.gamepad?.pad1?.buttons[1]?.pressed || this.touchReel,
       ground: (x) => groundY(x),
       cliffs: this.leg.features.filter((f) => f.length > 3).map(([fx]) => fx),
+      tryCatch: (b) => this.tryCatch(b),
     });
     this.crossbow.build();
     this.input.mouse?.disableContextMenu();
@@ -687,6 +701,7 @@ export class PlayScene extends Phaser.Scene {
       this.parkBonus = Math.round(Phaser.Math.Clamp(100 * (1 - off / slack), 10, 100));
       this.phase = 'arrived';
       this.dash.show(false);
+      for (const o of this.touchButtons) o.setVisible(false);
       this.hint.setVisible(false).setText('');
       this.arrivedAt = this.time.now;
       this.engine.stop();
@@ -1050,12 +1065,15 @@ export class PlayScene extends Phaser.Scene {
     const houses = ([[-20, 'house_old', 'SOLD'], [FINISH + 250, 'house_new', 'WELCOME!']] as [number, string, string][]).filter(([, key]) => (key === 'house_old' ? this.leg.n === 1 : !this.leg.stop));
     this.chimneys = [];
     for (const [x0, key, words] of houses) {
-      const k = 0.95;
+      // The manor is a bigger picture: drawn smaller so its dome and flag stay on screen.
+      const k = key === 'house_old' ? 1.1 : 0.8;
       const groundY0 = GROUND + 6;
-      this.inked(x0, groundY0, key).img.setOrigin(0, HOUSE.ground / HOUSE.h).setDepth(-10).setScale(k);
-      const banner = key === 'house_old' ? HOUSE.oldBanner : HOUSE.banner;
-      this.add.text(x0 + banner.x * k, groundY0 - (HOUSE.ground - banner.y) * k, words, { fontFamily: TITLE, fontSize: words.length > 5 ? '24px' : '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(-9.9).setRotation(-0.03);
-      this.chimneys.push({ x: x0 + HOUSE.chimney.x * k, y: groundY0 - (HOUSE.ground - HOUSE.chimney.y) * k, kind: key === 'house_old' ? 'old' : 'new', n: 0 });
+      // The old house is a cottage; the new one is a manor, a bigger picture with its own landmarks.
+      const look = key === 'house_old' ? HOUSE : MANOR;
+      this.inked(x0, groundY0, key).img.setOrigin(0, look.ground / look.h).setDepth(-10).setScale(k);
+      const banner = look.banner;
+      this.add.text(x0 + banner.x * k, groundY0 - (look.ground - banner.y) * k, words, { fontFamily: TITLE, fontSize: words.length > 5 ? '24px' : '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(-9.9).setRotation(-0.03);
+      this.chimneys.push({ x: x0 + look.chimney.x * k, y: groundY0 - (look.ground - look.chimney.y) * k, kind: key === 'house_old' ? 'old' : 'new', n: 0 });
     }
     // The stops: the one this leg starts from, and the one it ends at.
     this.stopAnims = [];
@@ -1242,7 +1260,8 @@ export class PlayScene extends Phaser.Scene {
     this.eye.img.setDepth(11.5);
     this.freshener = this.inked(0, 0, 'freshener').img.setOrigin(0.5, 2 / 62).setDepth(10.6);
     this.aerial = this.inked(0, 0, 'aerial').img.setOrigin(10 / 52, 96 / 100).setDepth(9.5);
-    this.decal = this.add.text(0, 0, 'SHIFT HAPPENS', { fontFamily: TITLE, fontSize: '22px', color: C.terracotta }).setOrigin(0.5).setDepth(21.5);
+    // The company name, in the logo's face, printed in ink on the bed's bone name plate.
+    this.decal = this.add.text(0, 0, 'SHIFT HAPPENS', { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '24px', color: '#231A2A', letterSpacing: 4 }).setOrigin(0.5).setDepth(21.5);
     this.decal.setScale(Math.min(1, 176 / this.decal.width));
   }
 
@@ -1315,8 +1334,9 @@ export class PlayScene extends Phaser.Scene {
   private hud() {
     const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
     this.hint = this.add.text(40, 1006, '', { ...style, fontSize: '32px', backgroundColor: C.cream, padding: { x: 20, y: 10 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
-    this.toastChip = this.add.rectangle(W / 2, 330, 10, 10, INK_BG, 0.55).setOrigin(0.5).setStrokeStyle(2, 0xfff2da, 0.25).setScrollFactor(0).setDepth(99).setAlpha(0);
-    this.toast = this.add.text(W / 2, 330, '', toastText(46)).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
+    this.toastChip = this.add.rectangle(W / 2, 330, 10, 10, INK_BG, 0.68).setOrigin(0.5).setStrokeStyle(2, 0xfff2da, 0.3).setScrollFactor(0).setDepth(99).setAlpha(0);
+    this.toastAccent = this.add.rectangle(W / 2, 330, 10, 5, 0xee6a4d, 0.9).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
+    this.toast = this.add.text(W / 2, 330, '', toastText(36)).setOrigin(0.5).setScrollFactor(0).setDepth(101).setAlpha(0);
     this.ropeLines = this.add.graphics().setDepth(25);
 
     // Top right: the points on the truck, and how far along the road it is.
@@ -1326,7 +1346,7 @@ export class PlayScene extends Phaser.Scene {
     this.hudHearts = fixed(this.add.text(W - 500, 64, '', { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0, 0.5));
     this.hudLabel = fixed(this.add.text(W - 330, 64, '', { ...style, fontSize: '30px', color: C.walnut }).setOrigin(0, 0.5));
     this.hudBar = fixed(this.add.graphics());
-    this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.075)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.075))];
+    this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.08)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.066))];
     this.hudTruck = fixed(this.add.image(W - 330, 54, 'truck#0').setScale(0.1));
 
     this.tag = this.add
@@ -1369,6 +1389,65 @@ export class PlayScene extends Phaser.Scene {
     this.ropeButton = rope.box;
     this.ropeLabel = rope.label;
     this.setRoping(false);
+    this.buildTouchControls();
+  }
+
+  /**
+   * A touchscreen's own controls, shown only on a device that actually has one: gas and brake as big
+   * held buttons, the handbrake as a toggle, a gear up/down pair, and a reel button for the crossbow -
+   * everything a key or a mouse click does elsewhere, since there is no keyboard to hold a key down on.
+   * Aiming the crossbow itself still just uses the same touch-and-drag the pointer already gets.
+   */
+  private buildTouchControls() {
+    if (!this.sys.game.device.input.touch) return;
+    const knob = (x: number, y: number, r: number, label: string, active = false) => {
+      const circle = this.add.circle(x, y, r, active ? 0xee6a4d : INK_BG, active ? 0.55 : 0.5).setStrokeStyle(3, 0xfff2da, 0.55).setScrollFactor(0).setDepth(110).setInteractive({ cursor: CURSOR.open });
+      const text = this.add.text(x, y, label, uiText(Math.round(r * 0.5), C.cream)).setOrigin(0.5).setScrollFactor(0).setDepth(111);
+      this.touchButtons.push(circle, text);
+      return { circle, text };
+    };
+    const hold = (x: number, y: number, r: number, label: string, set: (v: boolean) => void) => {
+      const { circle } = knob(x, y, r, label);
+      circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation();
+        set(true);
+        circle.setFillStyle(0xee6a4d, 0.65);
+      });
+      const up = () => {
+        set(false);
+        circle.setFillStyle(INK_BG, 0.5);
+      };
+      circle.on('pointerup', up);
+      circle.on('pointerout', up);
+    };
+    const tap = (x: number, y: number, r: number, label: string, act: () => void) => {
+      const { circle } = knob(x, y, r, label);
+      circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation();
+        play('click');
+        act();
+        this.tweens.add({ targets: circle, scale: 1.15, duration: 80, yoyo: true });
+      });
+    };
+    hold(1815, 900, 72, 'GAS', (v) => (this.touchGas = v));
+    hold(1665, 950, 54, 'BRAKE', (v) => (this.touchBrake = v));
+    hold(1690, 790, 44, 'REEL', (v) => (this.touchReel = v));
+    tap(1550, 760, 36, '⇧', () => this.gearShift(1));
+    tap(1550, 850, 36, '⇩', () => this.gearShift(-1));
+    const hb = knob(1815, 770, 40, 'P');
+    hb.circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      this.toggleHandbrake();
+      hb.circle.setFillStyle(this.handbrake ? 0xee6a4d : INK_BG, this.handbrake ? 0.65 : 0.5);
+    });
+    // A pause button of its own, shown throughout - there is no Escape key on a touchscreen.
+    const pauseBtn = this.add.circle(W / 2, 34, 26, INK_BG, 0.5).setStrokeStyle(3, 0xfff2da, 0.55).setScrollFactor(0).setDepth(111).setInteractive({ cursor: CURSOR.open });
+    this.add.text(W / 2, 34, '⏸', uiText(22, C.cream)).setOrigin(0.5).setScrollFactor(0).setDepth(112);
+    pauseBtn.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      this.togglePause();
+    });
+    for (const o of this.touchButtons) o.setVisible(false);
   }
 
   /** ESC: a pause menu over everything, the engine silenced, Matter and tweens frozen while it's up. */
@@ -1534,9 +1613,26 @@ export class PlayScene extends Phaser.Scene {
     this.keys.f.on('down', () => this.fx.available && this.toggleFx());
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => turn(Math.sign(dy) * (Math.PI / 12)));
 
+    // A gamepad, played the same way: triggers for gas and brake, the right stick to aim, and one
+    // button each for the things a key-press does - handbrake, gears, fire. Gas/brake and reeling are
+    // read every frame elsewhere (triggers and held buttons); this is just the press-once actions.
+    this.input.gamepad?.on('down', (_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
+      if (this.phase === 'drive' && button.index === 0) this.toggleHandbrake();
+      else if (this.phase === 'drive' && button.index === 2) this.crossbow.fire();
+      else if (button.index === 4) this.gearShift(-1);
+      else if (button.index === 5) this.gearShift(1);
+      else if (button.index === 9) this.togglePause();
+    });
+
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      // Driving: left click fires the anchor crossbow; right click lets the cable go.
+      // Driving: left click fires the anchor crossbow; right click lets the cable go. A touch instead
+      // aims first (the drag this same touch does before lifting) and fires on release - firing the
+      // instant a finger lands, before it has had any chance to aim, would not be very playable.
       if (this.phase === 'drive') {
+        if (p.wasTouch) {
+          this.touchAiming = true;
+          return;
+        }
         if (p.rightButtonDown()) this.crossbow.release();
         else this.crossbow.fire();
         return;
@@ -1559,6 +1655,12 @@ export class PlayScene extends Phaser.Scene {
       play('pick');
     });
     this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (this.touchAiming && p.wasTouch) {
+        this.touchAiming = false;
+        this.crossbow.fire();
+      }
+    });
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
       if (!this.held || p.rightButtonReleased()) return;
       const b = this.held.thing.body;
       M.Body.setVelocity(b, { x: b.velocity.x * 0.25, y: b.velocity.y * 0.25 });
@@ -1572,11 +1674,50 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Queues a line to say: one toast shows at a time, however many are waiting, each for as long as it
+   * takes to actually read it rather than a flat timer that clips a long line short. The same line
+   * waiting twice in a row is dropped, and the queue is capped so a burst of events cannot pile up
+   * toasts the player will never catch up to reading.
+   */
   private say(text: string) {
-    this.toast.setText(text).setAlpha(1).setY(330);
-    this.toastChip.setSize(this.toast.width + 64, this.toast.height + 34).setAlpha(1).setY(330);
-    this.tweens.killTweensOf([this.toast, this.toastChip]);
-    this.tweens.add({ targets: [this.toast, this.toastChip], alpha: 0, y: 290, delay: 1100, duration: 500 });
+    if (this.toastQueue[this.toastQueue.length - 1] === text || (this.toastShowing && this.toast.text === text)) return;
+    this.toastQueue.push(text);
+    if (this.toastQueue.length > 4) this.toastQueue.shift();
+    this.drainToast();
+  }
+
+  private drainToast() {
+    if (this.toastShowing) return;
+    const text = this.toastQueue.shift();
+    if (text === undefined) return;
+    this.toastShowing = true;
+    const baseY = 330;
+    this.toast.setText(text).setPosition(W / 2, baseY - 20);
+    const w = Math.min(820, this.toast.width + 70);
+    const h = this.toast.height + 40;
+    this.toastChip.setSize(w, h).setPosition(W / 2, baseY - 20);
+    this.toastAccent.setSize(Math.min(220, w * 0.4), 5).setPosition(W / 2, baseY - 20 - h / 2 + 4);
+    const items = [this.toast, this.toastChip, this.toastAccent];
+    this.tweens.killTweensOf(items);
+    for (const o of items) o.setAlpha(0);
+    this.tweens.add({ targets: items, alpha: 1, y: `+=20`, duration: 240, ease: 'Back.easeOut' });
+    // Reading time, not a flat timer: roughly how long the line takes to actually read, floored and
+    // capped so a one-word line still shows for a beat and a long one never overstays its welcome.
+    const words = text.split(/\s+/).length;
+    const holdMs = Phaser.Math.Clamp(1000 + words * 280, 1700, 5200);
+    this.time.delayedCall(holdMs, () => {
+      this.tweens.add({
+        targets: items,
+        alpha: 0,
+        y: '-=14',
+        duration: 320,
+        onComplete: () => {
+          this.toastShowing = false;
+          this.drainToast();
+        },
+      });
+    });
   }
 
   /** Where the middle of the top of the truck bed is. */
@@ -1688,6 +1829,7 @@ export class PlayScene extends Phaser.Scene {
     this.pointer('point');
     this.hint.setPosition(DASH_RIGHT + 24, 1046).setFontSize(24).setText('D gas    A brake    P handbrake    SHIFT / CTRL gears    CLICK fire anchor    W reel in    RIGHT-CLICK let go');
     this.dash.show(true);
+    for (const o of this.touchButtons) o.setVisible(true);
     this.handbrake = true;
     this.say("Handbrake's on. Press P to let it off, then hold D. Change up with SHIFT when the gear goes red.");
     play('honk');
@@ -1900,6 +2042,29 @@ export class PlayScene extends Phaser.Scene {
     play('lost');
     if (t.spec.pet) this.time.delayedCall(250, () => play(t.spec.key === 'cat' ? 'meow' : 'chirp'));
     this.cameras.main.shake(120, 0.002);
+  }
+
+  /**
+   * The anchor crossbow's other job: something just fell off and is still within its grace period
+   * (on the road, not yet officially lost) - a well-aimed bolt reels it straight back onto the bed
+   * instead of watching it go. Returns whether this body was actually one of those.
+   */
+  private tryCatch(body: Body): boolean {
+    if (this.phase !== 'drive') return false;
+    const t = this.things.find((x) => x.body === body);
+    if (!t || !t.packed || t.ghost || t.lost || t.groundFrames <= 0 || t.groundFrames > 110) return false;
+    const b = this.bed();
+    const cos = Math.cos(this.chassis.angle);
+    const sin = Math.sin(this.chassis.angle);
+    const slot = -140 + Math.random() * 200;
+    M.Body.setPosition(t.body, { x: b.x + slot * cos, y: b.y + slot * sin - 90 });
+    M.Body.setVelocity(t.body, { x: this.chassis.velocity.x, y: this.chassis.velocity.y });
+    M.Body.setAngularVelocity(t.body, 0);
+    t.groundFrames = 0;
+    this.floatText(t.body.position.x, t.body.position.y - 40, 'Saved!', C.sageDark);
+    this.say(t.spec.pet ? `${t.spec.name} is back aboard!` : `Caught ${this.name(t)}!`);
+    play('stamp', 1, 1.3);
+    return true;
   }
 
   /** A fragile thing breaks. It stays where it is, as dead weight. */
@@ -2237,8 +2402,9 @@ export class PlayScene extends Phaser.Scene {
     // The wheels themselves slide freely and only turn for show.
     let forward = 0;
     if (this.phase !== 'pack' && this.phase !== 'intro') {
-      const right = this.keys.right.isDown || this.keys.d.isDown;
-      const left = this.keys.left.isDown || this.keys.a.isDown;
+      const pad = this.input.gamepad?.pad1;
+      const right = this.keys.right.isDown || this.keys.d.isDown || (pad?.buttons[7]?.value ?? 0) > 0.15 || this.touchGas;
+      const left = this.keys.left.isDown || this.keys.a.isDown || (pad?.buttons[6]?.value ?? 0) > 0.15 || this.touchBrake;
       const c = this.chassis;
       const dir = { x: Math.cos(c.angle), y: Math.sin(c.angle) };
       forward = c.velocity.x * dir.x + c.velocity.y * dir.y;
@@ -2249,7 +2415,11 @@ export class PlayScene extends Phaser.Scene {
       this.drive.power = this.extras.update(Math.min(0.05, delta / 1000), this.drive, this.phase === 'drive');
       const ptr = this.input.activePointer;
       ptr.updateWorldPoint(cam);
-      this.crossbow.update(Math.min(0.05, delta / 1000), { x: ptr.worldX, y: ptr.worldY });
+      // A deflected right stick aims the crossbow directly, out from the turret in the stick's own
+      // direction; otherwise the mouse does, exactly as before.
+      const stick = pad?.rightStick;
+      const aimAt = stick && Math.hypot(stick.x, stick.y) > 0.25 ? { x: this.onTruckAt(196, -198).x + stick.x * 1000, y: this.onTruckAt(196, -198).y + stick.y * 1000 } : { x: ptr.worldX, y: ptr.worldY };
+      this.crossbow.update(Math.min(0.05, delta / 1000), aimAt);
       const showExtras = this.phase === 'drive';
       const wrapText = `${this.extras.coins}`;
       if (this.extrasLabel.text !== wrapText) this.extrasLabel.setText(wrapText);
@@ -2318,7 +2488,9 @@ export class PlayScene extends Phaser.Scene {
           continue;
         }
         t.groundFrames = this.onRoad(t) ? t.groundFrames + 1 : 0;
-        if (t.groundFrames <= 40 && t.body.position.x > cx - 1100) continue;
+        // A longer grace than it looks like it needs: long enough to actually aim the crossbow at
+        // whatever just fell and reel it back, not just long enough to notice it happened.
+        if (t.groundFrames <= 110 && t.body.position.x > cx - 1100) continue;
         if (t.aboard) this.lose(t);
         else this.leave(t);
       }

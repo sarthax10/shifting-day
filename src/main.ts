@@ -1,6 +1,10 @@
 // Only the weights used are loaded, so every title is Fraunces Black and all other text Karla Bold.
 import '@fontsource/fraunces/900.css';
 import '@fontsource/karla/700.css';
+// The title screen's poster type: a heavy condensed display face and a mono for its small labels.
+import '@fontsource/anton/400.css';
+import '@fontsource/space-mono/400.css';
+import '@fontsource/space-mono/700.css';
 import Phaser from 'phaser';
 import * as art from './art';
 import { C, type Pt } from './ink';
@@ -123,6 +127,7 @@ const game = new Phaser.Game({
   height: H,
   backgroundColor: '#2A2140',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  input: { gamepad: true },
   physics: {
     default: 'matter',
     matter: { gravity: { x: 0, y: 1 }, positionIterations: 10, velocityIterations: 8, constraintIterations: 6, debug: location.search.includes('debug') },
@@ -138,8 +143,8 @@ game.events.once('ready', async () => {
     ...art.boiled(() => art.truckArt(true)),
     ...art.boiled(() => art.wheelArt(false)),
     ...art.boiled(() => art.wheelArt(true)),
-    ...art.boiled(() => art.houseArt('house_old', { wall: C.teal, wallShade: '#2C7F8C', roof: C.terracotta, roofShade: C.terracottaDark, turretRoof: C.plum, door: C.walnut, trim: C.cream }, 'old')),
-    ...art.boiled(() => art.houseArt('house_new', { wall: '#B59BD6', wallShade: '#8E74B8', roof: C.mustard, roofShade: C.dry, turretRoof: C.terracotta, door: C.teal, trim: C.cream }, 'new')),
+    ...art.boiled(() => art.shackArt('house_old')),
+    ...art.boiled(() => art.manorArt('house_new')),
     ...Array.from({ length: art.TREE_KINDS }, (_, n) => n).flatMap((n) => art.boiled(() => art.treeArt(n))),
     // Far scenery is softened a little, so the truck and its cargo are the sharp things on screen.
     ...three.map((n) => art.blurred(art.hillArt(n), 1.6)),
@@ -202,6 +207,9 @@ game.events.once('ready', async () => {
     prepareLeg(game.textures, 1),
     document.fonts.load('700 40px "Karla"'),
     document.fonts.load('900 40px "Fraunces"'),
+    document.fonts.load('400 40px "Anton"'),
+    document.fonts.load('400 40px "Space Mono"'),
+    document.fonts.load('700 40px "Space Mono"'),
   ]);
   game.scene.add('play', PlayScene, false);
   game.scene.add('title', TitleScene, true);

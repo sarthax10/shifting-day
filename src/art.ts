@@ -1,4 +1,4 @@
-import { C, Pen, mix, type Pt } from './ink';
+import { C, Pen, ellipsePts, mix, type Pt } from './ink';
 import { FEATURES, type Feature } from './terrain';
 
 /** Room around every drawing for the ink line, which strays outside the shape. */
@@ -643,12 +643,23 @@ function archPts(cx: number, cy: number, r: number, from = 0): Pt[] {
 }
 
 /**
- * The truck, as a heavily modified, home-built rig: whoever owns it has been bolting things on for years, and
- * a lot of it came out of the house they are now moving out of. A teal wedge of a body, lifted on big tyres;
- * a hot-rod blower bursting up through the bonnet; an ironing board for a sun visor; a primer-grey door that
- * came off another truck; a riveted rust patch; duct tape over a crack; a side pipe; bungee cords; a spare
- * tyre strapped to the roll bar; and on the roll bar's turret the anchor crossbow, its cable running down to
- * a drum in the bed. Lines are deliberately a little crooked. The shapes the physics uses keep their places.
+ * The truck, designed from scratch in the title screen's inks - ember, bone, red and ink - by the three
+ * hands a vehicle like this needs:
+ *
+ * - as a car: one confident shape. A rounded fifties cab with a peaked brow over a raked windscreen, a
+ *   short hood sloping down to a chrome grille, body-colour arches sitting over big lifted wheels, and a
+ *   long straight belt line tying cab to bed. Mass sits low (ink chassis, sills and bumper); the cab stands
+ *   tall and light (bone roof).
+ * - as a poster: flat inks with a hard ink outline, a bone stripe with a red pinstripe running nose to
+ *   tail, halftone dots for shade along the lower body, a bone highlight down every top edge, and on the
+ *   door a roundel with the cat from the logo.
+ * - as a game piece: a silhouette that reads at the HUD's tiny size - a clear nose and tail, the headlight
+ *   (the truck's eye) in a proper chrome pod, a big window for the driver, stake sides so the cargo sits in
+ *   the bed rather than on a plank, and a turret for the crossbow on a roll hoop behind the cab.
+ *
+ * Every shape the physics uses, and every spot the game hangs something from (the eye, the driver, the
+ * freshener, the aerial, the exhaust, the crossbow's turret, the cable's fairlead), stays where it was.
+ * 'truck' is everything behind the cargo; 'truck_front' is the bed side, drawn in front of it.
  */
 export function truckArt(front = false): Art {
   const t = TRUCK;
@@ -656,160 +667,205 @@ export function truckArt(front = false): Art {
   const X = (n: number) => n + t.ox;
   const Y = (n: number) => n + t.oy;
   const P = (pts: Pt[]) => pts.map(([x, y]) => [X(x), Y(y)] as Pt);
-  const BODY = C.teal;
-  const SHADE = '#22707F';
-  const HILITE = '#8CD8E0';
-  const STEEL = '#3A3644';
-  const STEEL_LIT = '#5A5668';
-  const ACCENT = C.mustard;
-  const MUD = '#7A5444';
-  const PRIMER = '#A8A4B4';
-  const RUST = '#C2643A';
-  const TAPE = '#C9CCD6';
+  const INKT = '#231A2A';
+  const INK_LIT = '#3E3248';
+  const BODY = '#F0643A';
+  const BODY_SHADE = '#C8432F';
+  const BODY_DEEP = '#9E2F2A';
+  const BODY_LIGHT = '#FF9A6C';
+  const BONE = '#F3E3CC';
+  const BONE_SHADE = '#D8C1A2';
+  const RED = '#C8283A';
+  const AMBER = '#FFB23F';
   const done = (key: string): Art => ({ key, svg: p.svg(t.w, t.h), w: t.w, h: t.h });
-  const rivets = (pts: Pt[]) => {
-    for (const [x, y] of pts) p.dot(X(x), Y(y), 2.4, '#2A2733');
+  const solid = { stroke: INKT, raw: true } as const;
+
+  /** Whether a point is inside a polygon (truck coordinates). */
+  const inside = (poly: Pt[], x: number, y: number) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  /** Halftone shade: ink dots inside a shape, growing toward its foot, kept clear of its edge. */
+  const halftone = (poly: Pt[], y0: number, y1: number, step = 9, maxR = 3.2, color = BODY_DEEP, opacity = 0.55) => {
+    const xs = poly.map((q) => q[0]);
+    for (let y = y0, row = 0; y <= y1; y += step, row++) {
+      const r = maxR * ((y - y0) / (y1 - y0)) ** 1.2;
+      if (r < 0.6) continue;
+      for (let x = Math.min(...xs) + (row % 2) * (step / 2); x <= Math.max(...xs); x += step) {
+        if ([[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].every(([dx, dy]) => inside(poly, x + dx, y + dy))) {
+          p.shape(ellipsePts(X(x), Y(y), r, r), { fill: color, stroke: null, raw: true, wobble: 0.2, opacity });
+        }
+      }
+    }
+  };
+  /** A wheel arch in body colour: a thick band over the tyre, an ink well inside it, piping on its edge. */
+  const arch = (cx: number, cy: number, outer: number, inner: number, part: 'well' | 'band' | 'both' = 'both') => {
+    // The arch stops a little above the wheel's centre (the picture ends just there), with flat-cut feet.
+    const a0 = Math.PI + 0.16;
+    const span = Math.PI - 0.32;
+    const well: Pt[] = [];
+    for (let i = 0; i <= 18; i++) {
+      const a = a0 + (i / 18) * span;
+      well.push([cx + Math.cos(a) * inner, cy + Math.sin(a) * inner * 0.95]);
+    }
+    if (part !== 'band') p.shape(P(well), { fill: '#1A1420', raw: true, stroke: null });
+    if (part === 'well') return;
+    const band: Pt[] = [];
+    for (let i = 0; i <= 18; i++) {
+      const a = a0 + (i / 18) * span;
+      band.push([cx + Math.cos(a) * outer, cy + Math.sin(a) * outer * 0.92]);
+    }
+    for (let i = 18; i >= 0; i--) {
+      const a = a0 + (i / 18) * span;
+      band.push([cx + Math.cos(a) * inner, cy + Math.sin(a) * inner * 0.95]);
+    }
+    p.shape(P(band), { fill: BODY, ...solid, width: 5.5, shade: [{ pts: [[X(cx - outer), Y(cy - outer * 0.35)], [X(cx + outer), Y(cy - outer * 0.35)], [X(cx + outer), Y(cy + 4)], [X(cx - outer), Y(cy + 4)]], color: BODY_SHADE }] });
+    const top: Pt[] = [];
+    for (let i = 2; i <= 16; i++) {
+      const a = Math.PI + (i / 18) * Math.PI;
+      top.push([X(cx + Math.cos(a) * (outer - 5)), Y(cy + Math.sin(a) * (outer - 5) * 0.92)]);
+    }
+    p.line(top, { width: 2.6, color: BODY_LIGHT, raw: true, opacity: 0.9 });
   };
 
   if (front) {
-    // The bed's side: diamond plate, a teal rail, and bolted over the back of it, a fridge door from the old
-    // kitchen, magnets and all. The company name is painted on a board, crooked, by hand.
-    p.shape(P([[-196, -48], [192, -50], [192, 28], [-196, 28]]), { fill: STEEL, raw: true, width: 6, wobble: 1.2, shade: [{ pts: [[X(-200), Y(8)], [X(200), Y(4)], [X(200), Y(40)], [X(-200), Y(40)]], color: '#2A2733' }] });
-    for (let x = -186; x < 182; x += 16) {
-      for (let y = -38, row = 0; y < 20; y += 12, row++) {
-        const dx = row % 2 ? 8 : 0;
-        p.line([[X(x + dx), Y(y)], [X(x + 5 + dx), Y(y + 4)]], { width: 2, color: STEEL_LIT, raw: true, opacity: 0.5 });
-      }
+    // ---- The bed's near side, in front of the cargo: an ember panel, a stake rail on top, the livery
+    // stripe running on from the cab, a bone name plate (the game writes the company name on it), and
+    // the tail light and chevrons at the back.
+    const panel: Pt[] = [[-200, -56], [188, -56], [188, 22], [-194, 22], [-200, 14]];
+    p.shape(P(panel), { fill: BODY, ...solid, width: 6.5, shade: [{ pts: [[X(-210), Y(4)], [X(200), Y(4)], [X(200), Y(30)], [X(-210), Y(30)]], color: BODY_SHADE }] });
+    halftone(panel, -4, 20, 8, 2.8);
+    p.line(P([[-194, -50], [184, -50]]), { width: 2.6, color: BODY_LIGHT, raw: true });
+    // The stripe.
+    p.shape(P([[-200, -42], [188, -42], [188, -30], [-200, -30]]), { fill: BONE, raw: true, stroke: null });
+    p.line(P([[-200, -26], [188, -26]]), { width: 3, color: RED, raw: true });
+    // Stake posts and the top rail: ink posts, bone slats.
+    p.shape(P([[-204, -84], [192, -84], [192, -72], [-204, -72]]), { fill: BONE, ...solid, width: 4.5, shade: [{ pts: [[X(-210), Y(-77)], [X(200), Y(-77)], [X(200), Y(-70)], [X(-210), Y(-70)]], color: BONE_SHADE }] });
+    for (const x of [-196, -102, -8, 86, 180]) {
+      p.rect(X(x - 7), Y(-88), 14, 34, { fill: INKT, r: 3, stroke: INKT, width: 2 });
+      p.dot(X(x), Y(-78), 2.2, '#8A8090');
     }
-    p.shape(P([[-200, -58], [196, -60], [196, -46], [-200, -44]]), { fill: BODY, raw: true, width: 5, wobble: 1.2 });
-    // The fridge door.
-    p.shape(P([[-188, -40], [-104, -42], [-102, 22], [-186, 24]]), { fill: '#F2EEE2', raw: true, width: 4.5, wobble: 1.4, shade: [{ pts: [[X(-130), Y(-50)], [X(-96), Y(-50)], [X(-96), Y(30)], [X(-130), Y(30)]], color: '#D8D2C2' }] });
-    p.rect(X(-120), Y(-30), 7, 40, { fill: CHROME, r: 3, width: 3 });
-    for (const [mx, my, mc] of [[-170, -28, '#E8743E'], [-150, -6, '#3FA7B5'], [-176, 8, '#FFB23F'], [-140, 12, '#D8403A']] as const) p.ellipse(X(mx), Y(my), 6, 6, { fill: mc, width: 2.5 });
-    rivets([[-184, -36], [-106, -38], [-184, 20], [-106, 18]]);
-    // The name board, painted by hand.
-    p.shape(P([[-84, -28], [118, -32], [120, 10], [-82, 14]]), { fill: C.cream, raw: true, width: 4, wobble: 1.6 });
-    p.shape(P([[-78, -23], [113, -27], [115, 5], [-76, 9]]), { stroke: C.terracotta, raw: true, width: 1.6, wobble: 1.6 });
-    // Hazard stripes on the tailgate's edge, and a tail light.
-    for (let k = 0; k < 4; k++) p.shape(P([[-204, -44 + k * 18], [-196, -44 + k * 18], [-196, -36 + k * 18], [-204, -28 + k * 18]]), { fill: k % 2 ? '#2A2733' : ACCENT, raw: true, stroke: null });
-    p.rect(X(-212), Y(-14), 12, 18, { fill: '#D8403A', r: 3, width: 3 });
-    for (let i = 0; i < 14; i++) {
-      const x = -186 + ((i * 53) % 370);
-      const y = 22 - ((i * 7) % 12);
-      p.ellipse(X(x), Y(y), 3 + ((i * 5) % 7), 2 + ((i * 3) % 4), { fill: MUD, stroke: null, opacity: 0.6, wobble: 1.2 });
-    }
+    // The name plate.
+    p.shape(P([[-104, -20], [104, -20], [104, 8], [-104, 8]]), { fill: BONE, ...solid, width: 4 });
+    p.line(P([[-98, -16], [98, -16]]), { width: 1.6, color: BONE_SHADE, raw: true });
+    for (const [x, y] of [[-98, -14], [98, -14], [-98, 2], [98, 2]] as const) p.dot(X(x), Y(y), 2, INK_LIT);
+    // Tail: chevrons up the tailgate's edge, a round tail light in a chrome ring, and a reflector.
+    for (let k = 0; k < 4; k++) p.shape(P([[-208, -58 + k * 18], [-198, -58 + k * 18], [-198, -50 + k * 18], [-208, -42 + k * 18]]), { fill: k % 2 ? INKT : AMBER, raw: true, stroke: null });
+    p.ellipse(X(-212), Y(-8), 12, 12, { fill: '#E9E4DA', stroke: INKT, width: 3.5 });
+    p.ellipse(X(-212), Y(-8), 8, 8, { fill: RED, stroke: null });
+    p.dot(X(-214), Y(-11), 2.4, '#FFB0A0');
+    // The back wheel's arch sits over the panel's foot (its dark well is in the layer behind the wheel).
+    arch(t.wheels[0].x, t.wheels[0].y, 84, 66, 'band');
     return done('truck_front');
   }
 
-  const over = (cx: number, r: number, y: number): Pt[] => {
-    const out: Pt[] = [];
-    for (let i = 0; i <= 16; i++) {
-      const a = Math.PI + (i / 16) * Math.PI;
-      out.push([cx + Math.cos(a) * r, y + Math.sin(a) * r]);
-    }
-    return out;
-  };
   const [rw, fw] = t.wheels;
 
-  // The frame, a skid plate, and the exhaust: a side pipe running along under the doors.
-  p.rect(X(-190), Y(24), 600, 28, { fill: '#2A2733', r: 6, width: 5 });
-  p.rect(X(-216), Y(34), 40, 12, { fill: CHROME, r: 5, width: 4.5 });
+  // ---- Chassis: an ink frame, the tailpipe, and a tow hitch, all low and dark so the mass sits down.
+  p.rect(X(-194), Y(20), 606, 30, { fill: INKT, r: 8, stroke: INKT, width: 3 });
+  p.line(P([[-186, 26], [404, 26]]), { width: 2, color: INK_LIT, raw: true });
+  p.rect(X(-222), Y(31), 44, 12, { fill: '#E9E4DA', r: 6, stroke: INKT, width: 3.5 });
+  p.ellipse(X(-222), Y(37), 4, 5, { fill: INKT, stroke: null });
+  p.rect(X(-214), Y(42), 22, 10, { fill: INK_LIT, r: 3, stroke: INKT, width: 3 });
 
-  // The roll bar out of the bed's front corner, the spare tyre strapped to it, and the cable drum in its foot.
-  p.ellipse(X(124), Y(-108), 30, 30, { fill: TYRE, width: 4.5 });
-  p.ellipse(X(124), Y(-108), 16, 16, { fill: '#D8403A', width: 3.5 });
-  p.dot(X(124), Y(-108), 4, CHROME);
-  p.line(P([[96, -96], [154, -120]]), { width: 4, color: ACCENT });
-  p.shape(P([[150, 2], [150, -150], [160, -172], [200, -180], [214, -170], [180, -164], [168, -150], [168, 2]]), { fill: STEEL, raw: true, width: 5, wobble: 1, shade: [{ pts: [[X(158), Y(-200)], [X(240), Y(-200)], [X(240), Y(10)], [X(158), Y(10)]], color: '#2A2733' }] });
-  p.rect(X(118), Y(-62), 64, 50, { fill: '#2A2733', r: 8, width: 5 });
-  p.ellipse(X(150), Y(-37), 22, 22, { fill: STEEL_LIT, width: 4 });
-  for (let k = 0; k < 4; k++) p.ellipse(X(150), Y(-37), 18 - k * 4, 18 - k * 4, { stroke: '#B9BCCB', width: 1.8 });
-  p.dot(X(150), Y(-37), 4, ACCENT);
-  p.line(P([[160, -50], [166, -100], [170, -150], [184, -172]]), { width: 2.6, color: '#B9BCCB', opacity: 0.95 });
-  p.rect(X(176), Y(-196), 40, 18, { fill: STEEL, r: 5, width: 4.5 });
-  p.ellipse(X(196), Y(-198), 22, 7, { fill: ACCENT, width: 3.5 });
+  // ---- The far stake rail, behind the cargo, in shadow.
+  p.shape(P([[-196, -84], [184, -84], [184, -74], [-196, -74]]), { fill: BONE_SHADE, raw: true, stroke: INKT, width: 3.5, opacity: 0.85 });
+  for (const x of [-150, -56, 38, 132]) p.rect(X(x - 6), Y(-86), 12, 86, { fill: INK_LIT, r: 3, stroke: INKT, width: 2.5 });
 
-  // Fender flares over the wheels, bolted on.
-  for (const w of [rw, fw]) {
-    p.shape(P([...over(w.x, 74, w.y), [w.x + 74, w.y], [w.x - 74, w.y]]), { fill: '#2A2733', raw: true, width: 5, wobble: 1.2 });
-    p.shape(P([...over(w.x, 62, w.y), [w.x + 62, w.y + 2], [w.x - 62, w.y + 2]]), { fill: WELL, raw: true, stroke: null, wobble: 0.4 });
-    for (let k = 1; k < 8; k++) {
-      const a = Math.PI + (k / 8) * Math.PI;
-      p.dot(X(w.x + Math.cos(a) * 68), Y(w.y + Math.sin(a) * 68), 2.4, STEEL_LIT);
-    }
+  // ---- The roll hoop behind the cab, the crossbow's turret on top, spotlights, and the cable drum.
+  p.line(P([[164, 4], [164, -150], [170, -172], [186, -184]]), { width: 15, color: INKT });
+  p.line(P([[164, 0], [164, -150], [170, -172], [186, -184]]), { width: 7, color: INK_LIT });
+  p.ellipse(X(196), Y(-194), 22, 14, { fill: INKT, stroke: INKT, width: 3 });
+  p.ellipse(X(196), Y(-200), 18, 9, { fill: BODY, stroke: INKT, width: 3.5 });
+  p.dot(X(196), Y(-201), 4, AMBER);
+  for (const sx of [148, 176]) {
+    p.ellipse(X(sx), Y(-166), 11, 11, { fill: INKT, stroke: INKT, width: 3 });
+    p.ellipse(X(sx), Y(-166), 7, 7, { fill: '#FFF2C8', stroke: null });
   }
+  p.line(P([[140, -166], [184, -166]]), { width: 3.5, color: INKT, raw: true });
+  p.ellipse(X(140), Y(-30), 26, 26, { fill: INKT, stroke: INKT, width: 3 });
+  for (let k = 0; k < 3; k++) p.ellipse(X(140), Y(-30), 20 - k * 5, 20 - k * 5, { stroke: '#B7AFA6', width: 1.8 });
+  p.dot(X(140), Y(-30), 4, BODY);
+  p.line(P([[146, -50], [156, -110], [176, -180]]), { width: 2.4, color: '#B7AFA6', opacity: 0.9 });
 
-  // The body: a teal wedge, a little lumpy where it has been knocked about.
+  // ---- Wheel arch over the front wheel (the back one is on the bed side, in front of the cargo).
+  arch(fw.x, fw.y, 84, 66);
+  arch(rw.x, rw.y, 84, 66, 'well');
+
+  // ---- The body: one rounded shape from the back of the cab to the nose.
   const body: Pt[] = [
-    [186, 30], [184, -122], [192, -152], [272, -160], [298, -152], [350, -80], [426, -64], [460, -44], [466, -8], [448, 30],
+    [186, 22], [184, -110], [190, -140], [206, -152], [296, -158], [326, -154], [338, -126], [350, -86], [368, -72], [430, -64], [460, -56], [474, -38], [476, -6], [468, 16], [444, 24], [380, 24],
   ];
-  p.shape(P(body), { fill: BODY, raw: true, width: 6.5, wobble: 1.4, shade: [{ pts: [[X(180), Y(-30)], [X(480), Y(-34)], [X(480), Y(40)], [X(180), Y(40)]], color: SHADE }] });
-  p.shape(P([[184, -122], [192, -152], [272, -160], [298, -152], [306, -138], [210, -138], [198, -120]]), { fill: '#2A2733', raw: true, width: 4, wobble: 1 });
-  // The door, from another truck altogether: primer grey, with its own rivets.
-  p.shape(P([[210, -78], [338, -80], [338, 2], [210, 4]]), { fill: PRIMER, raw: true, width: 4.5, wobble: 1.6, shade: [{ pts: [[X(206), Y(-20)], [X(340), Y(-22)], [X(340), Y(8)], [X(206), Y(8)]], color: '#8E8A9C' }] });
-  rivets([[216, -72], [332, -74], [216, -4], [332, -4], [274, -76]]);
-  p.rect(X(300), Y(-60), 22, 8, { fill: '#2A2733', r: 3, width: 3 });
-  // The side window, angled at the front. The driver sits in it as a sprite of their own.
-  const win: Pt[] = [[214, -134], [290, -134], [334, -86], [214, -82]];
-  p.shape(P(win), { fill: GLASS, raw: true, width: 5, wobble: 1 });
-  p.shape(P([[214, -112], [226, -112], [226, -82], [214, -82]]), { fill: '#3A2E44', raw: true, stroke: null, opacity: 0.6 });
-  // A rust patch riveted over a hole on the cab's back corner, and duct tape over a crack in the bonnet.
-  p.shape(P([[188, -70], [206, -74], [208, -30], [190, -26]]), { fill: RUST, raw: true, width: 3.5, wobble: 1.8 });
-  rivets([[192, -66], [204, -68], [192, -32], [204, -34]]);
-  for (const [a, b] of [[[384, -70], [414, -56]], [[384, -56], [414, -70]]] as const) p.line(P([a as unknown as Pt, b as unknown as Pt]), { width: 7, color: TAPE, raw: true, wobble: 0.4 });
-  // The accent stripe (it stops at the borrowed door), and the crease along the nose.
-  p.shape(P([[340, -46], [460, -30], [462, -22], [340, -38]]), { fill: ACCENT, raw: true, stroke: null });
-  p.shape(P([[188, -44], [208, -44], [208, -36], [190, -36]]), { fill: ACCENT, raw: true, stroke: null });
-  // The blower, bursting up through the bonnet: chrome, ribbed, with its scoop and a belt.
-  p.shape(P([[352, -86], [402, -88], [404, -66], [350, -64]]), { fill: CHROME, raw: true, width: 4.5, wobble: 0.8, shade: [{ pts: [[X(378), Y(-100)], [X(410), Y(-100)], [X(410), Y(-60)], [X(380), Y(-60)]], color: CHROME_SHADE }] });
-  for (let k = 0; k < 4; k++) p.line(P([[358 + k * 12, -84], [358 + k * 12, -68]]), { width: 2, color: CHROME_SHADE, raw: true });
-  // A tall scoop on top, breaking the silhouette, with the butterfly flaps showing.
-  p.shape(P([[356, -86], [360, -128], [404, -132], [402, -88]]), { fill: '#2A2733', raw: true, width: 4.5, wobble: 0.8 });
-  p.rect(X(366), Y(-126), 30, 12, { fill: '#14121A', r: 2, stroke: null });
-  for (const fx of [372, 384]) p.line(P([[fx, -124], [fx + 6, -116]]), { width: 2.4, color: CHROME, raw: true });
-  p.line(P([[358, -104], [403, -108]]), { width: 3, color: ACCENT, raw: true });
-  p.line(P([[400, -70], [416, -40]]), { width: 3, color: '#2A2733' });
-  // The ironing board, bolted over the windscreen as a sun visor, its legs folded under it.
-  p.shape(P([[262, -170], [340, -160], [372, -150], [380, -142], [370, -136], [338, -140], [264, -152]]), { fill: '#F4F0E6', raw: true, width: 4.5, wobble: 1 });
-  for (const [fx, fy] of [[282, -160], [302, -158], [322, -154], [342, -150], [360, -145], [292, -154], [332, -146]] as const) p.ellipse(X(fx), Y(fy), 4, 3, { fill: '#F48C9A', stroke: null });
-  p.line(P([[290, -152], [300, -142], [320, -146]]), { width: 2.5, color: '#9AA0B5' });
-  // The snorkel up the windscreen pillar, and the light bar on the roof.
-  p.line(P([[352, -58], [342, -96], [304, -146], [300, -166]]), { width: 13, raw: true });
-  p.line(P([[352, -58], [342, -96], [304, -146], [300, -166]]), { width: 7, color: '#3A3644', raw: true });
-  p.rect(X(290), Y(-180), 22, 14, { fill: '#2A2733', r: 4, width: 3.5 });
-  p.rect(X(204), Y(-172), 64, 12, { fill: '#2A2733', r: 4, width: 4 });
-  for (let k = 0; k < 4; k++) p.rect(X(209 + k * 14), Y(-169), 10, 6, { fill: '#FFF2B0', r: 2, stroke: null });
-  // A wing mirror on a stalk, with a spotlight taped to it.
-  p.line([[X(338), Y(-96)], [X(354), Y(-106)]], { width: 4, raw: true });
-  p.shape(P([[350, -118], [366, -114], [362, -98], [348, -100]]), { fill: '#2A2733', raw: true, width: 3.5 });
-  p.ellipse(X(362), Y(-124), 8, 8, { fill: ACCENT, width: 3 });
-  p.ellipse(X(362), Y(-124), 4.5, 4.5, { fill: '#FFF6D8', stroke: null });
-  p.line(P([[354, -118], [366, -116]]), { width: 4, color: TAPE, raw: true });
-  // Rockers and the side pipe along them.
-  p.shape(P([[186, 6], [452, 4], [446, 30], [186, 30]]), { fill: '#2A2733', raw: true, width: 4, wobble: 1 });
-  p.rect(X(212), Y(30), 150, 12, { fill: CHROME, r: 6, width: 4 });
-  for (let k = 0; k < 6; k++) p.dot(X(222 + k * 24), Y(36), 2.2, CHROME_SHADE);
-  for (const [mx, my, mr] of [[232, 22, 7], [246, 14, 4], [390, 20, 6], [410, 12, 4]] as const) p.ellipse(X(mx), Y(my), mr, mr * 0.8, { fill: MUD, stroke: null, opacity: 0.7, wobble: 1.4 });
+  p.shape(P(body), { fill: BODY, stroke: INKT, width: 7, wobble: 1.2, shade: [{ pts: [[X(180), Y(-6)], [X(490), Y(-12)], [X(490), Y(40)], [X(180), Y(40)]], color: BODY_SHADE }, { pts: [[X(180), Y(-160)], [X(198), Y(-160)], [X(196), Y(30)], [X(180), Y(30)]], color: BODY_SHADE }] });
+  halftone([[196, -100], [340, -100], [360, -70], [460, -54], [470, -30], [466, 14], [196, 14]], -20, 16, 8, 3);
 
-  // The nose: a mesh grille, and the headlight (the eye sits in it) in a narrow, angled housing.
-  p.shape(P([[440, -48], [462, -40], [466, -8], [448, -4]]), { fill: '#1E1C26', raw: true, width: 4 });
-  for (let k = 0; k < 4; k++) p.line(P([[446, -40 + k * 9], [462, -36 + k * 9]]), { width: 1.8, color: '#4A4658', raw: true });
-  p.shape(P([[380, -42], [420, -50], [424, -10], [384, -14]]), { fill: '#2A2733', raw: true, width: 4.5, wobble: 1 });
-  p.ellipse(X(401), Y(-28), 15, 17, { fill: CHROME, width: 4 });
-  p.ellipse(X(401), Y(-28), 11, 13, { fill: WELL, stroke: null });
-  p.shape(P([[376, -46], [426, -56], [428, -46], [380, -38]]), { fill: BODY, raw: true, width: 3.5 });
-  // The bumper: a steel plate, a little bent, with the cable's fairlead, red shackles, and bungee cords.
-  p.shape(P([[396, 8], [474, 0], [482, 30], [404, 38]]), { fill: STEEL, raw: true, width: 5, wobble: 1.6, shade: [{ pts: [[X(390), Y(24)], [X(490), Y(20)], [X(490), Y(40)], [X(390), Y(40)]], color: '#2A2733' }] });
-  p.rect(X(426), Y(12), 26, 9, { fill: '#14121A', r: 4, stroke: null });
-  for (const [sx, sy] of [[404, 18], [470, 12]] as const) {
-    p.ellipse(X(sx), Y(sy), 6, 6, { fill: '#D8403A', width: 3 });
-    p.ellipse(X(sx), Y(sy), 2.5, 2.5, { fill: '#2A2733', stroke: null });
+  // The bone roof, two-tone, with three amber marker lights on its brow.
+  p.shape(P([[190, -136], [204, -150], [296, -156], [326, -152], [332, -140], [212, -140], [198, -128]]), { fill: BONE, ...solid, width: 5, wobble: 0.8 });
+  p.line(P([[208, -150], [296, -154]]), { width: 3, color: '#FFFFFF', raw: true, opacity: 0.7 });
+  for (const mx of [234, 258, 282]) p.rect(X(mx - 7), Y(-162), 14, 7, { fill: AMBER, r: 3, stroke: INKT, width: 2.5 });
+  // The brow: a peak over the windscreen.
+  p.shape(P([[300, -156], [354, -150], [356, -141], [328, -140]]), { fill: BODY, ...solid, width: 4.5 });
+
+  // Windows: the side glass (the driver sits in it) and a sliver of the raked windscreen.
+  const glass: Pt[] = [[214, -134], [318, -136], [336, -92], [214, -88]];
+  p.shape(P(glass), { fill: GLASS, ...solid, width: 5 });
+  p.shape(P([[226, -134], [252, -134], [228, -96], [214, -96], [214, -116]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.28 });
+  p.shape(P([[262, -135], [272, -135], [250, -90], [240, -90]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.2 });
+  p.shape(P([[330, -140], [342, -140], [356, -92], [344, -90]]), { fill: '#8FC0CC', ...solid, width: 3.5 });
+  // The B-pillar and the door's shut lines, handle and mirror.
+  p.line(P([[212, -132], [212, -86]]), { width: 4, color: INKT, raw: true });
+  p.shape(P([[208, -82], [344, -84], [356, -60], [352, 12], [208, 12]]), { stroke: INKT, width: 2.6, raw: true, opacity: 0.85 });
+  p.rect(X(306), Y(-70), 26, 7, { fill: BONE, r: 3, stroke: INKT, width: 2.5 });
+  p.line(P([[338, -100], [356, -114]]), { width: 4, color: INKT, raw: true });
+  p.ellipse(X(360), Y(-120), 10, 12, { fill: INKT, stroke: INKT, width: 2.5 });
+  p.ellipse(X(361), Y(-121), 6, 8, { fill: '#B7D8DE', stroke: null });
+
+  // The livery: a bone stripe with a red pinstripe, running back from a point on the fender.
+  p.shape(P([[186, -42], [366, -42], [382, -36], [366, -30], [186, -30]]), { fill: BONE, raw: true, stroke: null });
+  p.line(P([[186, -26], [372, -26]]), { width: 3, color: RED, raw: true });
+
+  // The door roundel: the cat from the logo, in ink on bone, in a red ring.
+  p.ellipse(X(276), Y(-4), 25, 25, { fill: RED, stroke: INKT, width: 3.5 });
+  p.ellipse(X(276), Y(-4), 19, 19, { fill: BONE, stroke: null });
+  p.shape(P([[262, 8], [262, -8], [258, -20], [268, -12], [284, -12], [294, -20], [290, -8], [290, 8]]), { fill: INKT, raw: true, stroke: null });
+  for (const ex of [270, 282]) p.ellipse(X(ex), Y(-3), 3.2, 2.2, { fill: AMBER, stroke: null });
+
+  // The hood: louvres, and a bone highlight down its top edge.
+  for (let k = 0; k < 3; k++) p.line(P([[372 + k * 12, -56], [380 + k * 12, -54]]), { width: 3, color: BODY_DEEP, raw: true });
+  p.line(P([[352, -82], [370, -70], [430, -62], [458, -54]]), { width: 3, color: BODY_LIGHT, opacity: 0.95 });
+
+  // The headlight pod (the eye sits in it): body-colour cowl, chrome ring, dark socket.
+  p.ellipse(X(401), Y(-28), 30, 30, { fill: BODY, stroke: INKT, width: 5, shade: [{ pts: [[X(370), Y(-24)], [X(434), Y(-28)], [X(434), Y(4)], [X(370), Y(4)]], color: BODY_SHADE }] });
+  p.ellipse(X(401), Y(-28), 23, 23, { fill: '#E9E4DA', stroke: INKT, width: 3.5 });
+  p.ellipse(X(401), Y(-28), 18, 18, { fill: '#2A2236', stroke: null });
+  p.shape(P([[372, -50], [424, -56], [430, -48], [376, -42]]), { fill: BODY, ...solid, width: 3.5 });
+
+  // The grille: a chrome surround and ink bars, set into the nose.
+  p.shape(P([[442, -48], [470, -40], [474, -4], [468, 10], [446, 12]]), { fill: '#E9E4DA', ...solid, width: 4.5 });
+  p.shape(P([[448, -40], [464, -35], [467, -4], [462, 4], [450, 5]]), { fill: INKT, raw: true, stroke: null });
+  for (let k = 0; k < 5; k++) p.line(P([[450, -32 + k * 8], [465, -29 + k * 8]]), { width: 2.4, color: '#B7AFA6', raw: true });
+
+  // Sills: an ink rocker with a bone pinstripe, and the fuel cap behind the door.
+  p.shape(P([[186, 10], [444, 10], [440, 26], [186, 26]]), { fill: INKT, ...solid, width: 3 });
+  p.line(P([[192, 14], [436, 14]]), { width: 2, color: BONE, raw: true, opacity: 0.8 });
+  p.ellipse(X(198), Y(-62), 7, 7, { fill: '#E9E4DA', stroke: INKT, width: 2.5 });
+
+  // The bumper: ink, chunky, with the winch's fairlead (the cable runs from here) and red tow hooks.
+  p.shape(P([[432, 6], [484, 2], [490, 32], [436, 38]]), { fill: INKT, ...solid, width: 4, shade: [{ pts: [[X(430), Y(26)], [X(494), Y(22)], [X(494), Y(40)], [X(430), Y(40)]], color: '#14101A' }] });
+  p.line(P([[440, 10], [482, 6]]), { width: 2.2, color: INK_LIT, raw: true });
+  p.rect(X(454), Y(16), 24, 10, { fill: '#E9E4DA', r: 4, stroke: INKT, width: 2.5 });
+  for (const hx of [442, 484]) {
+    p.ellipse(X(hx), Y(22), 6, 6, { fill: RED, stroke: INKT, width: 2.5 });
+    p.ellipse(X(hx), Y(22), 2.4, 2.4, { fill: INKT, stroke: null });
   }
-  p.line(P([[410, 26], [430, 38], [452, 30]]), { width: 3.5, color: '#E8743E' });
-  p.line(P([[440, 4], [456, 20], [474, 16]]), { width: 3.5, color: '#3FA7B5' });
-  p.shape(P([[196, -112], [204, -112], [194, -76], [190, -76]]), { fill: '#FFFFFF', raw: true, stroke: null, opacity: 0.16 });
   return done('truck');
 }
+
 
 /**
  * The crossbow on its turret: a heavy stock on a rail, recurve limbs at the front with a cable-steel string,
@@ -855,9 +911,8 @@ export function boltArt(): Art {
 }
 
 /**
- * The wheels, mismatched, as on a truck built from whatever was going: at the back, big knobbies on dark
- * beadlock wheels with a mustard ring; at the front, an old red steel wheel with a chrome cap and a whitewall
- * that has seen better days. Same size, so the physics does not care.
+ * The wheels, as a matched pair: chunky ink tyres with bold tread blocks and a raised bone ring on the
+ * sidewall, on deep-dish ember steel wheels with a bone rim line, six ink holes and a chrome cap.
  */
 export function wheelArt(front = false): Art {
   const r = TRUCK.wheelR;
@@ -865,257 +920,444 @@ export function wheelArt(front = false): Art {
   const c = s / 2;
   const key = front ? 'wheel_front' : 'wheel';
   const p = pen(key);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + (front ? 0.1 : 0);
-    const b = a + 0.22;
-    p.shape([[c + Math.cos(a) * (r + 3), c + Math.sin(a) * (r + 3)], [c + Math.cos(b) * (r + 3), c + Math.sin(b) * (r + 3)], [c + Math.cos(b) * (r - 6), c + Math.sin(b) * (r - 6)], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { fill: '#2A2733', raw: true, width: 3 });
+  const INKT = '#231A2A';
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const b = a + 0.2;
+    p.shape([[c + Math.cos(a) * (r + 4), c + Math.sin(a) * (r + 4)], [c + Math.cos(b) * (r + 4), c + Math.sin(b) * (r + 4)], [c + Math.cos(b) * (r - 6), c + Math.sin(b) * (r - 6)], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { fill: INKT, raw: true, stroke: INKT, width: 2.5 });
   }
-  p.ellipse(c, c, r - 2, r - 2, { fill: TYRE, width: 4 });
-  if (front) {
-    // An old whitewall, scuffed, on a red steelie with a chrome cap.
-    p.ellipse(c, c, r * 0.78, r * 0.78, { fill: '#E8E2D4', width: 3 });
-    p.ellipse(c, c, r * 0.64, r * 0.64, { fill: TYRE, stroke: null });
-    p.ellipse(c, c, r * 0.58, r * 0.58, { fill: '#D8403A', width: 4, shade: [{ pts: [[c - r, c + 4], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: '#A82E2E' }] });
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2 + 0.3;
-      p.ellipse(c + Math.cos(a) * r * 0.4, c + Math.sin(a) * r * 0.4, r * 0.07, r * 0.07, { fill: '#7A2A2E', stroke: null });
+  p.ellipse(c, c, r - 1, r - 1, { fill: '#2E2638', stroke: INKT, width: 4 });
+  // A raised bone ring on the sidewall, broken like raised lettering.
+  for (let i = 0; i < 10; i++) {
+    const a0 = (i / 10) * Math.PI * 2;
+    const pts: [number, number][] = [];
+    for (let k = 0; k <= 4; k++) {
+      const a = a0 + (k / 4) * 0.45;
+      pts.push([c + Math.cos(a) * r * 0.84, c + Math.sin(a) * r * 0.84]);
     }
-    p.ellipse(c, c, r * 0.24, r * 0.24, { fill: CHROME, width: 3.5, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: CHROME_SHADE }] });
-    p.line([[c - r * 0.7, c - r * 0.3], [c - r * 0.6, c - r * 0.5]], { width: 3, color: '#8A8478', raw: true });
-    return { key, svg: p.svg(s, s), w: s, h: s };
+    p.line(pts, { width: 3, color: '#F3E3CC', raw: true, opacity: 0.85 });
   }
-  p.ellipse(c, c, r * 0.8, r * 0.8, { fill: '#3A3644', stroke: null });
-  p.ellipse(c, c, r * 0.62, r * 0.62, { fill: '#2A2733', width: 4 });
-  p.ellipse(c, c, r * 0.6, r * 0.6, { stroke: C.mustard, width: 5 });
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    p.dot(c + Math.cos(a) * r * 0.6, c + Math.sin(a) * r * 0.6, 1.8, '#2A2733');
-  }
+  // The deep-dish wheel.
+  p.ellipse(c, c, r * 0.66, r * 0.66, { fill: '#F0643A', stroke: INKT, width: 4, shade: [{ pts: [[c - r, c + 2], [c + r, c - 4], [c + r, c + r], [c - r, c + r]], color: '#C8432F' }] });
+  p.ellipse(c, c, r * 0.56, r * 0.56, { stroke: '#F3E3CC', width: 3.5 });
   for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    p.ellipse(c + Math.cos(a) * r * 0.36, c + Math.sin(a) * r * 0.36, r * 0.08, r * 0.08, { fill: '#14121A', stroke: null });
+    const a = (i / 6) * Math.PI * 2 + 0.26;
+    p.ellipse(c + Math.cos(a) * r * 0.38, c + Math.sin(a) * r * 0.38, r * 0.085, r * 0.085, { fill: INKT, stroke: null });
   }
-  p.ellipse(c, c, r * 0.18, r * 0.18, { fill: C.mustard, width: 3.5 });
-  p.ellipse(c - r * 0.05, c - r * 0.06, r * 0.06, r * 0.04, { fill: '#FFFFFF', stroke: null, opacity: 0.8 });
+  p.ellipse(c, c, r * 0.2, r * 0.2, { fill: '#E9E4DA', stroke: INKT, width: 3, shade: [{ pts: [[c - r, c + 2], [c + r, c - 2], [c + r, c + r], [c - r, c + r]], color: '#B7AFA6' }] });
+  p.dot(c, c, r * 0.06, INKT);
+  // A highlight on the tyre's shoulder.
+  const hi: [number, number][] = [];
+  for (let k = 0; k <= 6; k++) {
+    const a = Math.PI * 1.05 + (k / 6) * 0.7;
+    hi.push([c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]);
+  }
+  p.line(hi, { width: 3, color: '#FFFFFF', raw: true, opacity: 0.22 });
   return { key, svg: p.svg(s, s), w: s, h: s };
 }
 
 
-/** The house picture's size, and where its chimney top and banner are, for the game to use. */
-export const HOUSE = { w: 660, h: 880, ground: 866, chimney: { x: 52, y: 118 }, banner: { x: 282, y: 398 }, oldBanner: { x: 282, y: 398 } };
-
-export interface HouseLook {
-  /** The wooden upper storey and the tower's top. */
-  wall: string;
-  wallShade: string;
-  roof: string;
-  roofShade: string;
-  turretRoof: string;
-  door: string;
-  trim: string;
-}
+/** The old house's picture size, and where its chimney top and SOLD sign are, for the game to use. */
+export const HOUSE = { w: 660, h: 880, ground: 866, chimney: { x: 150, y: 214 }, banner: { x: 462, y: 432 } };
 
 /**
- * A tall storybook house, after cosy 2D game houses on Pinterest. Everything stands on the ground:
- * a stone ground floor, a wooden storey above with flower boxes, a steep tiled roof with a dormer,
- * a round tower that rises from the ground beside it to a pointed roof, a stone chimney up the side,
- * and a little porch over the door. 'old' (the house being left) has ivy and an old aerial;
- * 'new' (the house being moved to) has bunting, a weathervane and a mailbox. Both have a banner
- * under the eaves, high enough to be seen over the pile in front; the game writes on it.
+ * The house being left: old, poor and falling down, so the move reads as an escape from it to the
+ * manor by the sea. Built on the same rules as the manor but turned the other way - where the manor is
+ * symmetrical, tall, white and lit, this is squat, leaning and sagging, in dull weathered browns and
+ * dirty plaster, with almost no light in it. The whole thing leans to the right; the ridge sags; tiles
+ * are missing down to the battens, one patch is rusty tin and another a blue tarp held down with rope
+ * and a tyre. Plaster has fallen away to the brick, the beams are cracked, one window is boarded up and
+ * the other cracked with a shutter hanging off, the door is patched with a plank, the step has gone
+ * and a cinder block stands in for it. The chimney leans the other way, propped up on a pole, and the
+ * gutter hangs loose. Weeds grow out of everything. A SOLD sign stands crooked in front.
  */
-export function houseArt(key: string, look: HouseLook, kind: 'old' | 'new'): Art {
+export function shackArt(key: string): Art {
   const p = pen(key);
   const G = HOUSE.ground;
+  const PLASTER = '#B5A893';
+  const PLASTER_SHADE = '#968874';
+  const WOOD = '#6B5A4C';
+  const WOOD_DARK = '#4A3D35';
+  const WOOD_PALE = '#9C8A74';
+  const BRICK = '#94584A';
+  const ROOF = '#76675C';
+  const ROOF_SHADE = '#5A4D45';
+  const BATTEN = '#2E2522';
+  const MOSS = '#6F7F4A';
+  const WEED = '#6E8A4C';
+  const WEED_DRY = '#A39062';
+  const TARP = '#4F78A8';
+  const RUST = '#A4603A';
+  const DIM = '#B8925A';
+  /** Everything leans: points further up are pushed further right. */
+  const lean = ([x, y]: Pt): Pt => [x + (G - y) * 0.07, y];
+  const L = (pts: Pt[]) => pts.map(lean);
+  /** A board nailed on, as a thin rotated rectangle with two nail heads. */
+  const board = (a: Pt, b: Pt, w: number, fill = WOOD_PALE) => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * (w / 2);
+    const ny = (dx / len) * (w / 2);
+    p.shape([[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]], { fill, raw: true, width: 3.5 });
+    for (const t of [0.08, 0.92]) p.dot(a[0] + dx * t, a[1] + dy * t, 2.6, BATTEN);
+    p.line([[a[0] + dx * 0.2, a[1] + dy * 0.2], [a[0] + dx * 0.7, a[1] + dy * 0.7]], { width: 1.4, raw: true, opacity: 0.35 });
+  };
+  const weeds = (x: number, y: number, n: number, h: number) => {
+    for (let i = 0; i < n; i++) {
+      const bx = x + (i - n / 2) * 7;
+      const bend = ((i * 37) % 11) - 5;
+      p.line([[bx, y], [bx + bend * 0.5, y - h * 0.5], [bx + bend * 1.4, y - h * (0.7 + ((i * 13) % 5) / 10)]], { width: 3, color: i % 3 ? WEED : WEED_DRY });
+    }
+  };
+  const crack = (pts: Pt[]) => p.line(L(pts), { width: 2.2, raw: true, opacity: 0.7 });
+
+  // ---- The chimney, leaning out to the left, missing bricks at the top, propped on a pole.
+  p.shape([[120, 228], [176, 222], [196, 470], [138, 476]], { fill: BRICK, raw: true, width: 5.5, shade: [{ pts: [[160, 210], [210, 210], [210, 480], [166, 480]], color: '#74443A' }] });
+  for (let y = 240; y < 460; y += 20) p.line([[124 + (y - 228) * 0.08, y], [178 + (y - 222) * 0.08, y - 1]], { width: 1.8, color: '#5E3A32', raw: true, opacity: 0.7 });
+  p.shape([[114, 226], [140, 214], [144, 230], [118, 236]], { fill: BRICK, raw: true, width: 4 });
+  p.rect(156, 206, 18, 20, { fill: '#8A8A86', r: 2, width: 3.5 });
+  p.line([[72, G - 300], [128, 330]], { width: 9, color: WOOD_DARK });
+
+  // ---- The walls: dirty plaster over a timber frame, leaning right.
+  p.shape(L([[118, 482], [516, 482], [522, G], [112, G]]), { fill: PLASTER, raw: true, width: 7, shade: [{ pts: [[430, 470], [560, 470], [570, G + 6], [440, G + 6]], color: PLASTER_SHADE }] });
+  // Where the plaster has fallen away: bare brick in ragged patches.
+  for (const [cx, cy, rx, ry] of [[190, 560, 52, 34], [452, 640, 44, 54], [160, 780, 38, 30], [360, 520, 30, 18]] as const) {
+    const blob: Pt[] = Array.from({ length: 11 }, (_, i) => {
+      const a = (i / 11) * Math.PI * 2;
+      const r = 0.75 + ((i * 7) % 5) / 10;
+      return lean([cx + Math.cos(a) * rx * r, cy + Math.sin(a) * ry * r]);
+    });
+    p.shape(blob, { fill: BRICK, width: 3, stroke: '#6A4038' });
+    for (let y = cy - ry + 10; y < cy + ry - 4; y += 14) p.line([lean([cx - rx * 0.7, y]), lean([cx + rx * 0.7, y])], { width: 1.6, color: '#5E3A32', raw: true, opacity: 0.8 });
+  }
+  // Water stains running down from the eaves.
+  for (const x of [170, 300, 420]) p.shape(L([[x - 26, 486], [x + 24, 486], [x + 14, 600], [x + 2, 640], [x - 10, 590]]), { fill: '#5A4A3A', raw: true, stroke: null, opacity: 0.18, wobble: 3 });
+  // The frame: corner posts, a sill beam, a beam across and a split brace.
+  for (const x of [120, 508]) p.shape(L([[x - 9, 486], [x + 9, 486], [x + 9, G], [x - 9, G]]), { fill: WOOD, raw: true, width: 4.5 });
+  p.shape(L([[110, 652], [524, 646], [524, 664], [110, 670]]), { fill: WOOD, raw: true, width: 4.5 });
+  p.shape(L([[130, 500], [236, 640], [224, 648], [124, 514]]), { fill: WOOD, raw: true, width: 3.5 });
+  crack([[176, 566], [184, 574], [180, 584]]);
+  crack([[330, 700], [342, 720], [336, 744], [350, 770]]);
+  crack([[470, 520], [462, 548], [476, 566]]);
+  crack([[250, 690], [236, 706], [242, 724]]);
+
+  // ---- The roof: a heavy gable whose ridge has sagged, tiles missing down to the battens.
+  const left: Pt[] = [];
+  const right: Pt[] = [];
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    const s = Math.sin(t * Math.PI);
+    left.push(lean([66 + (318 - 66) * t + s * 16, 500 + (262 - 500) * t + s * 22]));
+    right.push(lean([318 + (572 - 318) * t - s * 14, 262 + (500 - 262) * t + s * 20]));
+  }
+  p.shape([...left, ...right.slice(1), lean([572, 500]), lean([66, 500])], { fill: ROOF, raw: true, width: 7.5, shade: [{ pts: [[340, 240], [640, 240], [640, 510], [340, 510]], color: ROOF_SHADE }] });
+  // Tile courses, broken.
+  for (let row = 0, y = 300; y < 486; y += 22, row++) {
+    const f = (y - 262) / 238;
+    const half = f * 236 - 26;
+    for (let x = 318 - half + (row % 2) * 13; x + 26 <= 318 + half; x += 26) {
+      if ((x * 3 + row * 7) % 9 === 0) continue;
+      p.line([lean([x, y]), lean([x + 13, y + 9]), lean([x + 26, y])], { width: 2.6, color: ROOF_SHADE });
+    }
+  }
+  // A hole where the tiles have gone, showing the battens and the dark inside.
+  p.shape(L([[230, 344], [292, 330], [306, 384], [262, 408], [222, 392]]), { fill: '#1E1816', raw: true, width: 4 });
+  for (const y of [350, 366, 382, 398]) p.line([lean([226, y]), lean([300, y - 6])], { width: 4, color: '#5E4A3E', raw: true });
+  for (const [x, y] of [[312, 404], [206, 414], [330, 436]] as const) p.shape(L([[x, y], [x + 22, y - 4], [x + 24, y + 8], [x + 2, y + 12]]), { fill: ROOF_SHADE, raw: true, width: 3 });
+  // A rusty tin patch, nailed down.
+  p.shape(L([[296, 440], [372, 434], [378, 488], [300, 492]]), { fill: RUST, raw: true, width: 4.5, shade: [{ pts: [[340, 420], [390, 420], [390, 500], [340, 500]], color: '#86482C' }] });
+  for (let x = 306; x < 372; x += 12) p.line([lean([x, 440]), lean([x + 3, 488])], { width: 2, color: '#6E3A24', raw: true, opacity: 0.7 });
+  // A blue tarp over the far slope, roped down and weighted with a tyre.
+  p.shape(L([[110, 470], [170, 404], [214, 430], [192, 492], [120, 496]]), { fill: TARP, width: 4, shade: [{ pts: [[150, 440], [220, 440], [220, 500], [150, 500]], color: '#3A5C88' }] });
+  p.line(L([[118, 430], [208, 486]]), { width: 2.6, color: '#C8B48A' });
+  // Held down with a couple of loose bricks.
+  for (const [bx, by] of [[150, 450], [184, 470]] as const) p.shape(L([[bx - 16, by - 8], [bx + 16, by - 10], [bx + 18, by + 6], [bx - 14, by + 8]]), { fill: BRICK, raw: true, width: 3.5 });
+  // Moss along the eaves and the ridge.
+  for (const [x, y, r] of [[96, 486, 16], [150, 472, 11], [280, 286, 10], [360, 296, 12], [520, 482, 15], [452, 470, 10]] as const) {
+    p.ellipse(...lean([x, y]), r * 1.5, r * 0.7, { fill: MOSS, stroke: null, opacity: 0.9, wobble: 2 });
+  }
+  // Eave board, broken at one end, and a gutter hanging down loose.
+  p.shape(L([[60, 498], [470, 498], [474, 512], [64, 514]]), { fill: WOOD_DARK, raw: true, width: 4.5 });
+  p.shape(L([[480, 500], [578, 506], [572, 518], [478, 512]]), { fill: WOOD_DARK, raw: true, width: 4 });
+  p.shape([lean([70, 516]), lean([360, 520]), [lean([360, 520])[0] + 64, 574], [lean([360, 520])[0] + 54, 582], lean([354, 530]), lean([70, 528])], { fill: '#8E8E88', raw: true, width: 3.5 });
+  weeds(lean([200, 516])[0], 516, 5, 30);
+  // A bent old aerial on the ridge.
+  const top = lean([318, 262]);
+  p.line([top, [top[0] + 10, top[1] - 70]], { width: 4, raw: true });
+  p.line([[top[0] - 14, top[1] - 52], [top[0] + 36, top[1] - 62]], { width: 3.5, raw: true });
+  p.line([[top[0] + 4, top[1] - 34], [top[0] + 30, top[1] - 20]], { width: 3.5, raw: true });
+  // The attic window: a dark hole with one board across.
+  const aw = lean([318, 400]);
+  p.ellipse(aw[0], aw[1], 30, 30, { fill: WOOD, width: 4.5 });
+  p.ellipse(aw[0], aw[1], 21, 21, { fill: '#1E1816', width: 3 });
+  board([aw[0] - 34, aw[1] + 10], [aw[0] + 32, aw[1] - 12], 12);
+
+  // ---- Windows: one boarded up, one cracked with a shutter hanging off, a weak light behind it.
+  const w1 = lean([132, 700]);
+  p.rect(w1[0], w1[1], 92, 96, { fill: WOOD, r: 2, width: 5 });
+  p.rect(w1[0] + 8, w1[1] + 8, 76, 80, { fill: '#1E1816', r: 1, width: 3 });
+  p.shape([[w1[0] + 10, w1[1] + 10], [w1[0] + 40, w1[1] + 10], [w1[0] + 20, w1[1] + 46]], { fill: '#5A6A74', raw: true, stroke: null, opacity: 0.6 });
+  board([w1[0] - 10, w1[1] + 18], [w1[0] + 102, w1[1] + 30], 18);
+  board([w1[0] - 6, w1[1] + 74], [w1[0] + 100, w1[1] + 58], 18, '#8A7864');
+  board([w1[0] + 8, w1[1] - 6], [w1[0] + 82, w1[1] + 104], 16, '#A69478');
+  const w2 = lean([396, 700]);
+  p.rect(w2[0], w2[1], 86, 96, { fill: WOOD, r: 2, width: 5 });
+  p.rect(w2[0] + 8, w2[1] + 8, 70, 80, { fill: DIM, r: 1, width: 3, shade: [{ pts: [[w2[0], w2[1] + 50], [w2[0] + 90, w2[1] + 44], [w2[0] + 90, w2[1] + 96], [w2[0], w2[1] + 96]], color: '#8A6A44' }] });
+  p.line([[w2[0] + 43, w2[1] + 8], [w2[0] + 43, w2[1] + 88]], { width: 3.5, raw: true });
+  p.line([[w2[0] + 8, w2[1] + 48], [w2[0] + 78, w2[1] + 48]], { width: 3.5, raw: true });
+  p.shape([[w2[0] + 44, w2[1] + 9], [w2[0] + 77, w2[1] + 9], [w2[0] + 77, w2[1] + 47], [w2[0] + 44, w2[1] + 47]], { fill: '#1E1816', raw: true, stroke: null });
+  p.line([[w2[0] + 12, w2[1] + 60], [w2[0] + 30, w2[1] + 72], [w2[0] + 26, w2[1] + 86]], { width: 1.6, color: '#FFFFFF', raw: true, opacity: 0.7 });
+  // The shutter, hanging by its bottom hinge.
+  p.shape([[w2[0] + 92, w2[1] + 96], [w2[0] + 120, w2[1] + 86], [w2[0] + 150, w2[1] + 160], [w2[0] + 124, w2[1] + 172]], { fill: '#6E7F7A', raw: true, width: 4 });
+  for (let k = 1; k < 4; k++) p.line([[w2[0] + 98 + k * 8, w2[1] + 106 + k * 16], [w2[0] + 122 + k * 8, w2[1] + 96 + k * 16]], { width: 2, raw: true, opacity: 0.5 });
+  p.rect(w2[0] - 8, w2[1] + 94, 102, 10, { fill: WOOD_DARK, r: 2, width: 3.5 });
+
+  // ---- The door: faded, off-true, a plank across the split, light leaking under it; no step left.
+  const d = lean([262, 680]);
+  p.shape([[d[0] - 6, G - 30], [d[0] - 6, d[1] - 6], [d[0] + 96, d[1] - 10], [d[0] + 98, G - 30]], { fill: WOOD_DARK, raw: true, width: 5 });
+  p.shape([[d[0] + 4, G - 34], [d[0] + 2, d[1] + 2], [d[0] + 86, d[1] - 2], [d[0] + 90, G - 38]], { fill: '#6E7F7A', raw: true, width: 4.5, shade: [{ pts: [[d[0] + 50, d[1] - 10], [d[0] + 100, d[1] - 10], [d[0] + 100, G], [d[0] + 50, G]], color: '#57655F' }] });
+  for (const [x, y, w, h] of [[14, 20, 26, 40], [52, 70, 30, 24], [10, 96, 20, 16]] as const) p.rect(d[0] + x, d[1] + y, w, h, { fill: WOOD_PALE, r: 2, stroke: null, opacity: 0.65 });
+  board([d[0] - 4, d[1] + 70], [d[0] + 96, d[1] + 52], 16);
+  p.dot(d[0] + 76, d[1] + 82, 5, '#B8A060');
+  p.rect(d[0] + 6, G - 38, 80, 5, { fill: DIM, r: 1, stroke: null, opacity: 0.8 });
+  // Where the step was: a cinder block, a bucket for the leak, and a broken plank.
+  p.rect(d[0] + 10, G - 30, 70, 30, { fill: '#9A968E', r: 3, width: 4.5 });
+  for (const hx of [d[0] + 22, d[0] + 50]) p.rect(hx, G - 24, 18, 16, { fill: '#5E5A54', r: 2, stroke: null });
+  p.shape([[d[0] + 110, G - 2], [d[0] + 114, G - 38], [d[0] + 146, G - 38], [d[0] + 150, G - 2]], { fill: '#8A8F94', raw: true, width: 4 });
+  p.line([[d[0] + 114, G - 38], [d[0] + 130, G - 56], [d[0] + 146, G - 38]], { width: 2.6, raw: true });
+  board([d[0] - 70, G - 4], [d[0] - 10, G - 22], 12, '#8A7864');
+
+  // ---- A broken fence and weeds everywhere at the foot.
+  for (const [x, h, tilt] of [[18, 110, -8], [44, 70, 4], [70, 104, 14], [96, 40, 0]] as const) {
+    p.shape([[x, G], [x + 18, G], [x + 18 + tilt, G - h], [x + 9 + tilt, G - h - 12], [x + tilt, G - h]], { fill: WOOD_PALE, raw: true, width: 3.5 });
+  }
+  board([8, G - 70], [92, G - 50], 10, '#8A7864');
+  for (const [x, n, h] of [[60, 7, 50], [130, 6, 44], [250, 5, 36], [420, 8, 54], [520, 6, 48], [610, 5, 40]] as const) weeds(x, G, n, h);
+
+  // ---- The SOLD sign: a faded red board nailed crooked across the roof, high enough to be seen over
+  // the pile of furniture in front. The game writes on it.
+  p.shape(L([[370, 410], [500, 400], [506, 452], [374, 462]]), { fill: '#B8463E', raw: true, width: 5, shade: [{ pts: [[360, 440], [520, 430], [520, 470], [360, 470]], color: '#93342F' }] });
+  for (const pt of [[380, 418], [494, 410], [384, 452], [498, 444]] as const) p.dot(...lean(pt as unknown as Pt), 3, BATTEN);
+  return { key, svg: p.svg(HOUSE.w, HOUSE.h), w: HOUSE.w, h: HOUSE.h };
+}
+
+/** The new house - a seaside manor - is bigger than the old one: its size, chimney top and banner. */
+export const MANOR = { w: 980, h: 1060, ground: 1044, chimney: { x: 218, y: 456 }, banner: { x: 490, y: 731 } };
+/** Headroom at the top of the manor's picture for the flag on its dome: everything is drawn this much lower. */
+const MANOR_TOP = 60;
+
+/**
+ * The house at the end of the trip: a whitewashed seaside manor that should feel like arriving
+ * somewhere grand. It is built to the coast's own palette (the lighthouse's whitewash, the sea's
+ * blues, the cliffs' sandstone) plus gold, and to a palace's shape language: symmetrical, layered
+ * and stepped up to a single high point. A central block with a crowned pediment and a columned
+ * portico over grand stairs; a drum tower behind it under a ribbed blue onion dome with a gold
+ * lantern and flag; two lower wings with balustraded roofs and urns; round corner turrets with
+ * pennants; palms in urns and bougainvillea climbing the white walls. Every window is lit.
+ */
+export function manorArt(key: string): Art {
+  const p = pen(key);
+  const G = MANOR.ground - MANOR_TOP;
+  const WHITE = '#F7F2E7';
+  const WHITE_SHADE = '#D9CDBC';
+  const SAND = '#E8C69C';
+  const SAND_DARK = '#C29A72';
+  const BLUE = '#2F72B8';
+  const BLUE_DARK = '#1F4F8A';
+  const BLUE_LIGHT = '#5FA6DA';
+  const GOLD = '#F2B53A';
+  const GOLD_DARK = '#C9862A';
   const GLOW = '#FFC86B';
   const GLOW_DEEP = '#FF9E4A';
-  const STONE = '#B6A2BE';
-  const STONE_DARK = '#8E7BA0';
-
-  /** Stones, in loose rows, over a stone wall. */
-  const stones = (x0: number, y0: number, x1: number, y1: number) => {
-    for (let row = 0; y0 + 16 + row * 40 < y1 - 10; row++) {
-      for (let sx = x0 + 10 + (row % 2) * 26; sx + 40 < x1; sx += 58) {
-        const sy = y0 + 14 + row * 40;
-        p.rect(sx, sy, 44, 26, { stroke: STONE_DARK, width: 3, r: 9, opacity: 0.85 });
-        p.line([[sx + 8, sy + 5], [sx + 34, sy + 4]], { width: 2.2, color: '#E4D8EC', raw: true, opacity: 0.8 });
-        p.line([[sx + 10, sy + 22], [sx + 38, sy + 21]], { width: 2.4, color: STONE_DARK, raw: true, opacity: 0.5 });
-        if ((sx * 7 + row * 13) % 5 === 0) p.line([[sx + 20, sy + 4], [sx + 24, sy + 12], [sx + 20, sy + 18]], { width: 1.6, color: STONE_DARK, raw: true });
-      }
+  const LEAF = '#3E8A5E';
+  const LEAF_DARK = '#2A6A4E';
+  const BLOOM = ['#E9508A', '#F27AAE', '#C93A76'];
+  const id = key.replace(/[^a-z0-9]/gi, '');
+  let glows = 0;
+  const glow = (cx: number, cy: number, rx: number, ry: number, opacity = 0.45) => {
+    const g = `${id}mg${glows++}`;
+    p.raw(`<defs><radialGradient id="${g}"><stop offset="0" stop-color="${GLOW}" stop-opacity="${opacity}"/><stop offset="1" stop-color="${GLOW}" stop-opacity="0"/></radialGradient></defs><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#${g})"/>`);
+  };
+  /** An arch's outline: straight sides up to a round top. */
+  const archPts = (x: number, y: number, w: number, h: number): Pt[] => {
+    const r = w / 2;
+    const pts: Pt[] = [[x + w, y + h], [x, y + h]];
+    for (let i = 0; i <= 12; i++) {
+      const a = Math.PI + (i / 12) * Math.PI;
+      pts.push([x + r + Math.cos(a) * r, y + r + Math.sin(a) * r]);
+    }
+    return pts;
+  };
+  /** A lit arched window in a sandstone surround, with glazing bars, a keystone and a sill. */
+  const win = (x: number, y: number, w: number, h: number, balcony = false) => {
+    glow(x + w / 2, y + h + 20, w * 1.1, 34, 0.35);
+    p.shape(archPts(x - 7, y - 7, w + 14, h + 10), { fill: SAND, raw: true, width: 4.5 });
+    p.shape(archPts(x, y, w, h), { fill: GLOW, raw: true, width: 3.5, shade: [{ pts: [[x, y + h * 0.55], [x + w, y + h * 0.48], [x + w, y + h], [x, y + h]], color: GLOW_DEEP }] });
+    p.line([[x + w / 2, y + 6], [x + w / 2, y + h - 2]], { width: 3, raw: true });
+    for (const k of [0.5, 0.75]) p.line([[x + 3, y + h * k], [x + w - 3, y + h * k]], { width: 2.6, raw: true });
+    p.shape([[x + w / 2 - 8, y - 10], [x + w / 2 + 8, y - 10], [x + w / 2 + 5, y + 6], [x + w / 2 - 5, y + 6]], { fill: GOLD, raw: true, width: 3 });
+    p.rect(x - 10, y + h, w + 20, 10, { fill: SAND_DARK, r: 3, width: 3.5 });
+    if (balcony) {
+      p.rect(x - 14, y + h + 8, w + 28, 8, { fill: '#3A3550', r: 2, stroke: null });
+      for (let bx = x - 10; bx <= x + w + 10; bx += 9) p.line([[bx, y + h + 14], [bx, y + h + 38]], { width: 2.4, color: '#3A3550', raw: true });
+      p.line([[x - 14, y + h + 38], [x + w + 14, y + h + 38]], { width: 3.4, color: '#3A3550', raw: true });
     }
   };
-  /** A lit window with a frame, cross bars, a curtain and a sill. Arched windows have a round top. */
-  const windowAt = (x: number, y: number, w: number, h: number, arch = false) => {
-    const outline = (inset: number): Pt[] => {
-      if (!arch) return [[x + inset, y + inset], [x + w - inset, y + inset], [x + w - inset, y + h - inset], [x + inset, y + h - inset]];
-      const r = w / 2 - inset;
-      const cx = x + w / 2;
-      const cy = y + w / 2;
-      const pts: Pt[] = [[x + w - inset, y + h - inset], [x + inset, y + h - inset]];
-      for (let i = 0; i <= 10; i++) {
-        const a = Math.PI + (i / 10) * Math.PI;
-        pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
-      }
-      return pts;
-    };
-    p.shape(outline(0), { fill: look.trim, raw: true, width: 5 });
-    p.shape(outline(7), { fill: GLOW, raw: true, width: 3.5, shade: [{ pts: [[x, y + h * 0.56], [x + w, y + h * 0.5], [x + w, y + h], [x, y + h]], color: GLOW_DEEP }] });
-    p.line([[x + w / 2, y + 8], [x + w / 2, y + h - 8]], { width: 3.5, raw: true });
-    p.line([[x + 8, y + h * 0.58], [x + w - 8, y + h * 0.58]], { width: 3.5, raw: true });
-    const top = y + (arch ? w * 0.42 : 8);
-    p.shape([[x + 8, top], [x + 8 + (w - 16) * 0.32, top], [x + 8 + (w - 16) * 0.18, y + h * 0.66], [x + 8 + (w - 16) * 0.26, y + h - 8], [x + 8, y + h - 8]], { fill: kind === 'old' ? '#E58FA4' : C.cream, raw: true, width: 3 });
-    p.rect(x - 6, y + h - 4, w + 12, 10, { fill: look.trim, r: 3, width: 4 });
+  /** A balustrade: top rail, bottom rail and fat turned balusters between. */
+  const balustrade = (x0: number, x1: number, y: number, h = 44) => {
+    p.rect(x0, y + h - 10, x1 - x0, 12, { fill: SAND, r: 3, width: 4 });
+    for (let x = x0 + 10; x < x1 - 10; x += 20) {
+      p.shape([[x - 4, y + 10], [x + 4, y + 10], [x + 7, y + 22], [x + 3, y + h - 10], [x - 3, y + h - 10], [x - 7, y + 22]], { fill: WHITE, raw: true, width: 2.6 });
+    }
+    p.rect(x0 - 6, y, x1 - x0 + 12, 12, { fill: SAND, r: 3, width: 4 });
   };
-  const flowerBox = (x: number, y: number, w: number) => {
-    p.rect(x, y, w, 18, { fill: C.woodDark, r: 4, width: 4 });
-    const colours = [C.terracotta, C.mustard, C.pink, C.cream];
-    for (let i = 0; i * 17 < w - 8; i++) {
-      p.dot(x + 9 + i * 17, y - 2, 9, i % 2 ? C.sageDark : C.sage);
-      p.dot(x + 10 + i * 17, y - 8, 6, colours[i % colours.length]);
-    }
+  const urn = (x: number, y: number, s = 1) => {
+    p.shape([[x - 16 * s, y - 34 * s], [x + 16 * s, y - 34 * s], [x + 12 * s, y - 14 * s], [x + 6 * s, y - 6 * s], [x + 10 * s, y], [x - 10 * s, y], [x - 6 * s, y - 6 * s], [x - 12 * s, y - 14 * s]], { fill: SAND, raw: true, width: 3.5 });
+    p.rect(x - 18 * s, y - 40 * s, 36 * s, 8 * s, { fill: SAND_DARK, r: 2, width: 3 });
   };
-  const lantern = (x: number, y: number) => {
-    p.line([[x, y - 22], [x, y - 10]], { width: 3, raw: true });
-    p.shape([[x - 9, y - 10], [x + 9, y - 10], [x + 11, y + 12], [x - 11, y + 12]], { fill: GLOW, raw: true, width: 4 });
-    p.shape([[x - 11, y - 10], [x, y - 20], [x + 11, y - 10]], { fill: C.ink, raw: true, stroke: null });
-    p.rect(x - 12, y + 10, 24, 6, { fill: C.ink, r: 2, stroke: null });
+  const flag = (x: number, y: number, flip = 1, color = GOLD) => {
+    p.line([[x, y + 70], [x, y]], { width: 4, raw: true });
+    p.shape([[x, y + 2], [x + 64 * flip, y + 8], [x + 46 * flip, y + 18], [x + 66 * flip, y + 30], [x, y + 30]], { fill: color, width: 3.5 });
+    p.dot(x, y - 2, 5, GOLD);
+  };
+  const palm = (x: number, y: number, lean: number) => {
+    const top: Pt = [x + lean, y - 250];
+    p.line([[x, y], [x + lean * 0.3, y - 90], [x + lean * 0.7, y - 180], top], { width: 18, color: '#8A6A52' });
+    for (let i = 0; i < 7; i++) p.line([[x + lean * (i / 7) * 0.8 - 8, y - 20 - i * 32], [x + lean * (i / 7) * 0.8 + 8, y - 26 - i * 32]], { width: 2.4, raw: true, opacity: 0.45 });
+    for (let i = 0; i < 7; i++) {
+      const a = -Math.PI * 0.95 + (i / 6) * Math.PI * 0.9 + (i % 2 ? 0.1 : 0);
+      const len = 110 + (i % 3) * 18;
+      const tip: Pt = [top[0] + Math.cos(a) * len, top[1] + Math.sin(a) * len * 0.55 + 40];
+      const mid: Pt = [top[0] + Math.cos(a) * len * 0.5, top[1] + Math.sin(a) * len * 0.5 - 6];
+      const nx = -Math.sin(a) * 16;
+      const ny = Math.cos(a) * 16;
+      p.shape([top, [mid[0] + nx, mid[1] + ny], tip, [mid[0] - nx, mid[1] - ny]], { fill: i % 2 ? LEAF : LEAF_DARK, width: 3.5 });
+    }
+    p.dot(top[0] - 6, top[1] + 6, 8, '#7A5A3A');
+    p.dot(top[0] + 8, top[1] + 8, 7, '#7A5A3A');
+  };
+  const blooms = (pts: Pt[]) => {
+    p.line(pts, { width: 4, color: LEAF_DARK });
+    pts.forEach(([x, y], i) => {
+      for (let k = 0; k < 4; k++) p.dot(x + Math.cos(i * 2.3 + k * 1.6) * 16, y + Math.sin(i * 1.7 + k * 1.6) * 12, 7 + (k % 2) * 2, k === 0 ? LEAF : BLOOM[(i + k) % 3]);
+    });
   };
 
-  // ---- The chimney, in stone, up the left side from the ground to above the roof.
-  p.rect(24, 130, 60, G - 130, { fill: STONE, r: 6, width: 6, shade: [{ pts: [[58, 120], [90, 120], [90, G], [62, G]], color: STONE_DARK }] });
-  stones(24, 140, 84, G);
-  p.rect(16, 112, 76, 22, { fill: STONE_DARK, r: 5, width: 5 });
-
-  // ---- Ground floor: stone.
-  p.rect(84, 590, 400, G - 590, { fill: STONE, r: 6, width: 7, shade: [{ pts: [[400, 580], [500, 580], [500, G + 10], [410, G + 10]], color: STONE_DARK }] });
-  stones(84, 590, 484, G);
-
-  // ---- The tower, standing on the ground beside the house: stone below, wood above, a pointed roof.
-  p.rect(470, 590, 120, G - 590, { fill: STONE, r: 8, width: 7, shade: [{ pts: [[548, 580], [600, 580], [600, G + 10], [552, G + 10]], color: STONE_DARK }] });
-  stones(470, 590, 590, G);
-  p.rect(474, 250, 112, 348, { fill: look.wall, r: 8, width: 7, shade: [{ pts: [[546, 240], [600, 240], [600, 600], [550, 600]], color: look.wallShade }] });
-  for (let y = 278; y < 590; y += 26) p.line([[480, y], [580, y]], { width: 3, color: '#00000022', raw: true });
-  windowAt(500, 300, 60, 84, true);
-  windowAt(500, 452, 60, 84, true);
-  windowAt(500, 676, 60, 84, true);
-  p.rect(466, 582, 128, 16, { fill: C.walnut, r: 4, width: 5 });
-  p.shape([[456, 262], [530, 64], [604, 262]], { fill: look.turretRoof, raw: true, width: 7, shade: [{ pts: [[532, 50], [620, 50], [620, 270], [532, 270]], color: '#00000030' }] });
-  for (const y of [130, 180, 226]) p.line([[530 - (y - 64) * 0.37, y], [530 + (y - 64) * 0.37, y]], { width: 3.5, color: '#00000038', raw: true });
-  p.ellipse(530, 64, 8, 8, { fill: C.mustard, width: 3.5 });
-
-  // ---- The wooden storey, a little wider than the stone below it.
-  p.rect(74, 360, 420, 236, { fill: look.wall, r: 6, width: 7, shade: [{ pts: [[400, 350], [510, 350], [510, 600], [416, 600]], color: look.wallShade }] });
-  for (let y = 386; y < 590; y += 26) p.line([[80, y], [488, y]], { width: 3, color: '#00000022', raw: true });
-  for (let row = 0, y = 360; y < 584; y += 26, row++) {
-    for (let x = 110 + (row % 3) * 70; x < 480; x += 210) {
-      p.line([[x, y + 3], [x, y + 23]], { width: 2, color: '#00000026', raw: true });
-      p.dot(x + 5, y + 7, 1.6, '#00000040');
-      p.dot(x - 5, y + 7, 1.6, '#00000040');
-    }
-    // A pale lit edge under each board.
-    p.line([[80, y + 4], [488, y + 4]], { width: 1.6, color: '#FFFFFF', raw: true, opacity: 0.12 });
+  // ---- The drum tower and its dome, at the back, rising above everything.
+  p.rect(404, 200, 172, 190, { fill: WHITE, r: 4, width: 6, shade: [{ pts: [[510, 190], [590, 190], [590, 400], [510, 400]], color: WHITE_SHADE }] });
+  for (const x of [424, 474, 524]) {
+    glow(x + 16, 300, 30, 50, 0.3);
+    p.shape(archPts(x, 236, 32, 74), { fill: GLOW, raw: true, width: 3.5, shade: [{ pts: [[x, 280], [x + 32, 276], [x + 32, 310], [x, 310]], color: GLOW_DEEP }] });
   }
-  for (const [kx, ky] of [[150, 404], [300, 456], [430, 508], [250, 560]] as const) p.ellipse(kx, ky, 5, 3, { stroke: '#00000030', width: 1.6 });
-  windowAt(118, 434, 94, 98);
-  windowAt(352, 434, 94, 98);
-  flowerBox(108, 540, 114);
-  flowerBox(342, 540, 114);
-  // The beam along the bottom of the storey, and its shadow on the stone.
-  p.rect(66, 584, 436, 18, { fill: C.walnut, r: 4, width: 5 });
-  p.rect(84, 602, 400, 14, { fill: C.ink, stroke: null, opacity: 0.18 });
+  p.rect(394, 190, 192, 18, { fill: SAND, r: 4, width: 4.5 });
+  p.rect(394, 326, 192, 12, { fill: SAND, r: 3, width: 4 });
+  // The onion dome: ribbed blue, with a gold band and a lit lantern on top.
+  const dome: Pt[] = [[392, 196], [396, 160], [418, 118], [452, 84], [478, 56], [490, 40], [502, 56], [528, 84], [562, 118], [584, 160], [588, 196]];
+  p.shape(dome, { fill: BLUE, width: 6, shade: [{ pts: [[492, 20], [600, 20], [600, 200], [492, 200]], color: BLUE_DARK }] });
+  for (const k of [-0.62, -0.3, 0, 0.3, 0.62]) p.line([[490 + k * 96, 192], [490 + k * 90, 150], [490 + k * 54, 96], [490 + k * 8, 50]], { width: 3, color: k < 0 ? BLUE_LIGHT : BLUE_DARK, opacity: 0.8 });
+  p.line([[410, 170], [440, 132], [470, 100]], { width: 5, color: '#FFFFFF', opacity: 0.35 });
+  p.rect(392, 184, 196, 14, { fill: GOLD, r: 4, width: 4 });
+  flag(490, -50, 1, BLUE_LIGHT);
+  p.rect(476, 20, 28, 26, { fill: GOLD, r: 4, width: 4 });
+  p.ellipse(490, 18, 10, 9, { fill: GOLD, width: 3.5 });
 
-  // ---- The roof: steep, tiled, with a dormer window.
-  p.shape([[52, 374], [284, 92], [516, 374]], { fill: look.roof, raw: true, width: 8, shade: [{ pts: [[286, 80], [530, 80], [530, 380], [286, 380]], color: look.roofShade }] });
-  for (let row = 0, y = 136; y < 366; y += 22, row++) {
-    const half = ((y - 92) / 282) * 232 - 12;
-    const tile = 30;
-    for (let x = 284 - half + (row % 2) * (tile / 2); x + tile <= 284 + half; x += tile) {
-      p.line([[x, y], [x + tile / 2, y + 11], [x + tile, y]], { width: 2.8, color: look.roofShade });
+  // ---- The wings: two storeys of whitewash with a balustraded roof and urns.
+  for (const [x0, x1] of [[150, 344], [636, 830]] as const) {
+    p.rect(x0, 496, x1 - x0, G - 496, { fill: WHITE, r: 4, width: 6, shade: [{ pts: [[x1 - 50, 486], [x1 + 4, 486], [x1 + 4, G + 4], [x1 - 50, G + 4]], color: WHITE_SHADE }] });
+    p.rect(x0, G - 40, x1 - x0, 40, { fill: SAND, r: 2, width: 5 });
+    p.rect(x0 - 8, 494, x1 - x0 + 16, 18, { fill: SAND, r: 4, width: 4.5 });
+    p.rect(x0 - 4, 724, x1 - x0 + 8, 12, { fill: SAND, r: 3, width: 3.5 });
+    balustrade(x0 + 4, x1 - 4, 452);
+    urn(x0 + 20, 454, 0.8);
+    urn(x1 - 20, 454, 0.8);
+    const xs = [x0 + 34, x1 - 34 - 58];
+    for (const wx of xs) {
+      win(wx, 560, 58, 120, true);
+      win(wx, 780, 58, 140);
     }
-    p.line([[284 - half, y - 2], [284 + half, y - 2]], { width: 1.6, color: '#FFFFFF', raw: true, opacity: 0.1 });
   }
-  // A ridge cap along the top edges.
-  p.line([[56, 370], [284, 96], [512, 370]], { width: 3, color: '#FFFFFF', raw: true, opacity: 0.25 });
-  // Dormer: a little gabled window standing out of the roof.
-  p.rect(238, 236, 92, 80, { fill: look.wall, r: 4, width: 5.5 });
-  windowAt(256, 250, 56, 60, true);
-  p.shape([[226, 246], [284, 196], [342, 246]], { fill: look.roof, raw: true, width: 6, shade: [{ pts: [[286, 190], [350, 190], [350, 250], [286, 250]], color: look.roofShade }] });
-  p.rect(42, 366, 484, 18, { fill: look.roofShade, r: 6, width: 6 });
+  // A chimney on the left wing's roof - the smoke comes from here.
+  p.rect(200, 400, 36, 60, { fill: WHITE, r: 3, width: 4.5 });
+  p.rect(194, 396, 48, 12, { fill: SAND_DARK, r: 3, width: 4 });
 
-  // ---- The banner under the eaves.
-  p.line([[120, 384], [134, 390]], { width: 3.5, raw: true });
-  p.line([[444, 384], [430, 390]], { width: 3.5, raw: true });
-  p.shape([[134, 386], [430, 386], [424, 416], [282, 410], [140, 416]], { fill: kind === 'old' ? C.terracotta : C.teal, raw: true, width: 5, shade: [{ pts: [[134, 404], [430, 402], [430, 420], [134, 420]], color: kind === 'old' ? C.terracottaDark : '#2C7F8C' }] });
+  // ---- The central block, stepped forward: three storeys and a crowned pediment.
+  p.rect(336, 380, 308, G - 380, { fill: WHITE, r: 4, width: 6.5, shade: [{ pts: [[588, 370], [650, 370], [650, G + 4], [588, G + 4]], color: WHITE_SHADE }] });
+  for (const x of [336, 620]) p.rect(x, 380, 24, G - 380, { fill: SAND, r: 2, width: 4 });
+  p.rect(326, 372, 328, 18, { fill: SAND, r: 4, width: 4.5 });
+  // Pediment with a gold crown in it.
+  p.shape([[316, 382], [490, 270], [664, 382]], { fill: WHITE, raw: true, width: 6.5, shade: [{ pts: [[492, 260], [680, 260], [680, 390], [492, 390]], color: WHITE_SHADE }] });
+  p.line([[332, 376], [490, 286], [648, 376]], { width: 3, color: SAND_DARK, raw: true });
+  p.shape([[454, 362], [450, 320], [468, 338], [490, 308], [512, 338], [530, 320], [526, 362]], { fill: GOLD, raw: true, width: 4, shade: [{ pts: [[490, 300], [540, 300], [540, 370], [490, 370]], color: GOLD_DARK }] });
+  for (const cx of [450, 490, 530]) p.dot(cx, cx === 490 ? 304 : 316, 5, GOLD);
+  p.rect(452, 352, 76, 10, { fill: GOLD_DARK, r: 2, width: 3 });
+  urn(316, 382, 0.75);
+  urn(664, 382, 0.75);
+  // Upper floor: a tall central window between two narrower ones.
+  win(440, 420, 100, 170, true);
+  win(378, 440, 44, 130);
+  win(558, 440, 44, 130);
+  // The balcony over the portico, and the entablature the banner hangs on.
+  balustrade(330, 650, 602, 46);
+  p.rect(320, 646, 340, 56, { fill: SAND, r: 4, width: 5, shade: [{ pts: [[320, 690], [660, 690], [660, 704], [320, 704]], color: SAND_DARK }] });
+  for (let x = 330; x < 656; x += 22) p.rect(x, 694, 10, 8, { fill: SAND_DARK, r: 1, stroke: null });
+  // The banner, in royal blue with gold edges, across the entablature: the game writes on it.
+  p.shape([[400, 652], [580, 652], [574, 690], [490, 684], [406, 690]], { fill: BLUE, raw: true, width: 4.5, shade: [{ pts: [[400, 676], [580, 676], [580, 694], [400, 694]], color: BLUE_DARK }] });
+  p.line([[406, 658], [574, 658]], { width: 2.4, color: GOLD, raw: true });
 
-  // ---- The door, under a little porch roof on two posts, with lanterns.
-  p.shape([[234, G], [234, 744], [248, 718], [284, 704], [320, 718], [334, 744], [334, G]], { fill: look.trim, raw: true, width: 6 });
-  p.shape([[245, G], [245, 748], [258, 728], [284, 718], [310, 728], [323, 748], [323, G]], { fill: look.door, raw: true, width: 5, shade: [{ pts: [[286, 710], [340, 710], [340, G], [288, G]], color: '#00000030' }] });
-  for (const dx of [264, 304]) p.line([[dx, 740], [dx, G - 6]], { width: 3, opacity: 0.5, raw: true });
-  p.ellipse(284, 752, 12, 12, { fill: GLOW, width: 4 });
-  p.dot(312, 806, 5, C.mustard);
-  for (const px of [214, 354]) p.rect(px - 5, 690, 10, G - 690, { fill: C.woodDark, r: 3, width: 4 });
-  p.shape([[196, 696], [216, 664], [352, 664], [372, 696]], { fill: look.roof, raw: true, width: 5.5, shade: [{ pts: [[290, 650], [380, 650], [380, 700], [290, 700]], color: look.roofShade }] });
-  p.rect(214, G - 12, 140, 14, { fill: '#9E8CB0', r: 4, width: 5 });
-  lantern(196, 740);
-  lantern(372, 740);
-  windowAt(112, 680, 76, 92, true);
-  windowAt(390, 680, 66, 92, true);
-  for (const [px, c] of [[160, C.terracotta], [420, C.mustard]] as const) {
-    p.shape([[px - 16, G - 34], [px + 16, G - 34], [px + 11, G], [px - 11, G]], { fill: c, raw: true, width: 4 });
-    p.dot(px - 6, G - 44, 11, C.sage);
-    p.dot(px + 7, G - 48, 10, C.sageDark);
+  // ---- The portico: four columns on the top step, the grand door between them.
+  p.rect(350, 702, 280, G - 702 - 64, { fill: C.ink, stroke: null, opacity: 0.22 });
+  glow(490, 860, 170, 90, 0.5);
+  p.shape(archPts(436, 756, 108, G - 64 - 756), { fill: GOLD, raw: true, width: 5 });
+  p.shape(archPts(446, 766, 88, G - 64 - 766), { fill: BLUE, raw: true, width: 4.5, shade: [{ pts: [[490, 750], [540, 750], [540, G], [490, G]], color: BLUE_DARK }] });
+  p.line([[490, 770], [490, G - 66]], { width: 3.5, raw: true });
+  for (const [x, y] of [[466, 810], [514, 810], [466, 870], [514, 870]] as const) p.rect(x - 14, y, 28, 40, { stroke: GOLD, width: 3, r: 4 });
+  for (const x of [480, 500]) p.dot(x, 850, 5, GOLD);
+  p.shape(archPts(458, 768, 64, 40).slice(2), { fill: GLOW, raw: true, width: 3 });
+  // A lantern hung in the portico.
+  glow(490, 740, 46, 46, 0.6);
+  p.line([[490, 704], [490, 724]], { width: 3, raw: true });
+  p.shape([[480, 724], [500, 724], [504, 750], [476, 750]], { fill: GLOW, raw: true, width: 3.5 });
+  for (const x of [362, 420, 560, 618]) {
+    p.rect(x - 15, 702, 30, G - 702 - 64, { fill: WHITE, r: 3, width: 4.5, shade: [{ pts: [[x + 3, 700], [x + 16, 700], [x + 16, G], [x + 3, G]], color: WHITE_SHADE }] });
+    for (const fx of [-6, 0, 6]) p.line([[x + fx, 716], [x + fx, G - 82]], { width: 1.6, raw: true, opacity: 0.25 });
+    p.rect(x - 21, 700, 42, 14, { fill: SAND, r: 3, width: 3.5 });
+    p.rect(x - 21, G - 80, 42, 16, { fill: SAND, r: 3, width: 3.5 });
   }
 
-  // The shadow of the eaves on the wall, a gutter, and a downpipe down the corner.
-  p.rect(74, 384, 420, 30, { fill: C.ink, stroke: null, opacity: 0.16 });
-  p.rect(40, 380, 488, 10, { fill: '#9AA0B5', r: 4, width: 3.5 });
-  p.rect(488, 388, 10, G - 400, { fill: '#9AA0B5', r: 4, width: 3.5 });
-  for (const y of [470, 640, 790]) p.rect(485, y, 16, 6, { fill: '#9AA0B5', r: 2, width: 2.5 });
-  p.shape([[480, G - 14], [506, G - 14], [512, G], [478, G]], { fill: '#9AA0B5', raw: true, width: 3 });
-  // A cat flap in the door, a doormat, and a house number.
-  p.rect(268, G - 52, 32, 30, { fill: look.trim, r: 6, width: 3.5 });
-  p.rect(272, G - 48, 24, 22, { fill: '#00000040', r: 4, stroke: null });
-  p.rect(236, G - 6, 96, 8, { fill: '#B8403F', r: 3, width: 3 });
-  p.rect(340, 760, 26, 20, { fill: C.cream, r: 4, width: 3 });
-  p.line([[346, 766], [346, 774], [352, 774]], { width: 2.2, raw: true });
-  p.line([[357, 766], [361, 766], [357, 774], [362, 774]], { width: 2.2, raw: true });
-
-  if (kind === 'old') {
-    // Wear and tear: streaks under the windows, a cracked pane, moss on the roof, and a shutter hanging by one hinge.
-    for (const wx of [165, 399]) p.shape([[wx - 30, 546], [wx + 30, 546], [wx + 20, 584], [wx - 18, 590]], { fill: '#2A214024', raw: true, stroke: null, wobble: 3 });
-    p.line([[372, 444], [384, 466], [378, 482], [392, 500]], { width: 2, raw: true, color: '#FFFFFF' });
-    for (const [mx, my, mr] of [[120, 352], [176, 300], [420, 340], [380, 286], [240, 200]].map(([a, b], i) => [a, b, 10 + (i % 3) * 5] as const)) {
-      p.ellipse(mx, my, mr * 1.4, mr * 0.7, { fill: '#6F9C5A', stroke: null, opacity: 0.85, wobble: 2 });
-      p.dot(mx - mr * 0.4, my - 2, mr * 0.3, '#9CD49A');
-    }
-    p.shape([[90, 440], [114, 434], [122, 532], [100, 544]], { fill: look.trim, raw: true, width: 3.5 });
-    for (let k = 0; k < 4; k++) p.line([[96 + k * 1.5, 452 + k * 22], [112 + k * 2, 450 + k * 22]], { width: 2, raw: true, opacity: 0.6 });
-    // Ivy up the stone and the tower, and an old aerial on the roof.
-    for (const [x0, top] of [[100, 610], [478, 610]] as const) {
-      const ivy: Pt[] = [[x0, G - 4], [x0 - 6, G - 70], [x0 + 6, G - 140], [x0 - 4, G - 200], [x0 + 4, top]];
-      p.line(ivy, { width: 4.5, color: C.moss });
-      for (let i = 0; i < 9; i++) p.dot(x0 + (i % 2 ? 10 : -9), G - 20 - i * ((G - top) / 9), 7.5, i % 2 ? C.sageDark : C.sage);
-    }
-    p.line([[284, 92], [284, 40]], { width: 4.5, raw: true });
-    p.line([[262, 52], [306, 48]], { width: 4, raw: true });
-    p.line([[268, 64], [300, 62]], { width: 4, raw: true });
-  } else {
-    // Bunting along the porch, a weathervane on the tower, and a mailbox with its flag up.
-    const colours = [C.mustard, C.terracotta, C.teal, C.pink];
-    const at = (i: number): Pt => [92 + i * 38, 618 + Math.sin((i / 10) * Math.PI) * 22];
-    p.line(Array.from({ length: 11 }, (_, i) => at(i)), { width: 3.5, raw: true });
-    for (let i = 0; i < 10; i++) {
-      const [x, y] = at(i + 0.5);
-      p.shape([[x - 14, y - 2], [x + 14, y - 2], [x, y + 28]], { fill: colours[i % 4], raw: true, width: 3.5 });
-    }
-    p.line([[530, 60], [530, 18]], { width: 4.5, raw: true });
-    p.line([[506, 34], [554, 34]], { width: 4, raw: true });
-    p.shape([[530, 14], [522, 6], [524, 0], [530, 3], [536, 0], [538, 6]], { fill: C.terracotta, width: 3 });
-    p.rect(616, 776, 10, G - 776, { fill: C.walnut, r: 3, width: 4.5 });
-    p.rect(590, 744, 62, 36, { fill: C.teal, r: 15, width: 5 });
-    p.line([[646, 754], [646, 728]], { width: 4, raw: true });
-    p.rect(646, 726, 12, 12, { fill: C.terracotta, r: 2, width: 3 });
+  // ---- Grand stairs, widening down to the ground.
+  for (let i = 0; i < 4; i++) {
+    const y = G - 64 + i * 16;
+    const half = 160 + i * 34;
+    p.rect(490 - half, y, half * 2, 16, { fill: i % 2 ? SAND : '#F0D8B4', r: 3, width: 4 });
   }
-  return { key, svg: p.svg(HOUSE.w, HOUSE.h), w: HOUSE.w, h: HOUSE.h };
+
+  // ---- Round corner turrets, in front of the wings' outer corners.
+  for (const [cx, dir] of [[104, -1], [876, 1]] as const) {
+    p.rect(cx - 54, 306, 108, G - 306, { fill: WHITE, r: 10, width: 6, shade: [{ pts: [[cx + 18, 300], [cx + 60, 300], [cx + 60, G + 4], [cx + 18, G + 4]], color: WHITE_SHADE }] });
+    p.rect(cx - 54, G - 40, 108, 40, { fill: SAND, r: 4, width: 5 });
+    for (const y of [470, 700]) p.rect(cx - 58, y, 116, 12, { fill: SAND, r: 3, width: 3.5 });
+    win(cx - 20, 360, 40, 80);
+    win(cx - 20, 540, 40, 110);
+    win(cx - 20, 770, 40, 120);
+    p.rect(cx - 64, 296, 128, 18, { fill: GOLD, r: 4, width: 4.5 });
+    p.shape([[cx - 66, 304], [cx - 60, 270], [cx - 30, 210], [cx, 150], [cx + 30, 210], [cx + 60, 270], [cx + 66, 304]], { fill: BLUE, width: 5.5, shade: [{ pts: [[cx + 2, 140], [cx + 80, 140], [cx + 80, 310], [cx + 2, 310]], color: BLUE_DARK }] });
+    for (const k of [-0.5, 0, 0.5]) p.line([[cx + k * 60, 300], [cx + k * 30, 220], [cx, 160]], { width: 2.6, color: k < 0 ? BLUE_LIGHT : BLUE_DARK, opacity: 0.8 });
+    p.ellipse(cx, 148, 9, 9, { fill: GOLD, width: 3.5 });
+    flag(cx, 76, dir === -1 ? 1 : -1, dir === -1 ? GOLD : '#E04848');
+  }
+
+  // ---- Palms in urns either side of the stairs, and bougainvillea over the walls.
+  for (const [x, lean] of [[266, -40], [714, 40]] as const) {
+    palm(x, G - 46, lean);
+    urn(x, G, 1.5);
+  }
+  blooms([[156, G - 50], [160, 900], [150, 820], [166, 760], [190, 734], [236, 728]]);
+  blooms([[824, G - 50], [820, 900], [830, 820], [814, 760], [790, 734], [744, 728]]);
+  blooms([[350, 660], [380, 646], [420, 640], [462, 636]]);
+
+  const svg = p.svg(MANOR.w, MANOR.h).replace(/(<svg[^>]*>)/, `$1<g transform="translate(0 ${MANOR_TOP})">`).replace(/<\/svg>$/, '</g></svg>');
+  return { key, svg, w: MANOR.w, h: MANOR.h };
 }
 
 /**
