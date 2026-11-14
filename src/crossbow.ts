@@ -29,6 +29,12 @@ export interface CrossbowHost {
   ground(x: number): number;
   /** The road's height, for the cliffs ahead. */
   cliffs: number[];
+  /**
+   * The bolt just hit this body: if it is something that fell off the truck and is still in its grace
+   * period, reel it straight back on and say so. Returns whether it was one of those - a genuine catch,
+   * not just another bolt-into-the-ground stick.
+   */
+  tryCatch(body: MatterJS.BodyType): boolean;
 }
 
 /** Speed of a fired bolt, pixels a frame. */
@@ -43,6 +49,9 @@ const G = 0.001 * 16.67 * 16.67;
 /** The cable's colour at rest, and glowing hot white at full strain. */
 const COLOR_SLACK = new Phaser.Display.Color(216, 216, 228);
 const COLOR_TAUT = new Phaser.Display.Color(255, 142, 58);
+/** The aim trail's colour, warm near the bow and cooling off toward the far end. */
+const DOT_NEAR = new Phaser.Display.Color(255, 230, 160);
+const DOT_FAR = new Phaser.Display.Color(180, 200, 230);
 
 export class Crossbow {
   private bow!: Phaser.GameObjects.Image;
@@ -71,7 +80,10 @@ export class Crossbow {
       if (this.state !== 'flying' || !this.bolt) return;
       for (const pr of e.pairs) {
         const other = pr.bodyA === this.bolt ? pr.bodyB : pr.bodyB === this.bolt ? pr.bodyA : null;
-        if (other && (other.label === 'road' || other.parent?.label === 'road')) return this.stick();
+        if (!other) continue;
+        // Something that fell off, still in its grace period: a catch, not a stick.
+        if (this.host.tryCatch(other)) return this.caught();
+        if (other.label === 'road' || other.parent?.label === 'road') return this.stick();
       }
     });
   }
@@ -127,6 +139,25 @@ export class Crossbow {
     }
   }
 
+  /** The bolt caught something that fell off, instead of the ground: a quick, happy reload, not a stick. */
+  private caught() {
+    const { scene } = this.host;
+    const at = this.bolt ? { x: this.bolt.position.x, y: this.bolt.position.y } : this.tip();
+    if (this.bolt) scene.matter.world.remove(this.bolt as never);
+    this.bolt = undefined;
+    this.boltImg.setVisible(false);
+    this.state = 'reload';
+    this.reloadLeft = 0.45;
+    play('clunk', 0.75, 1.7);
+    scene.cameras.main.shake(70, 0.0018);
+    // A little starburst, brighter and happier than the grit of a cliff stick.
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const spark = scene.add.circle(at.x, at.y, 3.5, 0xffe08a).setDepth(11.8).setBlendMode(Phaser.BlendModes.ADD);
+      scene.tweens.add({ targets: spark, x: at.x + Math.cos(a) * 46, y: at.y + Math.sin(a) * 46 - 10, alpha: 0, scale: 0.3, duration: 380, onComplete: () => spark.destroy() });
+    }
+  }
+
   release() {
     const { scene } = this.host;
     if (this.bolt) scene.matter.world.remove(this.bolt as never);
@@ -150,10 +181,13 @@ export class Crossbow {
     else if (a >= Math.PI / 2 && a < Math.PI - 0.45) a = Math.PI - 0.45;
     if (driving && this.state !== 'stuck') this.aim = a;
     else if (!driving) this.aim = this.host.truckAngle() - 0.5;
-    this.bow.setPosition(m.x, m.y).setRotation(this.aim).setFlipY(this.flipped());
+    // A faint breathing bob while ready and aimed, so it reads as held and alive, not a frozen prop.
+    const bob = driving && this.state === 'ready' ? Math.sin(scene.time.now / 480) * 1.6 : 0;
+    this.bow.setPosition(m.x, m.y + bob).setRotation(this.aim).setFlipY(this.flipped());
 
     const g = this.g.clear();
-    // Aiming: a dotted arc showing where the bolt would fly, until it would run out of cable.
+    // Aiming: a comet-trail arc, warm and bright near the bow, cooling and shrinking with distance,
+    // until it would run out of cable - a nicer tell than a flat row of same-size dots.
     if (driving && this.state === 'ready') {
       const t = this.tip();
       let x = t.x;
@@ -165,8 +199,14 @@ export class Crossbow {
         y += vy;
         vy += G;
         if (Math.hypot(x - m.x, y - m.y) > CABLE) break;
-        if (i % 2 === 0) g.fillStyle(0xfff6e4, 0.75 - i * 0.01).fillCircle(x, y, 4);
+        if (i % 2 === 0) {
+          const k = i / 60;
+          const tone = Phaser.Display.Color.Interpolate.ColorWithColor(DOT_NEAR, DOT_FAR, 100, Math.round(k * 100));
+          g.fillStyle(Phaser.Display.Color.GetColor(tone.r, tone.g, tone.b), 0.85 - k * 0.6).fillCircle(x, y, 5 - k * 2.6);
+        }
       }
+      // A small sighting ring where the eye should land first: the far end of the arc, or the cable's limit.
+      g.lineStyle(2, 0xfff6e4, 0.5).strokeCircle(x, y, 9 + Math.sin(scene.time.now / 160) * 2);
     }
     // Reloading: a label so the pause reads as "winding up again", not "broken", and a little pop when ready.
     this.reloadLabel.setPosition(m.x, m.y - 90).setVisible(this.state === 'reload');
@@ -190,6 +230,12 @@ export class Crossbow {
         return;
       }
       this.boltImg.setPosition(b.position.x, b.position.y).setRotation(Math.atan2(b.velocity.y, b.velocity.x));
+      // A short motion trail streaking back along the way it came, cheap since it is just the graphics
+      // object already being redrawn each frame, not extra sprites to spawn and clean up.
+      const speed = Math.hypot(b.velocity.x, b.velocity.y) || 1;
+      const bx = -b.velocity.x / speed;
+      const by = -b.velocity.y / speed;
+      for (let i = 1; i <= 5; i++) g.fillStyle(0xfff0cc, 0.3 - i * 0.05).fillCircle(b.position.x + bx * i * 7, b.position.y + by * i * 7, 5 - i * 0.6);
       if (Math.hypot(b.position.x - m.x, b.position.y - m.y) > CABLE || b.position.y > m.y + 1400) {
         this.host.say('Out of cable. Aim nearer.');
         this.release();

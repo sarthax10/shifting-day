@@ -32,9 +32,10 @@ export function hudText(scale = 1): Phaser.Types.GameObjects.Text.TextStyle {
   };
 }
 
-/** A toast/callout: still Fraunces for a little character, but a thin controlled stroke, not a sticker outline. */
-export function toastText(size = 40): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TITLE, fontSize: `${size}px`, color: C.cream, stroke: C.ink, strokeThickness: 4 };
+/** A toast/callout: still Fraunces for a little character, a thin controlled stroke, and wrapped to a
+ * column so a long line reads as a short paragraph instead of one giant banner across the screen. */
+export function toastText(size = 36): Phaser.Types.GameObjects.Text.TextStyle {
+  return { fontFamily: TITLE, fontSize: `${size}px`, color: C.cream, stroke: C.ink, strokeThickness: 3.5, align: 'center', wordWrap: { width: 760 }, lineSpacing: 2 };
 }
 
 /** A menu heading: display font, a thin stroke for separation from busy art, letter-spaced caps read calmer. */

@@ -1,232 +1,490 @@
 import Phaser from 'phaser';
-import { HOUSE, TRUCK, type Art, DRIVER } from './art';
+import { TRUCK, DRIVER, type Art } from './art';
 import { DRIVER_AT } from './game';
 import { CURSOR } from './cursors';
-import { C, Pen, type Pt } from './ink';
-import { buildBackdrop } from './backdrop';
-import { GROUND, H, W } from './terrain';
-import { CHUNK_TOP, prepareLeg } from './prepare';
-import { LEGS, clearTrip, loadTrip, type Trip } from './legs';
+import { H, W } from './terrain';
+import { prepareLeg } from './prepare';
+import { clearTrip, loadTrip, type Trip } from './legs';
 import { ambience, audio, music, play } from './audio';
-import { applyTitleFX } from './postfx';
-
-const TITLE = '"Fraunces", serif';
-const TEXT = '"Karla", sans-serif';
-/** The road the truck drives along on the title screen. */
-const ROAD = 944;
-
-/** A ridge of land across the whole screen, inked along its top, filled down to the bottom. */
-function ridgeArt(key: string, top: Pt[], fill: string, line: string, shade?: string): Art {
-  const p = new Pen(key, 0, 0);
-  const pts: Pt[] = [...top, [W + 40, H + 40], [-40, H + 40]];
-  p.shape(pts, { fill, stroke: line, width: 6, raw: true, wobble: 1.4, shade: shade ? [{ pts: [[-40, H * 0.85], [W + 40, H * 0.8], [W + 40, H + 40], [-40, H + 40]], color: shade }] : undefined });
-  return { key, svg: p.svg(W, H), w: W, h: H };
-}
-
-/** A smooth line of hills, from a few heights across the screen. */
-function hills(y: number, heights: number[]): Pt[] {
-  const out: Pt[] = [];
-  const n = 48;
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const k = t * (heights.length - 1);
-    const a = Math.floor(k);
-    const b = Math.min(heights.length - 1, a + 1);
-    const f = k - a;
-    const s = f * f * (3 - 2 * f);
-    out.push([-40 + t * (W + 80), y - (heights[a] * (1 - s) + heights[b] * s)]);
-  }
-  return out;
-}
-
-/** The pictures only the title screen uses. */
-export function titleArts(): Art[] {
-  return [
-    ridgeArt('t_hill', hills(860, [40, 70, 50, 120, 230, 260, 180]), '#4E9A72', '#2F7A5E', '#3E8466'),
-  ];
-}
+import { BONE, INK, RAMP_DARK, buildLogo, catEye, halftoneBeam, halftoneSun, inked, mk, paperBackdrop, printRays, tape, type Logo } from './logo';
 
 /**
- * The home screen: a sunset over layered hills, the new house waiting on a hill, and the truck,
- * piled high, rolling along the road towards it. The title bounces; Play (or Enter) starts the game.
+ * The title screen, designed outward from the logo. The logo is a screen-printed punk gig poster -
+ * hand-cut letters, bone and ember on black, a hard ink outline, grit and spatter - so everything
+ * else is printed in the same three inks on the same sheet:
+ *
+ * - the ground is a black poster sheet with paper fibres and an ember halftone heat rising from the foot;
+ * - behind the logo, dark printed sun rays turn slowly around a halftone sun;
+ * - the truck is re-inked through the logo's palette with the same outline and an ember layer slipped
+ *   off register, so it is printed on the poster too, not pasted in from another game; its headlight
+ *   is a halftone beam, and ink speed lines and dust give it pace;
+ * - the menu is set in the logo's own condensed face; the selected item sits on a strip of torn ember
+ *   tape that slides between items;
+ * - printer's crop and registration marks frame the sheet.
+ *
+ * It all lands in sequence - sheet, rays, sun, the logo slammed in, the truck rolling in, the menu -
+ * and then idles with the rays turning, the cat blinking, the logo slipping out of register now and
+ * then, and the truck running on the spot. Mouse, keys, gamepad and touch all drive the menu.
  */
+const DISPLAY = '"Anton", "Impact", sans-serif';
+const MONO = '"Space Mono", monospace';
+const EMBER = 0xff6a30;
+const RED = 0xe3263a;
+const INK_N = 0x0a0712;
+const BONE_N = 0xf3e3cc;
+/** Where the truck's wheels meet the road. */
+const ROAD = 990;
+const LEFT = 118;
+const TRUCK_K = 0.8;
+const TRUCK_X = 1030;
+const TRUCK_Y = ROAD - (TRUCK.wheels[0].y + TRUCK.wheelR) * TRUCK_K;
+/** The wordmark's centre and size on screen, and the sun behind it. */
+const LOGO_Y = 372;
+const LOGO_K = 0.82;
+const SUN_Y = 420;
+/** The painted pieces take a moment to make, so they are made once per page load and kept. */
+let logoMeta: Logo | null = null;
+
+/** The title screen's pictures are painted on canvases when it opens; nothing to ink in advance. */
+export function titleArts(): Art[] {
+  return [];
+}
+
+interface MenuItem {
+  label: () => string;
+  act: () => void;
+  text: Phaser.GameObjects.Text;
+  num: Phaser.GameObjects.Text;
+}
+
 export class TitleScene extends Phaser.Scene {
   private truck!: Phaser.GameObjects.Container;
   private wheels: Phaser.GameObjects.Image[] = [];
-  private letters: Phaser.GameObjects.Text[] = [];
-  private rays!: Phaser.GameObjects.Graphics;
-  private scenery: { sails: Phaser.GameObjects.Image[]; clouds: { img: Phaser.GameObjects.Image; speed: number }[] } = { sails: [], clouds: [] };
-  /** The top of the load, swaying on the bumps: each with its own rhythm. */
-  private wobblers: { img: Phaser.GameObjects.Image; t: number; amp: number }[] = [];
   private cat!: Phaser.GameObjects.Image;
-  private flies: { img: Phaser.GameObjects.Image; x: number; y: number; t: number }[] = [];
+  private beam!: Phaser.GameObjects.Image;
+  private fx!: Phaser.GameObjects.Graphics;
+  private speed = 1;
+  private streaks: { x: number; y: number; len: number; w: number }[] = [];
+  private embers: { img: Phaser.GameObjects.Rectangle; vx: number; vy: number; t: number }[] = [];
+  private logo?: Phaser.GameObjects.Container;
+  private slices: { img: Phaser.GameObjects.Image; x: number }[] = [];
+  private ghosts: Phaser.GameObjects.Image[] = [];
+  private grain!: Phaser.GameObjects.Image;
+  private layers: { obj: Phaser.GameObjects.Components.Transform; x: number; y: number; k: number }[] = [];
+  private items: MenuItem[] = [];
+  private sel = 0;
+  private tapeImg!: Phaser.GameObjects.Image;
+  private stickCool = 0;
+  private dustClock = 0;
   private leaving = false;
-  /** A few background layers that drift a little with the pointer, for a soft sense of depth. */
-  private parallaxLayers: { img: Phaser.GameObjects.Image | Phaser.GameObjects.Arc; baseX: number; baseY: number; amount: number }[] = [];
-  private parallax = { x: 0, y: 0 };
+  private ready = false;
 
   constructor() {
     super('title');
   }
 
   create() {
-    applyTitleFX(this.cameras.main);
-    music.play('title');
-    ambience.birds(true);
-    // A sound toggle in the corner, on its own little chip so it reads clearly over the sky; M works everywhere.
-    const soundPill = this.add.rectangle(30, 30, 200, 46, 0x2a2140, 0.4).setOrigin(0, 0.5).setStrokeStyle(2, 0xfff2da, 0.3).setDepth(39);
-    const soundLabel = this.add.text(50, 30, '', { fontFamily: '"Karla", sans-serif', fontSize: '26px', color: C.cream }).setOrigin(0, 0.5).setDepth(40);
-    soundPill.setInteractive({ cursor: CURSOR.open });
-    const show = () => {
-      soundLabel.setText(`Sound: ${audio.muted ? 'off' : 'on'}  (M)`);
-      soundPill.setSize(soundLabel.width + 40, 46);
-    };
-    soundPill.on('pointerdown', () => {
-      audio.unlock();
-      audio.toggleMute();
-      show();
-    });
-    soundPill.on('pointerover', () => soundPill.setFillStyle(0x2a2140, 0.6));
-    soundPill.on('pointerout', () => soundPill.setFillStyle(0x2a2140, 0.4));
-    this.input.keyboard!.on('keydown-M', show);
-    show();
     this.leaving = false;
-    this.letters = [];
+    this.ready = false;
     this.wheels = [];
-    this.flies = [];
-    this.parallaxLayers = [];
-    this.parallax = { x: 0, y: 0 };
+    this.speed = 1;
+    this.streaks = [];
+    this.embers = [];
+    this.logo = undefined;
+    this.slices = [];
+    this.ghosts = [];
+    this.layers = [];
+    this.items = [];
+    this.sel = 0;
+    this.dustClock = 0;
     this.input.setDefaultCursor(CURSOR.point);
-
-    // Sky and sun, at the very back. The halo and core drift a touch with the pointer, for depth.
-    this.add.image(0, 0, 'title_sky').setOrigin(0).setDisplaySize(W, H).setDepth(-60);
-    this.rays = this.add.graphics().setDepth(-55);
-    const haloFar = this.add.image(1330, 470, 'halo').setDisplaySize(900, 900).setTint(0xffb867).setAlpha(0.75).setDepth(-54);
-    const haloNear = this.add.image(1330, 470, 'halo').setDisplaySize(420, 420).setTint(0xfff0b0).setAlpha(0.9).setDepth(-53);
-    const sunCore = this.add.circle(1330, 470, 120, 0xffd27a).setStrokeStyle(6, 0xff9e5e).setDepth(-52);
-    this.parallaxLayers.push({ img: haloFar, baseX: 1330, baseY: 470, amount: 10 }, { img: haloNear, baseX: 1330, baseY: 470, amount: 18 }, { img: sunCore, baseX: 1330, baseY: 470, amount: 22 });
-
-    // Mountains, forest and farmland in layers of haze, with clouds, birds, windmills, pollen and leaves.
-    this.scenery = buildBackdrop(this, { reach: 0, horizon: 870, width: W, height: H, parallax: false });
-
-    // The hill with the new house on it, trees, the road, and tall grass in front.
-    this.add.image(1360, 652, 'house_new#0').setOrigin(0.5, HOUSE.ground / HOUSE.h).setScale(0.36).setDepth(-21);
-    const hill = this.add.image(0, 0, 't_hill').setOrigin(0).setDepth(-20);
-    this.parallaxLayers.push({ img: hill, baseX: 0, baseY: 0, amount: 6 });
-    for (const [x, kind, s] of [[180, 1, 1.25], [330, 0, 1.05], [1700, 2, 1.2], [1830, 3, 1.0]] as const) {
-      this.add.image(x, 900, `tree_${kind}#0`).setOrigin(0.5, 392 / 406).setScale(s).setDepth(-15);
+    music.play('title');
+    ambience.birds(false);
+    try {
+      this.cameras.main.filters.internal.clear();
+      this.cameras.main.filters.external.clear();
+    } catch {
+      // Filters are a nicety.
     }
-    // The same textured road as the game: two flat stretches from the start of the drive.
-    for (const [i, x] of [[0, 0], [1, 1500]] as const) this.add.image(x, ROAD - 6 - (GROUND - CHUNK_TOP), `ground_${i}`).setOrigin(0).setDepth(-10);
-    for (let x = -100; x < W; x += 1200) this.add.image(x, H + 110, 'bd_grass').setOrigin(0, 1).setDepth(20);
-
-    // Fireflies over the hill.
-    for (let i = 0; i < 14; i++) {
-      const x = 900 + Math.random() * 950;
-      const y = 640 + Math.random() * 220;
-      this.flies.push({ img: this.add.image(x, y, 'halo').setDisplaySize(26, 26).setTint(0xffe58a).setDepth(-14), x, y, t: Math.random() * 10 });
-    }
-
+    this.makeTextures();
+    this.buildSheet();
     this.buildTruck();
-
-    // Title, letter by letter, so each can bounce.
-    const word = 'Shifting Day';
-    const size = 150;
-    let x = 160;
-    const y = 190;
-    for (const ch of word) {
-      if (ch === ' ') {
-        x += size * 0.32;
-        continue;
-      }
-      const shadow = this.add.text(x + 7, y + 10, ch, { fontFamily: TITLE, fontSize: `${size}px`, color: '#3B2F55' }).setOrigin(0, 0.5).setDepth(30).setAlpha(0.6);
-      const t = this.add.text(x, y, ch, { fontFamily: TITLE, fontSize: `${size}px`, color: C.cream, stroke: C.ink, strokeThickness: 12 }).setOrigin(0, 0.5).setDepth(31);
-      t.setData('shadow', shadow);
-      this.letters.push(t);
-      x += t.width - 10;
-    }
-    this.add
-      .text(170, 300, 'Everything you own. One small truck. What could possibly go wrong?', { fontFamily: TEXT, fontSize: '36px', color: C.cream, stroke: C.ink, strokeThickness: 6 })
-      .setOrigin(0, 0.5)
-      .setDepth(31);
-
-    // Play button: a warm glow breathing behind it draws the eye, with a little play-triangle on the label.
-    const glow = this.add.image(0, 0, 'halo').setDisplaySize(300, 300).setTint(0xffd27a).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD);
-    const bg = this.add.image(0, 0, 'btn').setScale(1.15);
-    const icon = this.add.triangle(-86, 0, 0, -15, 0, 15, 24, 0, 0xb8403f).setStrokeStyle(2, 0x2a2140);
-    const label = this.add.text(8, -6, 'Play', { fontFamily: TITLE, fontSize: '60px', color: C.ink }).setOrigin(0.5);
-    const play = this.add.container(370, 450, [glow, bg, icon, label]).setDepth(31);
-    bg.setInteractive({ cursor: CURSOR.open });
-    bg.on('pointerover', () => play.setScale(1.06));
-    bg.on('pointerout', () => play.setScale(1));
-    bg.on('pointerdown', () => this.start(null));
-    this.tweens.add({ targets: play, scale: 1.04, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.tweens.add({ targets: glow, alpha: { from: 0.3, to: 0.58 }, scaleX: { from: 0.9, to: 1.08 }, scaleY: { from: 0.9, to: 1.08 }, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    const saved = loadTrip();
-    if (saved) {
-      label.setText('New trip').setPosition(0, -6);
-      icon.setVisible(false);
-      const cglow = this.add.image(0, 0, 'halo').setDisplaySize(280, 180).setTint(0xfff0b0).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
-      const cbg = this.add.image(0, 0, 'btn').setScale(1.15, 1);
-      const clabel = this.add.text(0, -6, `Continue · Leg ${saved.leg}`, { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0.5);
-      const cont = this.add.container(370, 590, [cglow, cbg, clabel]).setDepth(31);
-      cbg.setInteractive({ cursor: CURSOR.open });
-      cbg.on('pointerover', () => cont.setScale(1.06));
-      cbg.on('pointerout', () => cont.setScale(1));
-      cbg.on('pointerdown', () => this.start(saved));
-      this.tweens.add({ targets: cglow, alpha: { from: 0.2, to: 0.4 }, duration: 1700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      this.add.text(370, 668, `${LEGS[saved.leg - 1].title}  ·  Enter to continue`, { fontFamily: TEXT, fontSize: '26px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
-    } else {
-      this.add.text(370, 540, 'or press Enter', { fontFamily: TEXT, fontSize: '30px', color: C.cream, stroke: C.ink, strokeThickness: 5 }).setOrigin(0.5).setDepth(31);
-    }
-    const credit = this.add.text(0, 0, 'Made for GitHub Game Off 2026  ·  theme: SHIFT', { fontFamily: TEXT, fontSize: '24px', color: C.cream }).setOrigin(1, 0.5).setDepth(40);
-    const creditPill = this.add.rectangle(W - 30, H - 32, credit.width + 36, 42, 0x2a2140, 0.35).setOrigin(1, 0.5).setStrokeStyle(2, 0xfff2da, 0.25).setDepth(39);
-    credit.setPosition(W - 48, H - 32);
-
-    this.input.keyboard!.on('keydown-ENTER', () => this.start(saved));
-    this.input.keyboard!.on('keydown-SPACE', () => this.start(saved));
+    this.buildWordmark();
+    this.buildMenu();
+    this.buildFrame();
+    this.cameras.main.fadeIn(700, 0, 0, 0);
   }
 
-  /** The truck, piled high, with the cat on top: the same pictures as in the game. */
+  // ------------------------------------------------------------------ textures
+
+  private addCanvas(key: string, canvas: HTMLCanvasElement) {
+    if (this.textures.exists(key)) this.textures.remove(key);
+    this.textures.addCanvas(key, canvas);
+  }
+
+  private makeTextures() {
+    if (logoMeta && this.textures.exists('t_logo')) return;
+    logoMeta = buildLogo();
+    this.addCanvas('t_logo', logoMeta.canvas);
+    this.addCanvas('t_eye', catEye());
+    this.addCanvas('t_paper', paperBackdrop(W, H));
+    this.addCanvas('t_rays', printRays(2800, 28, '#3A0F22'));
+    this.addCanvas('t_hsun', halftoneSun(900));
+    this.addCanvas('t_beam', halftoneBeam(760, 320));
+    this.addCanvas('t_tape', tape(640, 84, '#FF6A30', 11));
+  }
+
+  // ------------------------------------------------------------------ sheet
+
+  private parallax(obj: Phaser.GameObjects.Components.Transform, k: number) {
+    this.layers.push({ obj, x: obj.x, y: obj.y, k });
+  }
+
+  /** The black sheet, the rays and the sun, and the road band at the foot. */
+  private buildSheet() {
+    this.add.image(0, 0, 't_paper').setOrigin(0).setDepth(-100);
+
+    const rays = this.add.image(W / 2, SUN_Y, 't_rays').setDepth(-95).setAlpha(0).setScale(0.6);
+    this.tweens.add({ targets: rays, alpha: 1, scale: 1, duration: 1400, ease: 'Expo.easeOut', delay: 150 });
+    this.tweens.add({ targets: rays, angle: 360, duration: 160000, repeat: -1 });
+    this.parallax(rays, 8);
+
+    const sun = this.add.image(W / 2, SUN_Y + 120, 't_hsun').setDepth(-90).setScale(0.86).setAlpha(0);
+    this.tweens.add({ targets: sun, y: SUN_Y, alpha: 1, duration: 1600, ease: 'Cubic.easeOut', delay: 250 });
+    this.tweens.add({ targets: sun, scale: 0.88, duration: 2600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: 1900 });
+    this.parallax(sun, 12);
+
+    // The road: a solid ink band with a bone kerb line; dashes and speed lines are drawn every frame.
+    this.add.rectangle(0, ROAD, W, H - ROAD, INK_N).setOrigin(0).setDepth(-50);
+    this.add.rectangle(0, ROAD, W, 4, BONE_N, 0.85).setOrigin(0).setDepth(-49);
+    this.fx = this.add.graphics().setDepth(-45);
+
+    // Ember specks drifting up off the sheet.
+    for (let i = 0; i < 34; i++) {
+      const s = 2 + Math.random() * 4;
+      const img = this.add.rectangle(Math.random() * W, H - Math.random() * 600, s, s, Math.random() < 0.7 ? EMBER : BONE_N, 0.8).setDepth(40).setAngle(45);
+      this.embers.push({ img, vx: -6 - Math.random() * 24, vy: -16 - Math.random() * 30, t: Math.random() * 10 });
+    }
+  }
+
+  // ------------------------------------------------------------------ truck
+
+  /** Paints pictures onto one canvas, each placed by its origin as the game would place it. */
+  private compose(parts: [string, number, number, number, number, number?][], ox: number, oy: number, w: number, h: number) {
+    const [c, ctx] = mk(w, h);
+    for (const [key, x, y, fx, fy, s = 1] of parts) {
+      const img = this.textures.get(key).getSourceImage() as HTMLCanvasElement;
+      ctx.drawImage(img, ox + x - fx * img.width * s, oy + y - fy * img.height * s, img.width * s, img.height * s);
+    }
+    return { c, ctx };
+  }
+
+  /**
+   * The truck, printed on the poster: re-inked through the logo's ramp, outlined in ink, with an
+   * ember layer slipped off register. The cat is its own piece so it can ride the bumps; the wheels
+   * turn; the headlight is a halftone beam.
+   */
   private buildTruck() {
+    const OX = 330;
+    const OY = 400;
+    const CW = 920;
+    const CH = 580;
+    if (!this.textures.exists('t_truck')) {
+      const tox = TRUCK.ox / TRUCK.w;
+      const toy = TRUCK.oy / TRUCK.h;
+      const { c: body, ctx } = this.compose(
+        [
+          ['truck#0', 0, 0, tox, toy],
+          ['driver_happy#0', DRIVER_AT.x, DRIVER_AT.y, DRIVER.head.x / DRIVER.w, DRIVER.head.y / DRIVER.h],
+          ['clock#0', -150, 14, 0.5, 1, 0.95],
+          ['armchair#0', -50, 14, 0.5, 1],
+          ['box_l#0', 90, 14, 0.5, 1],
+          ['plant#0', 100, -62, 0.5, 1],
+          ['box_m#0', -52, -107, 0.5, 1],
+          ['lamp#0', 160, 14, 0.5, 1, 0.9],
+          ['truck_front#0', 0, 0, tox, toy],
+        ],
+        OX,
+        OY,
+        CW,
+        CH,
+      );
+      ctx.font = '22px "Fraunces", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#EE6A4D';
+      const decal = Math.min(1, 176 / ctx.measureText('SHIFT HAPPENS').width);
+      ctx.save();
+      ctx.translate(OX, OY - 7);
+      ctx.scale(decal, decal);
+      ctx.fillText('SHIFT HAPPENS', 0, 0);
+      ctx.restore();
+      this.addCanvas('t_truck', inked(body, 10, [-8, 5], RAMP_DARK).canvas);
+      const cat = this.textures.get('cat_calm#0').getSourceImage() as HTMLCanvasElement;
+      this.addCanvas('t_cat', inked(this.compose([['cat_calm#0', 0, 0, 0, 0]], 0, 0, cat.width, cat.height).c, 8, [-6, 4], RAMP_DARK).canvas);
+      for (const k of ['wheel', 'wheel_front']) {
+        const src = this.textures.get(`${k}#0`).getSourceImage() as HTMLCanvasElement;
+        this.addCanvas(`t_${k}`, inked(this.compose([[`${k}#0`, 0, 0, 0, 0]], 0, 0, src.width, src.height).c, 8, [0, 0], RAMP_DARK).canvas);
+      }
+    }
+    const bodyTex = this.textures.get('t_truck').getSourceImage() as HTMLCanvasElement;
+    const pad = (bodyTex.width - CW) / 2;
+    const catTex = this.textures.get('t_cat').getSourceImage() as HTMLCanvasElement;
+    const catSrc = this.textures.get('cat_calm#0').getSourceImage() as HTMLCanvasElement;
+    const catPad = (catTex.width - catSrc.width) / 2;
+
     const parts: Phaser.GameObjects.GameObject[] = [];
-    const bedY = 0;
-    const add = (key: string, x: number, bottom: number, originY = 1) => {
-      const img = this.add.image(x, bottom, key).setOrigin(0.5, originY);
-      parts.push(img);
-      return img;
-    };
-    parts.push(this.add.image(0, 0, 'truck#0').setOrigin(TRUCK.ox / TRUCK.w, TRUCK.oy / TRUCK.h));
-    // The driver in the cab, grinning: off on the big move.
-    parts.push(this.add.image(DRIVER_AT.x, DRIVER_AT.y, 'driver_happy#0').setOrigin(DRIVER.head.x / DRIVER.w, DRIVER.head.y / DRIVER.h));
-    // The load, stacked as a player might: tall things at the back, the cat riding on top.
-    const clock = add('clock#0', -150, bedY + 14);
-    add('armchair#0', -50, bedY + 14);
-    add('box_l#0', 90, bedY + 14);
-    const plant = add('plant#0', 100, bedY + 14 - 90 + 14);
-    const box = add('box_m#0', -52, bedY + 14 - 135 + 14);
-    this.cat = add('cat_calm#0', -52, bedY + 14 - 135 - 68 + 28);
-    const lamp = add('lamp#0', 160, bedY + 14).setScale(0.9);
-    this.wobblers = [
-      { img: plant, t: 0.3, amp: 0.05 },
-      { img: box, t: 1.1, amp: 0.025 },
-      { img: this.cat, t: 1.1, amp: 0.025 },
-      { img: lamp, t: 2.0, amp: 0.07 },
-    ];
-    clock.setScale(0.95);
-    parts.push(this.add.image(0, 0, 'truck_front#0').setOrigin(TRUCK.ox / TRUCK.w, TRUCK.oy / TRUCK.h));
-    const decal = this.add.text(0, -7, 'SHIFT HAPPENS', { fontFamily: TITLE, fontSize: '22px', color: C.terracotta }).setOrigin(0.5);
-    parts.push(decal.setScale(Math.min(1, 176 / decal.width)));
+    // The headlight first, so the truck sits over the start of its beam.
+    this.beam = this.add.image(TRUCK.hood.x + TRUCK.hood.w - 20, -40, 't_beam').setOrigin(0, 0.5).setAlpha(0.55);
+    parts.push(this.beam);
+    parts.push(this.add.image(0, 0, 't_truck').setOrigin((OX + pad) / bodyTex.width, (OY + pad) / bodyTex.height));
+    this.cat = this.add.image(-52, -161, 't_cat').setOrigin(0.5, (catPad + catSrc.height) / catTex.height);
+    parts.push(this.cat);
     for (const w of TRUCK.wheels) {
-      const wheel = this.add.image(w.x, w.y, w === TRUCK.wheels[1] ? 'wheel_front#0' : 'wheel#0');
+      const wheel = this.add.image(w.x, w.y, w === TRUCK.wheels[1] ? 't_wheel_front' : 't_wheel');
       this.wheels.push(wheel);
       parts.push(wheel);
     }
-    parts.push(this.add.image(TRUCK.wheels[1].x + 105, -28, 'eye_happy#0'));
-    this.truck = this.add.container(720, ROAD - 130, parts).setScale(1.05);
+    const lamp = this.add.circle(TRUCK.hood.x + TRUCK.hood.w - 8, -40, 12, BONE_N);
+    const tail = this.add.rectangle(TRUCK.bed.x - 6, 0, 14, 22, RED);
+    parts.push(lamp, tail);
+    this.truck = this.add.container(-800, TRUCK_Y, parts).setScale(TRUCK_K).setDepth(-40);
+    this.tweens.add({ targets: this.truck, x: TRUCK_X, duration: 1500, ease: 'Expo.easeOut', delay: 1300 });
+    this.tweens.add({ targets: this.beam, alpha: { from: 0.45, to: 0.62 }, duration: 90, yoyo: true, repeat: -1, repeatDelay: 2300 });
   }
 
-  /** Play: the truck pulls away and drives off to the right, then the game opens with it backing up to the old house. */
+  // ------------------------------------------------------------------ wordmark
+
+  /** The lockup, slammed in on the beat, then idling: blinking cat, sheen, and slips out of register. */
+  private buildWordmark() {
+    const meta = logoMeta!;
+    const lw = meta.canvas.width;
+    const lh = meta.canvas.height;
+    const cy = LOGO_Y;
+
+    const logo = this.add.container(W / 2, cy).setDepth(52).setScale(LOGO_K * 1.6).setAlpha(0);
+    this.logo = logo;
+    for (const tint of [0xff3355, 0x33e0ff]) {
+      const g = this.add.image(0, 0, 't_logo').setTint(tint).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
+      this.ghosts.push(g);
+      logo.add(g);
+    }
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const img = this.add.image(0, 0, 't_logo');
+      img.setCrop(0, Math.floor((lh / n) * i), lw, Math.ceil(lh / n) + 1);
+      this.slices.push({ img, x: 0 });
+      logo.add(img);
+    }
+    const sheen = this.add.image(0, 0, 't_logo').setTint(0xfff4dc).setTintMode(Phaser.TintModes.FILL).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD).setCrop(0, 0, 0, 0);
+    logo.add(sheen);
+    const eyes = meta.eyes.map((e) => {
+      const halo = this.add.image(e.x - lw / 2, e.y - lh / 2, 'halo').setDisplaySize(150, 110).setTint(0xffa030).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
+      const eye = this.add.image(e.x - lw / 2, e.y - lh / 2, 't_eye').setScale(1, 0.05);
+      logo.add([halo, eye]);
+      return { eye, halo };
+    });
+
+    // A flash of the sheet on impact.
+    const flash = this.add.rectangle(0, 0, W, H, BONE_N, 0).setOrigin(0).setDepth(90);
+    this.tweens.add({
+      targets: logo,
+      scale: LOGO_K,
+      alpha: 1,
+      duration: 360,
+      delay: 700,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        this.cameras.main.shake(240, 0.007);
+        play('clunk', 0.6, 0.7);
+        flash.setAlpha(0.22);
+        this.tweens.add({ targets: flash, alpha: 0, duration: 380 });
+        this.splat(W / 2, cy + 40);
+        this.time.delayedCall(450, () => {
+          for (const { eye, halo } of eyes) {
+            this.tweens.add({ targets: eye, scaleY: 1, duration: 160, ease: 'Back.easeOut' });
+            this.tweens.add({ targets: halo, alpha: 0.7, duration: 300 });
+          }
+          const blink = () => {
+            if (!this.scene.isActive()) return;
+            this.tweens.add({ targets: eyes.map((e) => e.eye), scaleY: 0.08, duration: 70, yoyo: true, ease: 'Sine.easeInOut' });
+            this.time.delayedCall(2600 + Math.random() * 3200, blink);
+          };
+          this.time.delayedCall(2400, blink);
+        });
+      },
+    });
+    const runSheen = () => {
+      const s = { v: -160 };
+      this.tweens.add({ targets: s, v: lw + 40, duration: 900, ease: 'Sine.easeInOut', onUpdate: () => sheen.setCrop(Math.max(0, s.v), 0, 120, lh), onComplete: () => this.time.delayedCall(5200, runSheen) });
+    };
+    this.time.delayedCall(2400, runSheen);
+
+    // The strap line, printed in bone on an ink block between two ember rules.
+    const subY = cy + (meta.day.y + meta.day.h / 2 + 74 - lh / 2) * LOGO_K;
+    const sub = this.add
+      .text(W / 2, subY, 'EVERYTHING YOU OWN  ·  ONE SMALL TRUCK', { fontFamily: MONO, fontStyle: 'bold', fontSize: '24px', color: BONE, letterSpacing: 8, backgroundColor: INK, padding: { x: 18, y: 8 } })
+      .setOrigin(0.5)
+      .setDepth(52)
+      .setAlpha(0);
+    const rl = this.add.rectangle(W / 2 - sub.width / 2 - 14, subY, 0, 3, EMBER).setOrigin(1, 0.5).setDepth(52);
+    const rr = this.add.rectangle(W / 2 + sub.width / 2 + 14, subY, 0, 3, EMBER).setOrigin(0, 0.5).setDepth(52);
+    this.tweens.add({ targets: sub, alpha: 1, duration: 600, delay: 1500 });
+    this.tweens.add({ targets: [rl, rr], width: 160, duration: 800, delay: 1600, ease: 'Expo.easeOut' });
+
+    this.time.addEvent({ delay: 5600, loop: true, callback: () => this.glitch(1) });
+  }
+
+  /** Ink spatter and grit thrown off the logo when it lands. */
+  private splat(x: number, y: number) {
+    for (let i = 0; i < 46; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 260 + Math.random() * 520;
+      const s = 3 + Math.random() * 9;
+      const bit = this.add.rectangle(x, y, s, s, Math.random() < 0.55 ? EMBER : BONE_N).setDepth(53).setAngle(Math.random() * 90);
+      this.tweens.add({ targets: bit, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.5, angle: bit.angle + 180, alpha: 0, scale: 0.3, duration: 500 + Math.random() * 500, ease: 'Cubic.easeOut', onComplete: () => bit.destroy() });
+    }
+  }
+
+  private glitch(strength: number) {
+    if (this.leaving || !this.logo) return;
+    const jolt = () => {
+      for (const s of this.slices) s.img.x = s.x + (Math.random() < 0.5 ? (Math.random() - 0.5) * 110 * strength : 0);
+      this.ghosts[0].setPosition(-14 * strength, 0).setAlpha(0.5);
+      this.ghosts[1].setPosition(14 * strength, 3).setAlpha(0.45);
+    };
+    jolt();
+    this.time.delayedCall(60, jolt);
+    this.time.delayedCall(140, () => {
+      for (const s of this.slices) this.tweens.add({ targets: s.img, x: s.x, duration: 240, ease: 'Expo.easeOut' });
+      this.tweens.add({ targets: this.ghosts, alpha: 0, duration: 200 });
+    });
+  }
+
+  // ------------------------------------------------------------------ menu
+
+  /**
+   * A short list in the logo's own face. The selected item is printed in ink on a strip of torn ember
+   * tape, which slides and stretches to whichever item you move to; the rest sit back in dim bone.
+   */
+  private buildMenu() {
+    const saved = loadTrip();
+    const defs: { label: () => string; act: () => void }[] = [];
+    if (saved) defs.push({ label: () => `CONTINUE — LEG ${saved.leg}`, act: () => this.start(saved) });
+    defs.push({ label: () => (saved ? 'NEW TRIP' : 'START THE DRIVE'), act: () => this.start(null) });
+    defs.push({
+      label: () => `SOUND: ${audio.muted ? 'OFF' : 'ON'}`,
+      act: () => {
+        audio.unlock();
+        audio.toggleMute();
+        this.refreshMenu();
+      },
+    });
+
+    const step = 80;
+    const y0 = ROAD - 70 - (defs.length - 1) * step;
+    this.tapeImg = this.add.image(LEFT + 30, y0, 't_tape').setOrigin(0, 0.5).setDepth(59).setAlpha(0).setAngle(-1.5);
+    defs.forEach((d, i) => {
+      const y = y0 + i * step;
+      const num = this.add.text(LEFT, y, `0${i + 1}`, { fontFamily: MONO, fontStyle: 'bold', fontSize: '22px', color: '#FF6A30' }).setOrigin(0, 0.5).setDepth(60).setAlpha(0);
+      const text = this.add.text(LEFT + 56, y, d.label(), { fontFamily: DISPLAY, fontSize: '56px', color: BONE, letterSpacing: 2 }).setOrigin(0, 0.5).setDepth(60).setAlpha(0);
+      // A hit area tall enough for a thumb once the screen is scaled down on a phone.
+      const hit = this.add.rectangle(LEFT - 20, y, 720, step, 0xffffff, 0.001).setOrigin(0, 0.5).setDepth(58).setInteractive({ cursor: CURSOR.open });
+      hit.on('pointerover', () => this.select(i));
+      hit.on('pointerdown', () => {
+        this.select(i, true);
+        this.activate();
+      });
+      this.tweens.add({ targets: [num, text], alpha: { from: 0, to: i === 0 ? 1 : 0.5 }, duration: 400, delay: 2100 + i * 110 });
+      this.tweens.add({ targets: text, x: { from: text.x - 40, to: text.x }, duration: 600, delay: 2100 + i * 110, ease: 'Expo.easeOut' });
+      this.items.push({ ...d, text, num });
+    });
+    this.time.delayedCall(2100, () => {
+      this.ready = true;
+      this.tapeImg.setAlpha(1);
+      this.select(0, true);
+    });
+
+    const touch = this.sys.game.device.input.touch;
+    const hint = touch ? 'TAP TO CHOOSE' : '↑↓ CHOOSE   ·   ENTER / Ⓐ GO   ·   M SOUND';
+    const h = this.add.text(W - LEFT, ROAD + 46, hint, { fontFamily: MONO, fontStyle: 'bold', fontSize: '22px', color: BONE, letterSpacing: 4 }).setOrigin(1, 0.5).setDepth(60).setAlpha(0);
+    this.tweens.add({ targets: h, alpha: 0.6, duration: 800, delay: 2600 });
+
+    const kb = this.input.keyboard!;
+    kb.on('keydown-UP', () => this.move(-1));
+    kb.on('keydown-W', () => this.move(-1));
+    kb.on('keydown-DOWN', () => this.move(1));
+    kb.on('keydown-S', () => this.move(1));
+    kb.on('keydown-ENTER', () => this.activate());
+    kb.on('keydown-SPACE', () => this.activate());
+    kb.on('keydown-M', () => this.refreshMenu());
+    const pad = (_p: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
+      if (button.index === 12) this.move(-1);
+      else if (button.index === 13) this.move(1);
+      else if (button.index === 0 || button.index === 9) this.activate();
+    };
+    this.input.gamepad?.on('down', pad);
+    this.events.once('shutdown', () => this.input.gamepad?.off('down', pad));
+  }
+
+  private refreshMenu() {
+    for (const it of this.items) it.text.setText(it.label());
+    if (this.ready) this.select(this.sel, true);
+  }
+
+  private move(d: number) {
+    if (!this.ready || this.leaving) return;
+    this.select((this.sel + d + this.items.length) % this.items.length);
+  }
+
+  private select(i: number, quiet = false) {
+    if (!this.ready || this.leaving) return;
+    if (i === this.sel && !quiet) return;
+    if (!quiet) play('click', 0.3, 1.5);
+    this.sel = i;
+    this.items.forEach((it, k) => {
+      const on = k === i;
+      it.text.setColor(on ? INK : BONE);
+      this.tweens.add({ targets: it.text, alpha: on ? 1 : 0.5, x: LEFT + (on ? 76 : 56), duration: 220, ease: 'Expo.easeOut' });
+      it.num.setAlpha(on ? 1 : 0.4);
+    });
+    const t = this.items[i].text;
+    const width = t.width + 60;
+    this.tweens.add({ targets: this.tapeImg, y: t.y + 2, scaleX: width / 640, duration: 240, ease: 'Expo.easeOut' });
+    this.tweens.add({ targets: this.tapeImg, angle: { from: (Math.random() - 0.5) * 6, to: -1.5 }, duration: 300, ease: 'Back.easeOut' });
+  }
+
+  private activate() {
+    if (!this.ready || this.leaving) return;
+    this.items[this.sel].act();
+  }
+
+  // ------------------------------------------------------------------ frame
+
+  /** Printer's marks: crop marks in each corner, a registration target and the ink bars, plus grain. */
+  private buildFrame() {
+    const g = this.add.graphics().setDepth(95).setAlpha(0);
+    g.lineStyle(2, BONE_N, 0.55);
+    const m = 34;
+    const l = 46;
+    for (const [x, y, sx, sy] of [[m, m, 1, 1], [W - m, m, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]] as const) {
+      g.lineBetween(x, y + sy * 14, x, y + sy * l);
+      g.lineBetween(x + sx * 14, y, x + sx * l, y);
+    }
+    g.strokeCircle(W / 2, m + 6, 10);
+    g.lineBetween(W / 2 - 18, m + 6, W / 2 + 18, m + 6);
+    g.lineBetween(W / 2, m - 12, W / 2, m + 24);
+    // Colour bars, as on a proof: the poster's inks.
+    [INK_N, 0x3a0f22, RED, EMBER, BONE_N].forEach((c, i) => g.fillStyle(c, 1).fillRect(W - m - 30 - (4 - i) * 22, m + 14, 18, 18));
+    this.tweens.add({ targets: g, alpha: 1, duration: 800, delay: 1800 });
+
+    this.add.image(W / 2, H / 2, 'vignette').setDisplaySize(W * 1.05, H * 1.05).setTint(0x000000).setDepth(99);
+    this.grain = this.add.image(0, 0, 'grain').setOrigin(0).setDisplaySize(W + 60, H + 60).setAlpha(0.9).setDepth(100);
+  }
+
+  // ------------------------------------------------------------------ leaving
+
+  /** Go: the beam flares, the truck floors it out of frame, and the screen cuts to black. */
   private start(trip: Trip | null) {
     if (this.leaving) return;
     this.leaving = true;
@@ -235,64 +493,81 @@ export class TitleScene extends Phaser.Scene {
     audio.unlock();
     play('click');
     play('honk');
-    // The cat has views about this.
     this.time.delayedCall(350, () => play('meow'));
-    // The cat has not agreed to any of this.
-    this.cat.setTexture('cat_panic#0');
+    this.glitch(1.6);
+    this.tweens.add({ targets: this.beam, alpha: 0.9, scaleX: 1.3, duration: 200 });
+    this.tweens.add({ targets: this, speed: 5, duration: 1200, ease: 'Cubic.easeIn' });
     this.tweens.add({
       targets: this.truck,
-      x: W + 800,
-      duration: 1500,
+      x: W + 900,
+      duration: 1300,
       ease: 'Cubic.easeIn',
       onComplete: () => {
-        this.cameras.main.fadeOut(260, 42, 33, 64);
+        this.cameras.main.fadeOut(300, 0, 0, 0);
         this.cameras.main.once('camerafadeoutcomplete', () => void ready.then(() => this.scene.start('play', trip ? { leg: trip.leg, trip } : { intro: true })));
       },
     });
   }
 
+  // ------------------------------------------------------------------ every frame
+
   update(time: number, delta: number) {
-    // The sun and the hill drift a little with the pointer, for a soft sense of depth.
+    const dt = delta / 1000;
     const p = this.input.activePointer;
-    const tx = Phaser.Math.Clamp((p.x - W / 2) / (W / 2), -1, 1);
-    const ty = Phaser.Math.Clamp((p.y - H / 2) / (H / 2), -1, 1);
-    this.parallax.x = Phaser.Math.Linear(this.parallax.x, tx, 0.04);
-    this.parallax.y = Phaser.Math.Linear(this.parallax.y, ty, 0.04);
-    for (const l of this.parallaxLayers) l.img.setPosition(l.baseX + this.parallax.x * l.amount, l.baseY + this.parallax.y * l.amount * 0.6);
-    // The title's letters bob in a wave.
-    this.letters.forEach((t, i) => {
-      const dy = Math.sin(time / 420 + i * 0.55) * 8;
-      t.setY(190 + dy).setRotation(Math.sin(time / 600 + i) * 0.03);
-      (t.getData('shadow') as Phaser.GameObjects.Text).setY(202 + dy);
-    });
-    // The truck rumbles along on the spot, its wheels turning; dust puffs out behind.
-    this.truck.y = ROAD - 130 + Math.sin(time / 90) * 1.6 + (Math.sin(time / 1400) > 0.97 ? -4 : 0);
-    for (const w of this.wheels) w.rotation += delta * (this.leaving ? 0.02 : 0.006);
-    // The load sways; the box and the cat on it move together, and the cat leans back as the truck pulls away.
-    for (const w of this.wobblers) {
-      const sway = Math.sin(time / 260 + w.t * 3) * w.amp + (Math.sin(time / 1400) > 0.97 ? w.amp * 1.5 : 0);
-      w.img.setRotation(sway - (this.leaving ? 0.25 : 0));
+    const tx = p.wasTouch ? 0 : Phaser.Math.Clamp((p.x - W / 2) / (W / 2), -1, 1);
+    const ty = p.wasTouch ? 0 : Phaser.Math.Clamp((p.y - H / 2) / (H / 2), -1, 1);
+    for (const l of this.layers) {
+      l.obj.x = Phaser.Math.Linear(l.obj.x, l.x - tx * l.k, 0.05);
+      l.obj.y = Phaser.Math.Linear(l.obj.y, l.y - ty * l.k * 0.5, 0.05);
     }
-    this.cat.x = -52 + Math.sin(time / 260 + 3.3) * 4;
-    if (Math.floor(time / 180) !== Math.floor((time - delta) / 180)) {
-      const puff = this.add.image(this.truck.x - 230, ROAD - 10, 'puff').setScale(0.4).setAlpha(0.7).setTint(0xf2cfa8);
-      this.tweens.add({ targets: puff, x: puff.x - 160, y: puff.y - 40, scale: 1.2, alpha: 0, duration: 1100, onComplete: () => puff.destroy() });
+
+    // The truck runs on the spot: a rumble, a bump now and then, the cat a beat behind, wheels turning.
+    const bump = Math.sin(time / 1300) > 0.97 ? -4 : 0;
+    if (!this.leaving) this.truck.y = TRUCK_Y + Math.sin(time / 80) * 1.5 + bump;
+    for (const w of this.wheels) w.rotation += delta * 0.012 * this.speed;
+    this.cat.y = -161 + Math.sin(time / 80 - 1.2) * 2.2 + (Math.sin(time / 1300 - 0.15) > 0.97 ? -8 : 0);
+    this.cat.rotation = Math.sin(time / 520) * 0.025;
+
+    // Dust off the back wheel: little squares of the poster's inks, flung back and fading.
+    this.dustClock += delta;
+    if (this.dustClock > 45 && this.truck.x > 0) {
+      this.dustClock = 0;
+      const wx = this.truck.x + (TRUCK.wheels[0].x - 40) * TRUCK_K;
+      const s = 4 + Math.random() * 8;
+      const bit = this.add.rectangle(wx, ROAD - 6, s, s, [EMBER, 0x3a0f22, BONE_N][Math.floor(Math.random() * 3)]).setDepth(-41).setAngle(45);
+      this.tweens.add({ targets: bit, x: wx - 160 - Math.random() * 260 * this.speed, y: ROAD - 20 - Math.random() * 90, alpha: 0, angle: 225, duration: 700 + Math.random() * 400, ease: 'Cubic.easeOut', onComplete: () => bit.destroy() });
     }
-    // Clouds drift and windmills turn; fireflies wander and twinkle.
-    for (const c of this.scenery.clouds) {
-      c.img.x += delta * c.speed * 3;
-      if (c.img.x > W + 400) c.img.x = -500;
+
+    // Ink speed lines low over the road, and the road's dashes.
+    const v = 700 * this.speed;
+    if (Math.random() < 0.3 * this.speed) this.streaks.push({ x: W + 300, y: ROAD - 30 - Math.random() * 260, len: 140 + Math.random() * 320, w: Math.random() < 0.3 ? 4 : 2 });
+    this.streaks = this.streaks.filter((s) => (s.x -= v * 1.6 * dt) > -s.len);
+    const g = this.fx.clear();
+    // Speed lines stay right of the menu column, so they never run through its type.
+    for (const s of this.streaks) {
+      const x0 = Math.max(s.x, 780);
+      if (s.x + s.len > x0) g.fillStyle(BONE_N, 0.22).fillRect(x0, s.y, s.x + s.len - x0, s.w);
     }
-    for (const s of this.scenery.sails) s.rotation += delta * 0.0012;
-    for (const f of this.flies) {
-      f.t += delta / 1000;
-      f.img.setPosition(f.x + Math.sin(f.t * 0.9) * 30, f.y + Math.cos(f.t * 1.3) * 18).setAlpha(0.4 + 0.5 * Math.abs(Math.sin(f.t * 2)));
+    g.fillStyle(BONE_N, 0.5);
+    const dashOff = (time * 0.7 * this.speed) % 240;
+    for (let x = -dashOff; x < W + 240; x += 240) g.fillRect(x, ROAD + 34, 120, 6);
+
+    for (const e of this.embers) {
+      e.t += dt;
+      e.img.x += (e.vx + Math.sin(e.t * 1.3) * 20) * dt;
+      e.img.y += e.vy * dt;
+      e.img.setAlpha(0.3 + 0.5 * Math.abs(Math.sin(e.t * 2.2)));
+      if (e.img.y < 300 || e.img.x < -20) e.img.setPosition(Math.random() * W * 1.1, H + 10);
     }
-    // Soft rays from the sun, turning slowly.
-    const g = this.rays.clear();
-    for (let i = 0; i < 14; i++) {
-      const a = time / 9000 + (i / 14) * Math.PI * 2;
-      g.fillStyle(0xfff0c0, 0.07).slice(1330, 470, 1300, a, a + 0.09).fillPath();
-    }
+
+    // The gamepad's left stick moves the menu too.
+    this.stickCool -= delta;
+    const sy = this.input.gamepad?.pad1?.leftStick.y ?? 0;
+    if (Math.abs(sy) > 0.6 && this.stickCool <= 0) {
+      this.move(sy > 0 ? 1 : -1);
+      this.stickCool = 260;
+    } else if (Math.abs(sy) < 0.3) this.stickCool = 0;
+
+    this.grain.setPosition(-Math.random() * 60, -Math.random() * 60);
   }
 }
