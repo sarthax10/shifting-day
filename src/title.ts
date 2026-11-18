@@ -349,10 +349,12 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(52)
       .setAlpha(0);
-    const rl = this.add.rectangle(W / 2 - sub.width / 2 - 14, subY, 0, 3, EMBER).setOrigin(1, 0.5).setDepth(52);
-    const rr = this.add.rectangle(W / 2 + sub.width / 2 + 14, subY, 0, 3, EMBER).setOrigin(0, 0.5).setDepth(52);
+    // Full length from the start and scaled in: a rectangle keeps the anchor it was made with, so one
+    // grown from zero width extends the wrong way, across the words.
+    const rl = this.add.rectangle(W / 2 - sub.width / 2 - 14, subY, 160, 3, EMBER).setOrigin(1, 0.5).setDepth(52).setScale(0, 1);
+    const rr = this.add.rectangle(W / 2 + sub.width / 2 + 14, subY, 160, 3, EMBER).setOrigin(0, 0.5).setDepth(52).setScale(0, 1);
     this.tweens.add({ targets: sub, alpha: 1, duration: 600, delay: 1500 });
-    this.tweens.add({ targets: [rl, rr], width: 160, duration: 800, delay: 1600, ease: 'Expo.easeOut' });
+    this.tweens.add({ targets: [rl, rr], scaleX: 1, duration: 800, delay: 1600, ease: 'Expo.easeOut' });
 
     this.time.addEvent({ delay: 5600, loop: true, callback: () => this.glitch(1) });
   }
