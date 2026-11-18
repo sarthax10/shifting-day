@@ -6,7 +6,7 @@ import { H, W } from './terrain';
 import { prepareLeg } from './prepare';
 import { clearTrip, loadTrip, type Trip } from './legs';
 import { ambience, audio, music, play } from './audio';
-import { openControls } from './poster';
+import { PosterList, openControls } from './poster';
 import { BONE, INK, RAMP_DARK, freeScratch, buildLogo, catEye, halftoneBeam, halftoneSun, inked, mk, paperBackdrop, printRays, tape, type Logo } from './logo';
 
 /**
@@ -79,6 +79,7 @@ export class TitleScene extends Phaser.Scene {
   private dustClock = 0;
   private leaving = false;
   private ready = false;
+  private list?: PosterList;
 
   constructor() {
     super('title');
@@ -413,29 +414,17 @@ export class TitleScene extends Phaser.Scene {
       },
     });
 
+    // The same animated list as the pause menu: the tape springs to whatever you point at, the item
+    // nudges and grows, a pointer pulses beside it, and a click squashes and flashes before it acts.
     const step = 80;
     const y0 = ROAD - 70 - (defs.length - 1) * step;
-    this.tapeImg = this.add.image(LEFT + 30, y0, 't_tape').setOrigin(0, 0.5).setDepth(59).setAlpha(0).setAngle(-1.5);
-    defs.forEach((d, i) => {
-      const y = y0 + i * step;
-      const num = this.add.text(LEFT, y, `0${i + 1}`, { fontFamily: MONO, fontStyle: 'bold', fontSize: '22px', color: '#FF6A30' }).setOrigin(0, 0.5).setDepth(60).setAlpha(0);
-      const text = this.add.text(LEFT + 56, y, d.label(), { fontFamily: DISPLAY, fontSize: '56px', color: BONE, letterSpacing: 2 }).setOrigin(0, 0.5).setDepth(60).setAlpha(0);
-      // A hit area tall enough for a thumb once the screen is scaled down on a phone.
-      const hit = this.add.rectangle(LEFT - 20, y, 720, step, 0xffffff, 0.001).setOrigin(0, 0.5).setDepth(58).setInteractive({ cursor: CURSOR.open });
-      hit.on('pointerover', () => this.select(i));
-      hit.on('pointerdown', () => {
-        this.select(i, true);
-        this.activate();
-      });
-      this.tweens.add({ targets: [num, text], alpha: { from: 0, to: i === 0 ? 1 : 0.5 }, duration: 400, delay: 2100 + i * 110 });
-      this.tweens.add({ targets: text, x: { from: text.x - 40, to: text.x }, duration: 600, delay: 2100 + i * 110, ease: 'Expo.easeOut' });
-      this.items.push({ ...d, text, num });
-    });
-    this.time.delayedCall(2100, () => {
-      this.ready = true;
-      this.tapeImg.setAlpha(1);
-      this.select(0, true);
-    });
+    const list = new PosterList(this, LEFT + 56, y0, defs, { step, size: 56, depth: 60 });
+    this.list = list;
+    list.setEnabled(false);
+    list.container.setAlpha(0);
+    this.tweens.add({ targets: list.container, alpha: 1, x: { from: -40, to: 0 }, duration: 600, delay: 2100, ease: 'Expo.easeOut' });
+    this.time.delayedCall(2100, () => (this.ready = true));
+    this.events.once('shutdown', () => list.destroy());
 
     const touch = this.sys.game.device.input.touch;
     const hint = touch ? 'TAP TO CHOOSE' : 'UP / DOWN  CHOOSE   ·   ENTER / A  GO   ·   M  SOUND';
@@ -443,52 +432,31 @@ export class TitleScene extends Phaser.Scene {
     this.tweens.add({ targets: h, alpha: 0.6, duration: 800, delay: 2600 });
 
     const kb = this.input.keyboard!;
-    kb.on('keydown-UP', () => this.move(-1));
-    kb.on('keydown-W', () => this.move(-1));
-    kb.on('keydown-DOWN', () => this.move(1));
-    kb.on('keydown-S', () => this.move(1));
-    kb.on('keydown-ENTER', () => this.activate());
     kb.on('keydown-SPACE', () => this.activate());
     kb.on('keydown-M', () => this.refreshMenu());
     const pad = (_p: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
-      if (button.index === 12) this.move(-1);
-      else if (button.index === 13) this.move(1);
-      else if (button.index === 0 || button.index === 9) this.activate();
+      if (button.index === 9) this.activate();
     };
     this.input.gamepad?.on('down', pad);
     this.events.once('shutdown', () => this.input.gamepad?.off('down', pad));
   }
 
   private refreshMenu() {
-    for (const it of this.items) it.text.setText(it.label());
-    if (this.ready) this.select(this.sel, true);
+    this.list?.refresh();
   }
 
   private move(d: number) {
     if (!this.ready || this.leaving) return;
-    this.select((this.sel + d + this.items.length) % this.items.length);
+    this.list?.move(d);
   }
 
   private select(i: number, quiet = false) {
-    if (!this.ready || this.leaving) return;
-    if (i === this.sel && !quiet) return;
-    if (!quiet) play('click', 0.3, 1.5);
-    this.sel = i;
-    this.items.forEach((it, k) => {
-      const on = k === i;
-      it.text.setColor(on ? INK : BONE);
-      this.tweens.add({ targets: it.text, alpha: on ? 1 : 0.5, x: LEFT + (on ? 76 : 56), duration: 220, ease: 'Expo.easeOut' });
-      it.num.setAlpha(on ? 1 : 0.4);
-    });
-    const t = this.items[i].text;
-    const width = t.width + 60;
-    this.tweens.add({ targets: this.tapeImg, y: t.y + 2, scaleX: width / 640, duration: 240, ease: 'Expo.easeOut' });
-    this.tweens.add({ targets: this.tapeImg, angle: { from: (Math.random() - 0.5) * 6, to: -1.5 }, duration: 300, ease: 'Back.easeOut' });
+    this.list?.select(i, quiet);
   }
 
   private activate() {
     if (!this.ready || this.leaving) return;
-    this.items[this.sel].act();
+    this.list?.activate();
   }
 
   // ------------------------------------------------------------------ frame
@@ -536,7 +504,18 @@ export class TitleScene extends Phaser.Scene {
       ease: 'Cubic.easeIn',
       onComplete: () => {
         this.cameras.main.fadeOut(300, 0, 0, 0);
-        this.cameras.main.once('camerafadeoutcomplete', () => void ready.then(() => this.scene.start('play', trip ? { leg: trip.leg, trip } : { intro: true })));
+        this.cameras.main.once('camerafadeoutcomplete', () =>
+          void ready.then(() => {
+            // The title's large pieces are not needed in the game: let them go once the title has shut
+            // down (they are painted again if it comes back). The small logo, the eye, the paper and
+            // the tape stay.
+            this.events.once('shutdown', () => {
+              for (const k of ['t_rays', 't_hsun', 't_beam', 't_truck', 't_cat', 't_wheel', 't_wheel_front', 't_logo']) if (this.textures.exists(k)) this.textures.remove(k);
+              logoMeta = null;
+            });
+            this.scene.start('play', trip ? { leg: trip.leg, trip } : { intro: true });
+          }),
+        );
       },
     });
   }
@@ -544,6 +523,7 @@ export class TitleScene extends Phaser.Scene {
   // ------------------------------------------------------------------ every frame
 
   update(time: number, delta: number) {
+    this.list?.setEnabled(this.ready && !this.leaving);
     const dt = delta / 1000;
     const p = this.input.activePointer;
     const tx = p.wasTouch ? 0 : Phaser.Math.Clamp((p.x - W / 2) / (W / 2), -1, 1);

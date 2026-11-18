@@ -338,7 +338,7 @@ export function placeStop(scene: Phaser.Scene, index: number, x: number, ground:
     3: { fontStyle: 'italic', letterSpacing: 1 },
   };
   const label = scene.add
-    .text(x + look.sign.x, top + look.sign.y, name.toUpperCase(), { fontFamily: '"Fraunces", serif', fontSize: `${look.sign.size}px`, color: look.sign.color, stroke: look.sign.stroke, strokeThickness: 6, align: 'center', ...lettering[index] })
+    .text(x + look.sign.x, top + look.sign.y, name.toUpperCase(), { fontFamily: '"Anton", "Impact", sans-serif', fontSize: `${Math.round(look.sign.size * 1.15)}px`, color: look.sign.color, stroke: look.sign.stroke, strokeThickness: 6, align: 'center', ...lettering[index] })
     .setOrigin(0.5)
     .setDepth(-9.8)
     .setRotation(look.sign.rot ?? 0);
@@ -379,7 +379,7 @@ export function placeStop(scene: Phaser.Scene, index: number, x: number, ground:
   }
   // Starlite Diner: the rooftop neon buzzes, the star sparkles, OPEN blinks.
   const star = scene.add.image(x + 560, top + 40, 'halo').setDepth(-9.6).setDisplaySize(120, 120).setTint(0xffe07a).setBlendMode(Phaser.BlendModes.ADD);
-  const open = scene.add.text(x + 760, top + 322, 'OPEN 24/7', { fontFamily: '"Karla", sans-serif', fontSize: '24px', color: '#5CF2FF' }).setOrigin(0.5).setDepth(-9.6).setShadow(0, 0, '#5CF2FF', 12, true, true);
+  const open = scene.add.text(x + 760, top + 322, 'OPEN 24/7', { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '26px', color: '#5CF2FF', letterSpacing: 2 }).setOrigin(0.5).setDepth(-9.6).setShadow(0, 0, '#5CF2FF', 12, true, true);
   const reflections = [label, open].map(() => 0);
   void reflections;
   return (time: number) => {

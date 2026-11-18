@@ -144,7 +144,7 @@ export class PosterList {
     this.select(this.sel, true);
   }
 
-  private move(d: number) {
+  move(d: number) {
     if (!this.enabled) return;
     this.select((this.sel + d + this.items.length) % this.items.length);
   }
@@ -230,6 +230,7 @@ export class PosterList {
   };
 
   destroy() {
+    if (this.dead) return;
     this.dead = true;
     for (const f of this.off) f();
     this.off = [];

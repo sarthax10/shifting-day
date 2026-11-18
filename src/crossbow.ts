@@ -65,6 +65,10 @@ export class Crossbow {
   private anchor?: { x: number; y: number };
   private length = 0;
   private reloadLeft = 0;
+  /** How far the bow is kicked back by its last shot, 1 just after firing, easing back to 0. */
+  private recoil = 0;
+  /** How hard the stuck bolt is still quivering from biting in. */
+  private quiver = 0;
   private taught = false;
   private reloadLabel!: Phaser.GameObjects.Text;
   /** How hard the cable is straining right now, smoothed, 0 to 1: drives the cable's glow and colour. */
@@ -115,10 +119,21 @@ export class Crossbow {
     this.boltImg.setVisible(true);
     play('bang', 0.5, 1.6);
     scene.cameras.main.shake(90, 0.002);
-    // A quick muzzle flash at the tip, so firing reads as a real release of tension, not just a click.
-    const flash = scene.add.circle(t.x, t.y, 10, 0xfff6d0).setDepth(11.75).setBlendMode(Phaser.BlendModes.ADD);
-    scene.tweens.add({ targets: flash, scale: 2.6, alpha: 0, duration: 160, onComplete: () => flash.destroy() });
-    scene.tweens.add({ targets: this.bow, scale: 0.94, duration: 60, yoyo: true });
+    // The shot: the bow kicks back and tips up (eased home in update), an ember flash and a shockwave
+    // ring burst from the tip, sparks fly forward along the shot, and a puff of smoke drifts back.
+    this.recoil = 1;
+    const flash = scene.add.image(t.x, t.y, 'twinkle').setDepth(11.75).setTint(0xffc07a).setBlendMode(Phaser.BlendModes.ADD).setRotation(this.aim).setScale(0.9);
+    scene.tweens.add({ targets: flash, scale: 2.2, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
+    const ring = scene.add.circle(t.x, t.y, 14).setStrokeStyle(4, 0xf3e3cc, 0.9).setDepth(11.74);
+    scene.tweens.add({ targets: ring, scale: 3.2, alpha: 0, duration: 260, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+    for (let i = 0; i < 7; i++) {
+      const a = this.aim + (Math.random() - 0.5) * 0.7;
+      const d = 60 + Math.random() * 90;
+      const spark = scene.add.rectangle(t.x, t.y, 10, 3, i % 2 ? 0xff6a30 : 0xffd08a).setRotation(a).setDepth(11.76).setBlendMode(Phaser.BlendModes.ADD);
+      scene.tweens.add({ targets: spark, x: t.x + Math.cos(a) * d, y: t.y + Math.sin(a) * d, alpha: 0, scaleX: 0.3, duration: 220 + Math.random() * 120, onComplete: () => spark.destroy() });
+    }
+    const smoke = scene.add.image(t.x, t.y, 'puff').setDepth(11.3).setTint(0xd9c3a6).setAlpha(0.7).setScale(0.35);
+    scene.tweens.add({ targets: smoke, x: t.x - Math.cos(this.aim) * 50, y: t.y - Math.sin(this.aim) * 50 - 30, scale: 1.1, alpha: 0, duration: 700, onComplete: () => smoke.destroy() });
   }
 
   /** The bolt bites into the ground: it becomes the anchor, and the cable goes taut where it is. */
@@ -132,7 +147,16 @@ export class Crossbow {
     this.length = Math.hypot(this.anchor.x - f.x, this.anchor.y - f.y);
     this.state = 'stuck';
     play('clunk', 1, 0.8);
-    scene.cameras.main.shake(70, 0.0025);
+    scene.cameras.main.shake(110, 0.004);
+    // The bite: the bolt quivers in place, an impact ring spreads from it, and ember sparks spray.
+    this.quiver = 1;
+    const hit = scene.add.circle(this.anchor.x, this.anchor.y, 10).setStrokeStyle(5, 0xff6a30, 0.95).setDepth(11.45);
+    scene.tweens.add({ targets: hit, scale: 4, alpha: 0, duration: 320, ease: 'Cubic.easeOut', onComplete: () => hit.destroy() });
+    for (let i = 0; i < 9; i++) {
+      const a = Math.PI + (Math.random() - 0.5) * 2.4;
+      const spark = scene.add.rectangle(this.anchor.x, this.anchor.y, 9, 3, i % 3 ? 0xff6a30 : 0xf3e3cc).setRotation(a).setDepth(11.46);
+      scene.tweens.add({ targets: spark, x: this.anchor.x + Math.cos(a) * (40 + Math.random() * 60), y: this.anchor.y + Math.sin(a) * (30 + Math.random() * 50), alpha: 0, angle: spark.angle + 200, duration: 360 + Math.random() * 160, onComplete: () => spark.destroy() });
+    }
     // Grit kicked up where the bolt bit in, so the catch reads as a solid hit, not just a stop.
     for (let i = 0; i < 5; i++) {
       const a = Math.PI + (Math.random() - 0.5) * 1.8;
@@ -185,7 +209,11 @@ export class Crossbow {
     else if (!driving) this.aim = this.host.truckAngle() - 0.5;
     // A faint breathing bob while ready and aimed, so it reads as held and alive, not a frozen prop.
     const bob = driving && this.state === 'ready' ? Math.sin(scene.time.now / 480) * 1.6 : 0;
-    this.bow.setPosition(m.x, m.y + bob).setRotation(this.aim).setFlipY(this.flipped());
+    // Recoil: kicked back along the aim and tipped up, springing home with a small overshoot.
+    this.recoil = Math.max(0, this.recoil - dt * 5);
+    const kick = Math.sin(this.recoil * Math.PI) * 18 * this.recoil;
+    const tipUp = this.recoil * this.recoil * 0.22 * (this.flipped() ? 1 : -1);
+    this.bow.setPosition(m.x - Math.cos(this.aim) * kick, m.y + bob - Math.sin(this.aim) * kick).setRotation(this.aim + tipUp).setFlipY(this.flipped());
 
     const g = this.g.clear();
     // Aiming: a comet-trail arc, warm and bright near the bow, cooling and shrinking with distance,
@@ -272,7 +300,8 @@ export class Crossbow {
       // Smoothed, so the cable's colour eases rather than flickering frame to frame.
       this.tension += (strain - this.tension) * Math.min(1, dt * 6);
       this.cable(g, m, an, d >= this.length - 2, this.tension);
-      this.boltImg.setPosition(an.x, an.y);
+      this.quiver = Math.max(0, this.quiver - dt * 2.2);
+      this.boltImg.setPosition(an.x, an.y).setRotation(this.boltImg.rotation + Math.sin(scene.time.now / 22) * 0.06 * this.quiver);
       // Wound all the way in, or driven past the anchor: the bolt lets go and reels home.
       if ((this.length <= SHORTEST + 1 && d < SHORTEST + 60) || an.x < m.x - 500) this.release();
     }

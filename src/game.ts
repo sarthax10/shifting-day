@@ -8,7 +8,7 @@ import { buildBackdrop } from './backdrop';
 import { Drivetrain, REDLINE, type Gear } from './drivetrain';
 import { C } from './ink';
 import { FINISH, GROUND, H, W, WORLD_END, WORLD_START, groundY, setRoad } from './terrain';
-import { LEGS, clearTrip, saveTrip, type Leg, type Trip } from './legs';
+import { LEGS, clearTrip, loadTrip, saveTrip, type Leg, type Trip } from './legs';
 import { BIOMES, blendAt, type Built } from './biomes';
 import { STOP_LOOKS, placeStop } from './stops';
 import { MEADOW_TREES } from './trees';
@@ -16,7 +16,7 @@ import type { BiomeKey } from './legs';
 
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from './prepare';
-import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg } from './prepare';
+import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg, unloadLegsExcept } from './prepare';
 import { applyBiomeFX } from './postfx';
 import { chip, hudText, uiText, INK_BG } from './ui';
 import { Prompter } from './prompts';
@@ -43,7 +43,10 @@ const PIPE_AT = { x: -210, y: 37 };
 const TRUCK_X = 1440;
 /** Bodies that share a negative group never touch each other. */
 const TRUCK_GROUP = -7;
-const ROPES = 3;
+/** How long something that fell off can still be caught with the crossbow, in frames: about five seconds. */
+const CATCH_FRAMES = 320;
+/** Rope to tie the load down with: enough to secure the wobbly things on every leg. */
+const ROPES = 5;
 /** About six drawings a second, like Pip's Last Sprint. */
 const BOIL_MS = 160;
 const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -218,6 +221,8 @@ export class PlayScene extends Phaser.Scene {
   private hint!: Phaser.GameObjects.Text;
   /** In-world prompts that teach the controls as they come up (there are no toast messages). */
   private prompts!: Prompter;
+  private gantry?: { banner: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text };
+  private lastSaveMoment = -9999;
   private pauseList?: PosterList;
   private closeControls?: () => void;
   private lostFoundList?: PosterList;
@@ -333,9 +338,10 @@ export class PlayScene extends Phaser.Scene {
     // The resource readout: its own clear chip, icons instead of just words, a fuel bar that reddens when low.
     const hudY = 146;
     this.extrasChip = chip(this, 40, hudY, 320, 58).setScrollFactor(0).setDepth(100).setVisible(false);
-    const wrapIcon = this.add.image(78, hudY, 'bubble_wrap').setScale(0.46).setScrollFactor(0).setDepth(101).setVisible(false);
+    this.hudIcons();
+    const wrapIcon = this.add.image(78, hudY, 'i_wrap').setScrollFactor(0).setDepth(101).setVisible(false);
     this.extrasLabel = this.add.text(108, hudY, '', hudText(1.1)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
-    const fuelIcon = this.add.image(208, hudY, 'fuel_can').setScale(0.4).setScrollFactor(0).setDepth(101).setVisible(false);
+    const fuelIcon = this.add.image(208, hudY, 'i_fuel').setScrollFactor(0).setDepth(101).setVisible(false);
     const fuelBarBg = this.add.rectangle(238, hudY, 92, 16, 0x3a0f22, 1).setOrigin(0, 0.5).setStrokeStyle(2, 0xf3e3cc, 0.5).setScrollFactor(0).setDepth(101).setVisible(false);
     const fuelBar = this.add.rectangle(240, hudY, 88, 12, 0xff6a30).setOrigin(0, 0.5).setScrollFactor(0).setDepth(102).setVisible(false);
     this.extrasIcons = { wrap: wrapIcon, fuel: fuelIcon, fuelBarBg, fuelBar };
@@ -364,8 +370,9 @@ export class PlayScene extends Phaser.Scene {
     ambience.birds(true);
     ambience.setSpeed(0);
 
-    // Get the next leg's pictures ready while this one is played.
-    void prepareLeg(this.textures, this.leg.n + 1);
+    // Only this leg is kept in memory: the ones left behind are let go, and the next is drawn when the
+    // truck parks at this leg's checkpoint (its card waits on it), not all the way through this one.
+    unloadLegsExcept(this.textures, [this.leg.n]);
     if (this.leg.n > 1) this.legCard();
 
     // Paper grain and darker corners over the whole picture, under the buttons and text.
@@ -383,13 +390,18 @@ export class PlayScene extends Phaser.Scene {
   /** Changes which drawing a boiling picture shows. */
   private redraw(entry: Inked, base: string) {
     entry.base = base;
-    entry.img.setTexture(`${base}#${this.boilFrame}`);
+    entry.img.setTexture(this.textures.exists(`${base}#${this.boilFrame}`) ? `${base}#${this.boilFrame}` : `${base}#0`);
   }
 
   private boil() {
     this.boilFrame = (this.boilFrame + 1) % BOIL_FRAMES;
     // Each picture is a little out of step with its neighbours, so the whole screen does not twitch at once.
-    this.boiling.forEach((b, i) => b.img.active && b.img.setTexture(`${b.base}#${(this.boilFrame + i) % BOIL_FRAMES}`));
+    // A picture drawn only once (the houses) just keeps its one drawing.
+    this.boiling.forEach((b, i) => {
+      if (!b.img.active) return;
+      const key = `${b.base}#${(this.boilFrame + i) % BOIL_FRAMES}`;
+      if (this.textures.exists(key)) b.img.setTexture(key);
+    });
   }
 
   /** Things hitting each other: a thud, and fragile things may break. */
@@ -415,7 +427,8 @@ export class PlayScene extends Phaser.Scene {
         if (!t?.spec.fragile || t.broken) continue;
         // A heavy thing hits harder than a light one, and the road is hardest of all.
         const weight = other.isStatic ? 1.5 : Phaser.Math.Clamp(other.mass / me.mass, 0.6, 2.5);
-        if (speed * weight > t.spec.fragile) this.shatter(t);
+        // Fragile things take a firmer knock than before to break: the game should forgive a bump.
+        if (speed * weight > t.spec.fragile * 1.6) this.shatter(t);
       }
     }
     if (loudest > 3.5 && this.time.now - this.lastThud > 90) {
@@ -673,6 +686,30 @@ export class PlayScene extends Phaser.Scene {
     for (let x = bay().from; x < bay().to; x += 40) {
       paint.fillStyle(0xffc94a, 0.95).fillRect(x, groundY(x) + 3, 24, 7);
     }
+    // The gantry over the bay: two ink posts, a printed banner with a chequered strip, flags on top.
+    const left = bay().from - 40;
+    const right = bay().to + 40;
+    const gy = Math.min(groundY(left), groundY(right));
+    const top = gy - 520;
+    const g = this.add.graphics().setDepth(-3);
+    g.fillStyle(0x0a0712, 1).fillRect(left - 10, top, 20, gy - top).fillRect(right - 10, top, 20, gy - top);
+    for (const px of [left, right]) for (let yy = top + 140; yy < gy - 20; yy += 60) g.fillStyle(0xff6a30, 1).fillRect(px - 10, yy, 20, 6);
+    const banner = this.add.rectangle((left + right) / 2, top + 50, right - left + 60, 100, 0x0a0712).setStrokeStyle(4, 0xf3e3cc, 0.6).setDepth(-3);
+    for (let i = 0, x = left - 30; x < right + 30; x += 24, i++) {
+      g.fillStyle(i % 2 ? 0xf3e3cc : 0x0a0712, 1).fillRect(x, top + 100, 24, 16);
+      g.fillStyle(i % 2 ? 0x0a0712 : 0xf3e3cc, 1).fillRect(x, top + 116, 24, 16);
+    }
+    // The stop's own name across the banner (the gantry stands in front of its sign), CHECKPOINT over it.
+    const word = this.leg.stop ? this.leg.stop.name.toUpperCase() : 'HOME';
+    const label = this.add.text((left + right) / 2, top + 58, word, { fontFamily: TITLE, fontSize: '62px', color: '#F3E3CC', letterSpacing: 4 }).setOrigin(0.5).setDepth(-2.9).setShadow(6, 7, '#E3263A', 0, true, false);
+    label.setScale(Math.min(1, (right - left) / label.width));
+    this.add.text((left + right) / 2, top + 14, this.leg.stop ? `CHECKPOINT ${String(this.leg.n).padStart(2, '0')}` : 'THE END OF THE ROAD', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '18px', color: '#FF6A30', letterSpacing: 6 }).setOrigin(0.5).setDepth(-2.9);
+    const flags = [left, right].map((px, i) => {
+      g.fillStyle(0x0a0712, 1).fillRect(px - 3, top - 90, 6, 90);
+      return this.add.triangle(px + 2, top - 84, 0, 0, 0, 36, 60, 18, i ? 0xff6a30 : 0xe3263a).setOrigin(0, 0).setDepth(-3);
+    });
+    this.tweens.add({ targets: flags, scaleX: { from: 1, to: 0.82 }, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.gantry = { banner, label };
     for (const x of [bay().from, bay().to]) {
       const y = groundY(x);
       paint.fillStyle(0xfff6e4, 1).fillRect(x - 4, y + 1, 8, 18);
@@ -709,6 +746,12 @@ export class PlayScene extends Phaser.Scene {
       this.hint.setVisible(false).setText('');
       this.arrivedAt = this.time.now;
       this.engine.stop();
+      // The gantry's banner flares ember as the truck parks under it.
+      if (this.gantry) {
+        this.gantry.banner.setFillStyle(0xff6a30);
+        this.gantry.label.setColor('#0A0712');
+        this.tweens.add({ targets: this.gantry.label, scale: { from: 1.3, to: 1 }, duration: 380, ease: 'Back.easeOut' });
+      }
       this.confetti();
       play('honk');
       chime(72);
@@ -945,7 +988,7 @@ export class PlayScene extends Phaser.Scene {
     [...this.trip.lost].forEach((key) => {
       const spec = ITEMS.find((sp) => sp.key === key);
       if (!spec) return;
-      row(key, nameOf(key), isPet(key) ? 0 : 3, () => {
+      row(key, nameOf(key), isPet(key) ? 0 : 2, () => {
         const at = this.trip.lost.indexOf(key);
         if (at >= 0) this.trip.lost.splice(at, 1);
         const dx = dropXs[dropAt++ % dropXs.length];
@@ -980,38 +1023,44 @@ export class PlayScene extends Phaser.Scene {
     this.lostFoundBoard?.show();
   }
 
+  /**
+   * Parked at a checkpoint: a printed sheet over the scene, with the leg's tally, a TRIP SAVED stamp
+   * slammed on, and the next leg named, in the same look as the title and the menus.
+   */
   private checkpointCard(trip: Trip, lost: number, broke: number, worth: number) {
     const cx = W / 2;
-    const cy = H / 2;
-    const k = 0.82;
-    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 201) => o.setScrollFactor(0).setDepth(d);
-    fixed(this.add.rectangle(cx, cy, W, H, 0x2a2140, 0.5), 199);
-    const paper = fixed(this.add.image(cx, cy - 10, 'receipt').setScale(k), 200);
-    this.tweens.add({ targets: paper, y: { from: cy + 50, to: cy - 10 }, duration: 420, ease: 'Back.easeOut' });
-    const top = cy - 10 - (RECEIPT.h * k) / 2;
-    fixed(this.add.image(cx, top - 4, 'ribbon').setScale(0.82), 202);
-    fixed(this.add.text(cx, top - 14, `Checkpoint ${this.leg.n}`, { fontFamily: TITLE, fontSize: '52px', color: C.cream, stroke: C.terracottaDark, strokeThickness: 4 }).setOrigin(0.5), 203);
-    fixed(this.add.text(cx, top + 92, this.leg.stop!.name, { fontFamily: TITLE, fontSize: '42px', color: C.ink }).setOrigin(0.5), 202);
-    fixed(this.add.text(cx, top + 138, 'TRIP SAVED  ·  YOU CAN QUIT AND CARRY ON LATER', { fontFamily: TEXT, fontSize: '19px', color: C.sageDark }).setOrigin(0.5), 202);
+    const sheet = posterSheet(this, `CHECKPOINT ${String(this.leg.n).padStart(2, '0')}`, 200, { alpha: 0.88, kicker: this.leg.stop!.name.toUpperCase() });
+    sheet.setAlpha(0);
+    this.tweens.add({ targets: sheet, alpha: 1, duration: 300 });
     const lines: [string, string][] = [
-      ['Still on the truck', `${worth} pts`],
-      ['Broke on this leg', broke ? String(broke) : 'none'],
-      ['Fell off on this leg', lost ? String(lost) : 'none'],
-      [this.parkBonus >= 90 ? 'Parking: perfect!' : 'Parking', `+${this.parkBonus}`],
+      ['STILL ON THE TRUCK', `${worth} PTS`],
+      ['BROKE ON THIS LEG', broke ? String(broke) : 'NONE'],
+      ['FELL OFF ON THIS LEG', lost ? String(lost) : 'NONE'],
+      [this.parkBonus >= 90 ? 'PARKING · PERFECT' : 'PARKING', `+${this.parkBonus}`],
     ];
     lines.forEach(([label, value], i) => {
-      const y = top + 210 + i * 46;
-      fixed(this.add.text(cx - 300, y, label, { fontFamily: TEXT, fontSize: '28px', color: C.ink }).setOrigin(0, 0.5), 202);
-      fixed(this.add.text(cx + 300, y, value, { fontFamily: TITLE, fontSize: '28px', color: C.ink }).setOrigin(1, 0.5), 202);
+      const y = 360 + i * 78;
+      sheet.add(this.add.rectangle(cx, y + 34, 820, 2, 0xf3e3cc, 0.18));
+      sheet.add(this.add.text(cx - 410, y, label, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '24px', color: '#F3E3CC', letterSpacing: 4 }).setOrigin(0, 0.5).setAlpha(0.85));
+      sheet.add(this.add.text(cx + 410, y, value, { fontFamily: TITLE, fontSize: '52px', color: i === 0 ? '#FF6A30' : '#F3E3CC', letterSpacing: 1 }).setOrigin(1, 0.5));
     });
     const next = LEGS[trip.leg - 1];
-    fixed(this.add.text(cx, top + 420, `Next: ${next.title}`, { fontFamily: TITLE, fontSize: '32px', color: C.terracottaDark }).setOrigin(0.5), 202);
-    const go = this.button(cx + 160, top + 520, 'btn', 'Continue', 44, () => {
+    sheet.add(this.add.text(cx, 700, `NEXT  ·  ${next.title.toUpperCase()}`, { fontFamily: TITLE, fontSize: '46px', color: '#0A0712', letterSpacing: 3, backgroundColor: '#FF6A30', padding: { x: 22, y: 6 } }).setOrigin(0.5).setAngle(-1.5));
+    // The stamp, slammed on at an angle a moment after the sheet lands.
+    const stamp = this.add.text(cx + 330, 250, 'TRIP SAVED', { fontFamily: TITLE, fontSize: '54px', color: '#E3263A', letterSpacing: 3, padding: { x: 14, y: 4 } }).setOrigin(0.5).setAngle(-12).setAlpha(0).setScrollFactor(0).setDepth(206);
+    stamp.setStroke('#E3263A', 0);
+    const box = this.add.rectangle(cx + 330, 250, stamp.width + 16, stamp.height + 4).setStrokeStyle(5, 0xe3263a).setAngle(-12).setAlpha(0).setScrollFactor(0).setDepth(206);
+    this.time.delayedCall(450, () => {
+      play('stamp');
+      this.cameras.main.shake(120, 0.004);
+      this.tweens.add({ targets: [stamp, box], alpha: 0.9, scale: { from: 1.8, to: 1 }, duration: 200, ease: 'Cubic.easeIn' });
+    });
+    const go = this.button(cx + 170, 860, 'btn', 'Continue', 44, () => {
       go.label.setText('Loading...');
       void prepareLeg(this.textures, trip.leg).then(() => this.scene.restart({ leg: trip.leg, trip }));
     });
     go.box.setDepth(205);
-    this.button(cx - 190, top + 520, 'btn_rope', 'Title', 40, () => this.scene.start('title')).box.setDepth(205);
+    this.button(cx - 170, 860, 'btn_rope', 'Title', 40, () => this.scene.start('title')).box.setDepth(205);
   }
 
   /** The start of a leg: its name, large, and the mood of the place, fading away. */
@@ -1344,7 +1393,8 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private addThing(spec: ItemSpec, x: number, y: number, angle: number) {
-    const opts = { density: spec.density, friction: spec.friction, frictionStatic: spec.friction * 1.6, restitution: spec.bounce ?? 0.02, frictionAir: 0.012, angle, label: spec.key };
+    // Grippier than they were: loads still shift on a bump, but slide off far less.
+    const opts = { density: spec.density, friction: Math.min(1, spec.friction * 1.35), frictionStatic: spec.friction * 2.4, restitution: spec.bounce ?? 0.02, frictionAir: 0.012, angle, label: spec.key };
     const body = spec.round ? M.Bodies.circle(x, y, spec.w / 2, opts) : M.Bodies.rectangle(x, y, spec.w, spec.h, { ...opts, chamfer: { radius: spec.pet ? 18 : 7 } });
     this.matter.world.add(body);
     const ink = this.inked(x, y, spec.pet ? `${spec.key}_calm` : spec.key);
@@ -1423,6 +1473,16 @@ export class PlayScene extends Phaser.Scene {
     const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
     this.hint = this.add.text(40, 1006, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '24px', color: '#F3E3CC', letterSpacing: 1, backgroundColor: 'rgba(10, 7, 18, 0.88)', padding: { x: 20, y: 12 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
     this.ropeLines = this.add.graphics().setDepth(25);
+    // The print over everything: a fine ink dot screen and paper grain across the whole picture, so the
+    // world (people, buildings, furniture, scenery) reads as printed on the same sheet as the title.
+    if (!this.textures.exists('t_dotscreen')) {
+      const g = this.make.graphics({}, false);
+      g.fillStyle(0x0a0712, 1).fillCircle(3, 3, 1.5).fillCircle(9, 9, 1.5);
+      g.generateTexture('t_dotscreen', 12, 12);
+      g.destroy();
+    }
+    this.add.tileSprite(0, 0, W, H, 't_dotscreen').setOrigin(0).setScrollFactor(0).setDepth(94).setAlpha(0.06);
+    this.add.image(0, 0, 'grain').setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(94).setAlpha(0.7);
 
     // Top right: the points on the truck, and how far along the road it is.
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) => o.setScrollFactor(0).setDepth(100);
@@ -1445,7 +1505,7 @@ export class PlayScene extends Phaser.Scene {
     this.dash = new Dash(this, () => this.drive);
     this.dash.create();
     // The sound and effects toggles: small chips, not shouting for attention next to the resource HUD.
-    if (this.fx.available) {
+    if (false as boolean) {
       this.fxChip = chip(this, 40, 34, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
       this.fxLabel = this.add.text(56, 34, '', uiText(22)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
       this.fxChip.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
@@ -1455,7 +1515,7 @@ export class PlayScene extends Phaser.Scene {
       this.showFx();
     }
 
-    const soundY = this.fx.available ? 86 : 34;
+    const soundY = 34;
     const soundChip = chip(this, 40, soundY, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
     const soundLabel = this.add.text(56, soundY, '', uiText(22)).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
     const showSound = () => {
@@ -1584,7 +1644,9 @@ export class PlayScene extends Phaser.Scene {
           label: () => 'RESTART LEG',
           act: () => {
             this.closePause();
-            void this.scene.restart({ leg: this.leg.n, trip: this.trip });
+            // From the last checkpoint as it was saved: anything claimed from the Lost & Found since is
+            // back in it, rather than lost with the run being restarted.
+            void this.scene.restart(this.leg.n === 1 ? { intro: false } : { leg: this.leg.n, trip: loadTrip() ?? this.trip });
           },
         },
         {
@@ -1636,7 +1698,7 @@ export class PlayScene extends Phaser.Scene {
     if (!t) return this.tag.setVisible(false);
     const notes = [t.spec.pet ? 'pet' : '', t.spec.fragile ? 'fragile' : ''].filter(Boolean).join(' · ');
     this.tag.setText(`${t.spec.name}\n★ ${this.valueOf(t)} points${notes ? `  ·  ${notes}` : ''}`).setVisible(true);
-    this.tag.setColor(t.spec.fragile ? C.terracottaDark : C.ink);
+    this.tag.setColor(t.spec.fragile ? '#FF6A30' : '#F3E3CC');
   }
 
   /** A number that floats up from a point in the world and fades: points won or lost. */
@@ -1722,7 +1784,6 @@ export class PlayScene extends Phaser.Scene {
     const pick: [Phaser.Input.Keyboard.Key, Gear][] = [[this.keys.one, 1], [this.keys.two, 2], [this.keys.three, 3], [this.keys.four, 4], [this.keys.n, 'N']];
     for (const [key, gear] of pick) key.on('down', () => this.gearTo(gear));
     this.keys.r.on('down', () => (this.phase === 'drive' ? this.gearTo('R') : this.setRoping(!this.roping)));
-    this.keys.f.on('down', () => this.fx.available && this.toggleFx());
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => turn(Math.sign(dy) * (Math.PI / 12)));
 
     // A gamepad, played the same way: triggers for gas and brake, the right stick to aim, and one
@@ -1798,6 +1859,49 @@ export class PlayScene extends Phaser.Scene {
   private say(text: string) {
     const p = this.onTruckAt(240, -250);
     this.floatText(p.x, p.y, text, C.cream);
+  }
+
+  /**
+   * Something just fell off: time slows for a moment, with an ember flash at the edges of the screen,
+   * so there is a real chance to aim the crossbow at it and reel it back. Not more often than every
+   * few seconds, so a whole load sliding off does not leave the game crawling.
+   */
+  private saveMoment() {
+    if (this.phase !== 'drive' || this.time.now - this.lastSaveMoment < 4000) return;
+    this.lastSaveMoment = this.time.now;
+    const timing = (this.matter.world.engine as unknown as { timing: { timeScale: number } }).timing;
+    timing.timeScale = 0.4;
+    this.tweens.addCounter({ from: 0.4, to: 1, delay: 700, duration: 700, ease: 'Sine.easeIn', onUpdate: (tw) => (timing.timeScale = tw.getValue() ?? 1) });
+    const flash = this.add.rectangle(W / 2, H / 2, W, H).setStrokeStyle(26, 0xff6a30, 0.55).setScrollFactor(0).setDepth(96);
+    this.tweens.add({ targets: flash, alpha: 0, delay: 500, duration: 900, onComplete: () => flash.destroy() });
+    play('pick', 0.6, 0.55);
+  }
+
+  /**
+   * The HUD's two icons, printed in the poster's inks: a roll of bubble wrap (a bone roll with its
+   * bubbles as a halftone, an ink edge) and a fuel can (ember, with a bone cap and an ink cross brace).
+   */
+  private hudIcons() {
+    if (!this.textures.exists('i_wrap')) {
+      const g = this.make.graphics({}, false);
+      g.fillStyle(0x0a0712).fillRoundedRect(2, 6, 52, 34, 9);
+      g.fillStyle(0xf3e3cc).fillRoundedRect(5, 9, 46, 28, 7);
+      g.fillStyle(0xd9c3a6);
+      for (let y = 14; y < 34; y += 7) for (let x = 10 + ((y / 7) % 2) * 3.5; x < 48; x += 7) g.fillCircle(x, y, 2.4);
+      g.fillStyle(0x0a0712).fillEllipse(48, 23, 12, 30);
+      g.fillStyle(0xff6a30).fillEllipse(48, 23, 7, 22);
+      g.fillStyle(0x0a0712).fillEllipse(48, 23, 3, 9);
+      g.generateTexture('i_wrap', 56, 46);
+      g.clear();
+      g.fillStyle(0x0a0712).fillRoundedRect(4, 8, 38, 40, 6);
+      g.fillStyle(0xff6a30).fillRoundedRect(7, 11, 32, 34, 4);
+      g.lineStyle(3, 0x0a0712).lineBetween(11, 15, 35, 41).lineBetween(35, 15, 11, 41);
+      g.fillStyle(0x0a0712).fillRect(8, 2, 16, 10);
+      g.fillStyle(0xf3e3cc).fillRect(11, 4, 10, 6);
+      g.lineStyle(4, 0x0a0712).strokeRoundedRect(24, 2, 14, 9, 3);
+      g.generateTexture('i_fuel', 46, 50);
+      g.destroy();
+    }
   }
 
   /** Over the truck's cab, where prompts about driving it stand. */
@@ -2154,7 +2258,7 @@ export class PlayScene extends Phaser.Scene {
   private tryCatch(body: Body): boolean {
     if (this.phase !== 'drive') return false;
     const t = this.things.find((x) => x.body === body);
-    if (!t || !t.packed || t.ghost || t.lost || t.groundFrames <= 0 || t.groundFrames > 110) return false;
+    if (!t || !t.packed || t.ghost || t.lost || t.groundFrames <= 0 || t.groundFrames > CATCH_FRAMES) return false;
     const b = this.bed();
     const cos = Math.cos(this.chassis.angle);
     const sin = Math.sin(this.chassis.angle);
@@ -2593,10 +2697,11 @@ export class PlayScene extends Phaser.Scene {
           continue;
         }
         t.groundFrames = this.onRoad(t) ? t.groundFrames + 1 : 0;
+        if (t.groundFrames === 1 && t.aboard && t.packed) this.saveMoment();
         if (t.groundFrames === 1 && t.aboard && t.packed) this.prompts.show('catch', [{ key: 'fire' }, 'IT TO CATCH IT'], () => ({ x: t.body.position.x, y: t.body.bounds.min.y - 80 }), () => t.groundFrames === 0);
         // A longer grace than it looks like it needs: long enough to actually aim the crossbow at
         // whatever just fell and reel it back, not just long enough to notice it happened.
-        if (t.groundFrames <= 110 && t.body.position.x > cx - 1100) continue;
+        if (t.groundFrames <= CATCH_FRAMES && t.body.position.x > cx - 2400) continue;
         if (t.aboard) this.lose(t);
         else this.leave(t);
       }

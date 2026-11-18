@@ -143,8 +143,9 @@ game.events.once('ready', async () => {
     ...art.boiled(() => art.truckArt(true)),
     ...art.boiled(() => art.wheelArt(false)),
     ...art.boiled(() => art.wheelArt(true)),
-    ...art.boiled(() => art.shackArt('house_old')),
-    ...art.boiled(() => art.manorArt('house_new')),
+    // The houses are the biggest pictures in the game and barely move: one drawing each, no boil.
+    { ...art.shackArt('house_old'), key: 'house_old#0' },
+    { ...art.manorArt('house_new'), key: 'house_new#0' },
     ...Array.from({ length: art.TREE_KINDS }, (_, n) => n).flatMap((n) => art.boiled(() => art.treeArt(n))),
     // Far scenery is softened a little, so the truck and its cargo are the sharp things on screen.
     ...three.map((n) => art.blurred(art.hillArt(n), 1.6)),

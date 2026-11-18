@@ -33,13 +33,9 @@ export class Fx {
   private pulses: Pulse[] = [];
 
   constructor(private scene: Phaser.Scene) {
-    let stored: string | null = null;
-    try {
-      stored = localStorage.getItem(KEY);
-    } catch {
-      // A browser that will not store it just forgets the choice.
-    }
-    this.enabled = stored !== 'off';
+    // The glows are part of the look, not an option: always on.
+    this.enabled = true;
+    void KEY;
   }
 
   /** The effects are cheap enough to run anywhere, so they are always available. */

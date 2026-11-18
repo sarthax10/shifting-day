@@ -64,3 +64,32 @@ export function prepareLeg(textures: Phaser.Textures.TextureManager, n: number):
   }
   return p;
 }
+
+/**
+ * Lets go of everything belonging to the legs not kept: their road pictures, and the scenery and
+ * tunnels of any place none of the kept legs passes through. Each leg's road alone is a long strip of
+ * large pictures; holding every leg driven so far is what made phones close the tab.
+ */
+export function unloadLegsExcept(textures: Phaser.Textures.TextureManager, keep: number[]) {
+  const places = new Set<string>();
+  for (const n of keep) {
+    if (n < 1 || n > LEGS.length) continue;
+    places.add(LEGS[n - 1].biome);
+    if (n > 1) places.add(LEGS[n - 2].biome);
+  }
+  const drop = (k: string) => {
+    for (const key of [k, `${k}#0`, `${k}#1`, `${k}#2`]) if (textures.exists(key)) textures.remove(key);
+  };
+  for (const n of [...loading.keys()]) {
+    if (keep.includes(n)) continue;
+    const mine = (k: string) => (n === 1 ? /^ground_\d+$/.test(k) : k.startsWith(`ground_${n}_`));
+    for (const k of textures.getTextureKeys()) if (mine(k)) textures.remove(k);
+    for (const b of [LEGS[n - 1].biome, n > 1 ? LEGS[n - 2].biome : null]) {
+      if (!b || places.has(b)) continue;
+      for (const a of BIOMES[b].arts()) drop(a.key);
+      drop(tunnelMouthArt(b).key);
+      if (b !== 'meadow') drop(grassKey(LEGS.findIndex((l) => l.biome === b) + 1));
+    }
+    loading.delete(n);
+  }
+}

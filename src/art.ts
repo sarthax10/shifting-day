@@ -85,7 +85,7 @@ function face(p: Pen, cx: number, cy: number, mood: Mood, s = 1) {
 }
 
 /** How many redraws a boiling picture has, and how far the line strays between them. */
-export const BOIL_FRAMES = 3;
+export const BOIL_FRAMES = 2;
 const BOIL = 1.05;
 let redraw = 0;
 let stray = 0;
@@ -613,7 +613,7 @@ export function puffArt(): Art {
  */
 export const TRUCK = {
   bed: { x: -190, w: 380, t: 24 },
-  tailgate: { x: -190, w: 18, h: 70 },
+  tailgate: { x: -190, w: 18, h: 90 },
   cab: { x: 190, w: 150, top: -150 },
   hood: { x: 340, w: 70, top: -62 },
   frame: { x: -186, w: 590, y: 24, h: 26 },
@@ -1139,6 +1139,49 @@ export function shackArt(key: string): Art {
   // the pile of furniture in front. The game writes on it.
   p.shape(L([[370, 410], [500, 400], [506, 452], [374, 462]]), { fill: '#B8463E', raw: true, width: 5, shade: [{ pts: [[360, 440], [520, 430], [520, 470], [360, 470]], color: '#93342F' }] });
   for (const pt of [[380, 418], [494, 410], [384, 452], [498, 444]] as const) p.dot(...lean(pt as unknown as Pt), 3, BATTEN);
+  // ---- Lived-in, worn-out detail: a sagging washing line with patched laundry, a rusty satellite dish,
+  // a rain barrel under the broken gutter, a bent bicycle wheel, a crooked mailbox, a bird's nest in
+  // the gutter, cobwebs in the window corners, and a dead plant in a cracked pot.
+  const lineA: Pt = [24, G - 130];
+  const lineB: Pt = lean([150, 640]);
+  p.line([lineA, [(lineA[0] + lineB[0]) / 2, G - 96], lineB], { width: 2.2, raw: false, opacity: 0.85 });
+  for (const [t, c, w, h] of [[0.25, '#B5A893', 34, 44], [0.5, '#7E8C9A', 28, 52], [0.72, '#C9403A', 26, 30]] as const) {
+    const x = lineA[0] + (lineB[0] - lineA[0]) * t;
+    const y = G - 104 + Math.sin(t * Math.PI) * 12 - (lineB[1] - lineA[1]) * -t * 0.2;
+    p.shape([[x - w / 2, y], [x + w / 2, y], [x + w / 2 - 3, y + h], [x - w / 2 + 2, y + h - 4]], { fill: c, raw: true, width: 3 });
+    p.rect(x - 6, y + h * 0.4, 10, 10, { fill: '#8A7864', r: 1, width: 2 });
+    p.dot(x - w / 2 + 3, y, 2.4, WOOD_DARK);
+  }
+  // The dish, rusted, hanging off its bracket on the wall.
+  const dish = lean([470, 540]);
+  p.line([[dish[0] - 6, dish[1] + 30], [dish[0] + 12, dish[1]]], { width: 4, raw: true });
+  p.ellipse(dish[0] + 16, dish[1] - 6, 26, 20, { fill: '#9A968E', width: 3.5, shade: [{ pts: [[dish[0], dish[1]], [dish[0] + 50, dish[1]], [dish[0] + 50, dish[1] + 20], [dish[0], dish[1] + 20]], color: RUST }] });
+  p.line([[dish[0] + 16, dish[1] - 6], [dish[0] + 40, dish[1] - 22]], { width: 2.4, raw: true });
+  // A rain barrel catching the leak from the gutter.
+  p.rect(lean([540, G])[0] - 30, G - 70, 52, 70, { fill: '#6E5A48', r: 8, width: 4 });
+  for (const y of [G - 58, G - 22]) p.line([[lean([540, G])[0] - 30, y], [lean([540, G])[0] + 22, y]], { width: 3.5, color: '#3A2E2A', raw: true });
+  // A bent bicycle wheel leaning on the wall, and a dead plant in a cracked pot.
+  p.ellipse(lean([110, G])[0] + 6, G - 40, 36, 38, { stroke: '#3A3A40', width: 4 });
+  p.line([[lean([110, G])[0] - 22, G - 64], [lean([110, G])[0] + 30, G - 18]], { width: 2, raw: true, opacity: 0.6 });
+  p.line([[lean([110, G])[0] + 6, G - 78], [lean([110, G])[0] + 6, G - 2]], { width: 2, raw: true, opacity: 0.6 });
+  const pot = lean([370, G]);
+  p.shape([[pot[0] - 18, G - 34], [pot[0] + 18, G - 34], [pot[0] + 13, G], [pot[0] - 13, G]], { fill: '#A4603A', raw: true, width: 3.5 });
+  p.line([[pot[0] - 4, G - 34], [pot[0] + 2, G - 14]], { width: 1.6, raw: true });
+  for (const d of [-1, 1]) p.line([[pot[0], G - 34], [pot[0] + d * 10, G - 56], [pot[0] + d * 18, G - 50]], { width: 2.6, color: WEED_DRY });
+  // A crooked mailbox on a leaning post by the fence.
+  p.line([[118, G], [128, G - 104]], { width: 7, color: WOOD_DARK });
+  p.shape([[106, G - 122], [150, G - 128], [154, G - 96], [110, G - 92]], { fill: '#6E7F7A', raw: true, width: 3.5 });
+  p.line([[150, G - 124], [158, G - 146]], { width: 2.6, raw: true });
+  p.rect(156, G - 152, 12, 8, { fill: '#C9403A', r: 1, width: 2 });
+  // A bird's nest in the hanging gutter, and cobwebs in the window corners.
+  const nest = lean([330, 520]);
+  p.ellipse(nest[0], nest[1], 20, 9, { fill: '#8A6A42', width: 2.6 });
+  for (let k = 0; k < 5; k++) p.line([[nest[0] - 18 + k * 8, nest[1] - 4], [nest[0] - 12 + k * 8, nest[1] + 6]], { width: 1.4, raw: true, opacity: 0.6 });
+  for (const [wx, wy, sx] of [[w1[0] + 8, w1[1] + 8, 1], [w2[0] + 78, w2[1] + 8, -1]] as const) {
+    for (let k = 0; k < 3; k++) p.line([[wx, wy + k * 8], [wx + sx * (16 - k * 4), wy]], { width: 1.2, color: '#FFFFFF', raw: true, opacity: 0.55 });
+    p.line([[wx, wy], [wx + sx * 20, wy + 20]], { width: 1.2, color: '#FFFFFF', raw: true, opacity: 0.55 });
+  }
+
   return { key, svg: p.svg(HOUSE.w, HOUSE.h), w: HOUSE.w, h: HOUSE.h };
 }
 
@@ -1355,6 +1398,47 @@ export function manorArt(key: string): Art {
   blooms([[156, G - 50], [160, 900], [150, 820], [166, 760], [190, 734], [236, 728]]);
   blooms([[824, G - 50], [820, 900], [830, 820], [814, 760], [790, 734], [744, 728]]);
   blooms([[350, 660], [380, 646], [420, 640], [462, 636]]);
+
+  // ---- Royal dress: crowned banners hung from the wings, a red carpet down the stairs, gilded lamp
+  // posts, clipped topiary in urns, and a gold-tipped iron railing along the front.
+  const RED_ROYAL = '#B8243A';
+  const RED_DEEP = '#7E1426';
+  for (const bx of [196, 286, 692, 782]) {
+    p.shape([[bx - 24, 512], [bx + 24, 512], [bx + 24, 640], [bx, 662], [bx - 24, 640]], { fill: RED_ROYAL, raw: true, width: 4, shade: [{ pts: [[bx + 4, 500], [bx + 30, 500], [bx + 30, 670], [bx + 4, 670]], color: RED_DEEP }] });
+    p.rect(bx - 28, 506, 56, 10, { fill: GOLD, r: 3, width: 3 });
+    p.shape([[bx - 13, 588], [bx - 15, 566], [bx - 6, 576], [bx, 562], [bx + 6, 576], [bx + 15, 566], [bx + 13, 588]], { fill: GOLD, raw: true, width: 2.6 });
+    p.line([[bx - 24, 630], [bx + 24, 630]], { width: 2.4, color: GOLD, raw: true });
+  }
+  // The red carpet, up the grand stairs to the door.
+  p.shape([[456, G - 64], [524, G - 64], [560, G], [420, G]], { fill: RED_ROYAL, raw: true, width: 3.5, shade: [{ pts: [[496, G - 70], [570, G - 70], [570, G + 2], [500, G + 2]], color: RED_DEEP }] });
+  for (let i = 0; i < 4; i++) p.line([[458 - i * 9, G - 62 + i * 16], [522 + i * 9, G - 62 + i * 16]], { width: 2.2, color: GOLD, raw: true });
+  // Gilded lamp posts at the foot of the stairs.
+  for (const lx of [330, 650]) {
+    p.rect(lx - 5, G - 190, 10, 190, { fill: '#2A2236', r: 2, width: 3 });
+    p.rect(lx - 14, G - 14, 28, 14, { fill: GOLD, r: 3, width: 3 });
+    glow(lx, G - 214, 60, 60, 0.6);
+    p.shape([[lx - 16, G - 196], [lx + 16, G - 196], [lx + 12, G - 234], [lx - 12, G - 234]], { fill: GLOW, raw: true, width: 3.5 });
+    p.shape([[lx - 18, G - 234], [lx, G - 254], [lx + 18, G - 234]], { fill: GOLD, raw: true, width: 3 });
+    p.dot(lx, G - 258, 4, GOLD);
+  }
+  // Clipped topiary cones in gold-banded urns, at the wings' outer doors.
+  for (const tx of [196, 786]) {
+    p.shape([[tx - 26, G - 70], [tx, G - 200], [tx + 26, G - 70]], { fill: LEAF, raw: true, width: 4, shade: [{ pts: [[tx, G - 210], [tx + 30, G - 210], [tx + 30, G - 60], [tx, G - 60]], color: LEAF_DARK }] });
+    urn(tx, G, 1.2);
+    p.rect(tx - 20, G - 38, 40, 6, { fill: GOLD, r: 2, width: 2.5 });
+  }
+  // A wrought-iron railing with gold finials across the front, broken by the stairs.
+  for (const [x0, x1] of [[40, 300], [680, 940]] as const) {
+    p.line([[x0, G - 66], [x1, G - 66]], { width: 4, color: '#2A2236', raw: true });
+    p.line([[x0, G - 14], [x1, G - 14]], { width: 4, color: '#2A2236', raw: true });
+    for (let x = x0; x <= x1; x += 22) {
+      p.line([[x, G - 4], [x, G - 74]], { width: 3, color: '#2A2236', raw: true });
+      p.shape([[x - 5, G - 74], [x, G - 88], [x + 5, G - 74]], { fill: GOLD, raw: true, width: 2 });
+    }
+  }
+  // Gold ribs and a crown on the dome, over the blue.
+  for (const k of [-0.45, 0.15]) p.line([[490 + k * 96, 192], [490 + k * 90, 150], [490 + k * 54, 96], [490 + k * 8, 50]], { width: 3.4, color: GOLD, opacity: 0.9 });
+  p.shape([[470, 20], [466, 2], [478, 12], [490, -6], [502, 12], [514, 2], [510, 20]], { fill: GOLD, raw: true, width: 3 });
 
   const svg = p.svg(MANOR.w, MANOR.h).replace(/(<svg[^>]*>)/, `$1<g transform="translate(0 ${MANOR_TOP})">`).replace(/<\/svg>$/, '</g></svg>');
   return { key, svg, w: MANOR.w, h: MANOR.h };
@@ -2394,8 +2478,8 @@ export function cursorArt(kind: CursorKind): Art {
   const p = new Pen(key, 0, 0);
   p.plain = true;
   p.steady = true;
-  const GLOVE = '#FFFDF6';
-  const FOLD = '#D9CFE0';
+  const GLOVE = '#F3E3CC';
+  const FOLD = '#D9C3A6';
   const CUFF = C.terracotta;
   const INK = C.ink;
   const o = { width: 3, wobble: 0 };
