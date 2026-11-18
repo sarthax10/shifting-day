@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shifting Day</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #2A2140; overflow: hidden; }
+      html, body { margin: 0; height: 100%; background: #0A0712; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       #game { width: 100%; height: 100%; }
       /* A phone held upright gets a tiny letterboxed game: ask for it turned sideways instead. */
       #turn { display: none; position: fixed; inset: 0; z-index: 10; background: #0A0712; color: #F6EBDD; font: 700 15px/1.6 "Space Mono", monospace; letter-spacing: 4px; text-align: center; align-items: center; justify-content: center; flex-direction: column; gap: 18px; }
@@ -13,11 +13,19 @@
       #turn i { width: 40px; height: 64px; border: 3px solid #FF8A4C; border-radius: 8px; animation: turn 2.4s ease-in-out infinite; }
       @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
       @media (orientation: portrait) and (pointer: coarse) { #turn { display: flex; } }
+      /* The loading sheet: shown until the game's pictures are drawn, so a slow phone never sits on black. */
+      #boot { position: fixed; inset: 0; z-index: 9; background: #0A0712; color: #F3E3CC; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; font: 700 13px/1.5 "Space Mono", monospace; letter-spacing: 4px; text-align: center; padding: 24px; transition: opacity .4s; }
+      #boot b { font: 400 56px/1 Anton, Impact, sans-serif; letter-spacing: 2px; text-shadow: 4px 5px 0 #E3263A; }
+      #boot .bar { width: min(320px, 70vw); height: 10px; background: #3A0F22; outline: 2px solid rgba(243, 227, 204, .4); }
+      #boot .bar span { display: block; height: 100%; width: 0; background: #FF6A30; transition: width .2s; }
+      #boot.err .bar { display: none; }
+      #boot.err p { color: #FF6A30; }
     </style>
     <link rel="icon" href="data:," />
   </head>
   <body>
     <div id="game"></div>
+    <div id="boot"><b>SHIFTING DAY</b><div class="bar"><span></span></div><p>LOADING THE TRUCK</p></div>
     <div id="turn"><i></i><b>SHIFTING DAY</b>TURN YOUR PHONE SIDEWAYS</div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -201,9 +201,26 @@ game.events.once('ready', async () => {
     ...backdropArts(),
   ];
   softTextures(game.textures);
+  // The pictures are drawn a few at a time rather than all at once: a phone decoding hundreds of SVGs
+  // together can run out of memory and have its tab closed. The loading bar shows how far it has got.
+  const bar = document.querySelector<HTMLElement>('#boot .bar span');
+  let done = 0;
+  const total = arts.length;
+  const drawAll = async () => {
+    let next = 0;
+    const worker = async () => {
+      while (next < arts.length) {
+        const a = arts[next++];
+        await art.loadArt(game.textures, a);
+        done++;
+        if (bar && done % 4 === 0) bar.style.width = `${Math.round((done / total) * 92)}%`;
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+  };
   await Promise.all([
     makeCursors(),
-    ...arts.map((a) => art.loadArt(game.textures, a)),
+    drawAll(),
     prepareLeg(game.textures, 1),
     document.fonts.load('700 40px "Karla"'),
     document.fonts.load('900 40px "Fraunces"'),
@@ -211,6 +228,12 @@ game.events.once('ready', async () => {
     document.fonts.load('400 40px "Space Mono"'),
     document.fonts.load('700 40px "Space Mono"'),
   ]);
+  if (bar) bar.style.width = '100%';
+  const boot = document.getElementById('boot');
+  if (boot) {
+    boot.style.opacity = '0';
+    setTimeout(() => boot.remove(), 450);
+  }
   game.scene.add('play', PlayScene, false);
   game.scene.add('title', TitleScene, true);
 });
@@ -221,6 +244,17 @@ const upright = window.matchMedia('(orientation: portrait) and (pointer: coarse)
 const rest = () => (upright.matches ? game.loop.sleep() : game.loop.wake());
 upright.addEventListener('change', rest);
 game.events.once('ready', rest);
+
+// If anything goes wrong while starting, say so on the loading sheet instead of leaving a black screen.
+const failed = (msg: string) => {
+  const boot = document.getElementById('boot');
+  if (!boot) return;
+  boot.classList.add('err');
+  const p = boot.querySelector('p');
+  if (p) p.textContent = `SOMETHING WENT WRONG: ${msg}`.slice(0, 220);
+};
+window.addEventListener('error', (e) => failed(e.message || 'unknown error'));
+window.addEventListener('unhandledrejection', (e) => failed(String((e.reason as Error)?.message ?? e.reason)));
 
 // Handy while building the game.
 (window as unknown as { game: Phaser.Game }).game = game;

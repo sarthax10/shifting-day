@@ -1487,8 +1487,9 @@ export class PlayScene extends Phaser.Scene {
   private buildTouchControls() {
     if (!this.sys.game.device.input.touch) return;
     const knob = (x: number, y: number, r: number, label: string, active = false) => {
-      const circle = this.add.circle(x, y, r, active ? 0xee6a4d : INK_BG, active ? 0.55 : 0.5).setStrokeStyle(3, 0xfff2da, 0.55).setScrollFactor(0).setDepth(110).setInteractive({ cursor: CURSOR.open });
-      const text = this.add.text(x, y, label, uiText(Math.round(r * 0.5), C.cream)).setOrigin(0.5).setScrollFactor(0).setDepth(111);
+      // Poster-style knobs: an ink disc with a bone ring and an Anton label, ember while pressed.
+      const circle = this.add.circle(x, y, r, active ? 0xff6a30 : 0x0a0712, active ? 0.85 : 0.72).setStrokeStyle(3, 0xf3e3cc, 0.7).setScrollFactor(0).setDepth(110).setInteractive({ cursor: CURSOR.open });
+      const text = this.add.text(x, y, label, { fontFamily: TITLE, fontSize: `${Math.round(r * 0.52)}px`, color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0.5).setScrollFactor(0).setDepth(111);
       this.touchButtons.push(circle, text);
       return { circle, text };
     };
@@ -1497,11 +1498,11 @@ export class PlayScene extends Phaser.Scene {
       circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
         e.stopPropagation();
         set(true);
-        circle.setFillStyle(0xee6a4d, 0.65);
+        circle.setFillStyle(0xff6a30, 0.9);
       });
       const up = () => {
         set(false);
-        circle.setFillStyle(INK_BG, 0.5);
+        circle.setFillStyle(0x0a0712, 0.72);
       };
       circle.on('pointerup', up);
       circle.on('pointerout', up);
@@ -1518,17 +1519,17 @@ export class PlayScene extends Phaser.Scene {
     hold(1815, 900, 72, 'GAS', (v) => (this.touchGas = v));
     hold(1665, 950, 54, 'BRAKE', (v) => (this.touchBrake = v));
     hold(1690, 790, 44, 'REEL', (v) => (this.touchReel = v));
-    tap(1550, 760, 36, '⇧', () => this.gearShift(1));
-    tap(1550, 850, 36, '⇩', () => this.gearShift(-1));
+    tap(1550, 760, 40, 'UP', () => this.gearShift(1));
+    tap(1550, 860, 40, 'DN', () => this.gearShift(-1));
     const hb = knob(1815, 770, 40, 'P');
     hb.circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
       this.toggleHandbrake();
-      hb.circle.setFillStyle(this.handbrake ? 0xee6a4d : INK_BG, this.handbrake ? 0.65 : 0.5);
+      hb.circle.setFillStyle(this.handbrake ? 0xe3263a : 0x0a0712, this.handbrake ? 0.9 : 0.72);
     });
     // A pause button of its own, shown throughout - there is no Escape key on a touchscreen.
-    const pauseBtn = this.add.circle(W / 2, 34, 26, INK_BG, 0.5).setStrokeStyle(3, 0xfff2da, 0.55).setScrollFactor(0).setDepth(111).setInteractive({ cursor: CURSOR.open });
-    this.add.text(W / 2, 34, '⏸', uiText(22, C.cream)).setOrigin(0.5).setScrollFactor(0).setDepth(112);
+    const pauseBtn = this.add.circle(W / 2, 40, 30, 0x0a0712, 0.8).setStrokeStyle(3, 0xf3e3cc, 0.7).setScrollFactor(0).setDepth(111).setInteractive({ cursor: CURSOR.open });
+    this.add.text(W / 2, 40, 'II', { fontFamily: TITLE, fontSize: '28px', color: '#F3E3CC' }).setOrigin(0.5).setScrollFactor(0).setDepth(112);
     pauseBtn.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
       this.togglePause();
@@ -1751,6 +1752,9 @@ export class PlayScene extends Phaser.Scene {
       }
       if (this.phase !== 'pack') return;
       if (this.held && p.rightButtonDown()) return turn(Math.PI / 2);
+      // A finger lands without any hover before it to update where it is in the world, unlike a mouse,
+      // so work that out from the touch itself - otherwise the tap tests the last touch's spot instead.
+      p.updateWorldPoint(this.cameras.main);
       const hit = M.Query.point(this.things.map((t) => t.body), { x: p.worldX, y: p.worldY }) as Body[];
       if (!hit.length) return;
       const thing = this.things.filter((t) => hit.includes(t.body)).pop()!;
@@ -1914,6 +1918,7 @@ export class PlayScene extends Phaser.Scene {
     this.goButton.setVisible(false);
     this.ropeButton.setVisible(false);
     this.pointer('point');
+    if (this.sys.game.device.input.touch && !this.sys.game.device.os.desktop) this.hint.setAlpha(0);
     this.hint.setPosition(DASH_RIGHT + 20, 1040).setFontSize(17).setText('D GAS · A BRAKE · P HANDBRAKE · SHIFT/CTRL GEARS · CLICK FIRE · W REEL · ESC CONTROLS');
     this.dash.show(true);
     for (const o of this.touchButtons) o.setVisible(true);
