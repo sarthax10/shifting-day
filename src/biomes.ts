@@ -1116,7 +1116,9 @@ const COAST: Biome = {
 const MEADOW: Biome = {
   key: 'meadow',
   sky: [],
-  ground: {},
+  // Old Street's road in the poster's inks: ember-brown earth, red-brown strata, oxblood deep down,
+  // and a gold-sand dirt surface.
+  ground: { '#C47F58': '#A8452E', '#9C5C48': '#7A2A2E', '#5E3A44': '#3A0F22', '#B06E50': '#94402E', '#93594A': '#6E2630', '#774650': '#4A1428', '#EDB27D': '#E0904A', '#F8CC97': '#F2C98A', '#E2A27A': '#FF8A4A' },
   grass: {},
   grip: 1,
   lamps: true,

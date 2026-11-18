@@ -276,9 +276,9 @@ export function buildBackdrop(scene: Phaser.Scene, o: Layers) {
     clouds.push({ img, speed: 0.004 + (i % 3) * 0.003 });
   }
   for (let i = 0; i < count(0.1); i++) scene.add.image(i * TILE, o.horizon - 230, 'bd_mountains').setOrigin(0, 1).setScrollFactor(sf(0.1), 1).setDepth(-40);
-  haze(scene, o.horizon - 520, 360, 0xf2a6b5, 0.5, -39, sf(0.1));
+  haze(scene, o.horizon - 520, 360, 0xff7a3a, 0.35, -39, sf(0.1));
   for (let i = 0; i < count(0.2); i++) scene.add.image(i * TILE - 300, o.horizon - 120, 'bd_forest').setOrigin(0, 1).setScrollFactor(sf(0.2), 1).setDepth(-36);
-  haze(scene, o.horizon - 340, 260, 0xf6b7a8, 0.35, -35, sf(0.2));
+  haze(scene, o.horizon - 340, 260, 0xffa04a, 0.28, -35, sf(0.2));
   for (let i = 0; i < count(0.34); i++) {
     const x0 = i * TILE - 600;
     scene.add.image(x0, o.horizon, 'bd_farms').setOrigin(0, 1).setScrollFactor(sf(0.34), 1).setDepth(-32);
@@ -288,7 +288,7 @@ export function buildBackdrop(scene: Phaser.Scene, o: Layers) {
       sails.push(scene.add.image(x0 + dx, o.horizon + dy - 104, 'bd_sails').setScrollFactor(sf(0.34), 1).setDepth(-30).setScale(0.8));
     }
   }
-  haze(scene, o.horizon - 280, 220, 0xffd2a8, 0.18, -29, sf(0.34));
+  haze(scene, o.horizon - 280, 220, 0xffc46e, 0.16, -29, sf(0.34));
   ambient(scene, o.height);
   return { sails, clouds };
 }
@@ -304,7 +304,7 @@ function ambient(scene: Phaser.Scene, height: number) {
       speedY: { min: -10, max: 8 },
       scale: { start: 0.035, end: 0.015 },
       alpha: { start: 0.9, end: 0 },
-      tint: 0xfff0b8,
+      tint: 0xffc46e,
       frequency: 140,
       blendMode: Phaser.BlendModes.ADD,
     })

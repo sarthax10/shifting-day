@@ -13,7 +13,8 @@ import { prepareLeg } from './prepare';
 import { LEGS } from './legs';
 import { makeCursors } from './cursors';
 import { TitleScene, titleArts } from './title';
-import { backdropArts } from './backdrop';
+// Old Street, redrawn by hand in the poster identity.
+import * as os from './oldstreet';
 import { audio } from './audio';
 
 // Browsers keep sound off until the player does something; the first click or key turns it on.
@@ -29,10 +30,11 @@ import { runQA } from './qa';
 function softTextures(textures: Phaser.Textures.TextureManager) {
   const sky = textures.createCanvas('sky', 8, 540)!;
   const fade = sky.context.createLinearGradient(0, 0, 0, 540);
-  fade.addColorStop(0, '#4E4B9C');
-  fade.addColorStop(0.42, '#C97FB0');
-  fade.addColorStop(0.72, '#FF9E7A');
-  fade.addColorStop(1, '#FFD49A');
+  fade.addColorStop(0, '#2A1030');
+  fade.addColorStop(0.38, '#6A1E3C');
+  fade.addColorStop(0.62, '#C8343A');
+  fade.addColorStop(0.8, '#FF7A3A');
+  fade.addColorStop(1, '#FFC46E');
   sky.context.fillStyle = fade;
   sky.context.fillRect(0, 0, 8, 540);
   sky.refresh();
@@ -151,19 +153,19 @@ game.events.once('ready', async () => {
     ...three.map((n) => art.blurred(art.hillArt(n), 1.6)),
     ...three.map((n) => art.blurred(art.farHillArt(n), 2.6)),
     ...three.map(art.cloudArt),
-    ...three.map((n) => art.blurred(art.townArt(n), 1.4)),
+    ...three.map((n) => art.blurred(os.townArt(n), 1.4)),
     ...three.map(art.pebbleArt),
-    ...[0, 1].flatMap((n) => [art.bushArt(n), art.tuftArt(n), art.flowerArt(n)]),
-    art.sunArt(),
+    ...[0, 1].flatMap((n) => [os.bushArt(n), os.tuftArt(n), os.flowerArt(n)]),
+    os.sunArt(),
     ...art.EYE_MOODS.flatMap((m) => art.boiled(() => art.eyeArt(m))),
     ...art.DRIVER_MOODS.flatMap((m) => art.boiled(() => art.driverArt(m))),
     ...art.boiled(art.freshenerArt),
     ...art.boiled(art.aerialArt),
-    art.bumpSignArt(),
-    art.hillSignArt(),
-    art.milestoneArt(),
-    art.homeSignArt(),
-    art.plankSignArt(),
+    os.bumpSignArt(),
+    os.hillSignArt(),
+    os.milestoneArt(),
+    os.homeSignArt(),
+    os.plankSignArt(),
     art.officialSignArt(),
     ...Object.keys(art.TOLL_SKINS).flatMap((k) => [art.tollBoothArt(k), art.tollCanopyArt(k)]),
     art.tollArmArt(),
@@ -187,10 +189,10 @@ game.events.once('ready', async () => {
     art.panelArt('card', 560, 100),
     art.panelArt('pill', 1160, 60),
     art.sparkArt(),
-    art.fieldArt(),
-    art.blurred(art.fenceArt(), 1.2),
-    art.blurred(art.poleArt(), 1.0),
-    art.lampPostArt(),
+    os.fieldArt(),
+    art.blurred(os.fenceArt(), 1.2),
+    art.blurred(os.poleArt(), 1.0),
+    os.lampPostArt(),
     art.puffArt(),
     art.buttonArt('btn', 300, C.mustard),
     art.buttonArt('btn_rope', 260, C.oat),
@@ -199,7 +201,7 @@ game.events.once('ready', async () => {
     art.heartArt('heart', C.terracotta),
     art.heartArt('heart_empty', C.creamShade),
     ...titleArts(),
-    ...backdropArts(),
+    ...os.backdropArts(),
   ];
   softTextures(game.textures);
   // The pictures are drawn a few at a time rather than all at once: a phone decoding hundreds of SVGs

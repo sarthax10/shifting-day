@@ -45,34 +45,34 @@ function cornerArt(): Art {
   const p = pen(CORNER.key);
   const { h } = CORNER;
   // The station house: white, a rounded front corner, a red band, big shop windows and a garage door.
-  p.shape([[40, h], [40, 300], [300, 300], [330, 310], [340, 340], [340, h]], { fill: '#F4EFE6', width: 5, raw: true, shade: [{ pts: [[260, 290], [360, 290], [360, h], [270, h]], color: '#DCD3C6' }] });
-  p.rect(30, 286, 316, 26, { fill: '#D8463A', width: 4, r: 4 });
-  p.rect(30, 280, 316, 8, { fill: '#F4EFE6', stroke: null, r: 2 });
+  p.shape([[40, h], [40, 300], [300, 300], [330, 310], [340, 340], [340, h]], { fill: '#F3E3CC', width: 5, raw: true, shade: [{ pts: [[260, 290], [360, 290], [360, h], [270, h]], color: '#D9C3A6' }] });
+  p.rect(30, 286, 316, 26, { fill: '#E3263A', width: 4, r: 4 });
+  p.rect(30, 280, 316, 8, { fill: '#F3E3CC', stroke: null, r: 2 });
   p.rect(70, 360, 150, 120, { fill: WALL_LIGHT, width: 4, r: 4 });
   for (const x of [120, 170]) p.line([[x, 362], [x, 478]], { width: 3, raw: true });
-  p.rect(64, 476, 162, 10, { fill: '#C9C2B8', width: 3, r: 2 });
+  p.rect(64, 476, 162, 10, { fill: '#D9C3A6', width: 3, r: 2 });
   // Shelves of oil cans through the window.
-  for (let k = 0; k < 5; k++) p.rect(82 + k * 26, 432, 16, 22, { fill: ['#2F7F6A', '#D8463A', '#FFB23F'][k % 3], width: 2, r: 2 });
-  p.rect(244, 360, 76, h - 360, { fill: '#9EB7C8', width: 4, r: 3 });
-  for (let y = 376; y < h - 10; y += 22) p.line([[248, y], [316, y]], { width: 2, color: '#6E8796', raw: true });
+  for (let k = 0; k < 5; k++) p.rect(82 + k * 26, 432, 16, 22, { fill: ['#2A4636', '#E3263A', '#FFB23F'][k % 3], width: 2, r: 2 });
+  p.rect(244, 360, 76, h - 360, { fill: '#7E8A44', width: 4, r: 3 });
+  for (let y = 376; y < h - 10; y += 22) p.line([[248, y], [316, y]], { width: 2, color: '#2A4636', raw: true });
   // The flat canopy on a single slanted column, with a light strip underneath.
-  p.shape([[380, 228], [880, 210], [886, 244], [384, 262]], { fill: '#F4EFE6', width: 5, raw: true });
-  p.shape([[382, 244], [884, 226], [886, 244], [384, 262]], { fill: '#D8463A', stroke: null, raw: true });
-  p.shape([[600, 254], [624, 254], [596, h], [572, h]], { fill: '#C9C2B8', width: 4, raw: true });
+  p.shape([[380, 228], [880, 210], [886, 244], [384, 262]], { fill: '#F3E3CC', width: 5, raw: true });
+  p.shape([[382, 244], [884, 226], [886, 244], [384, 262]], { fill: '#E3263A', stroke: null, raw: true });
+  p.shape([[600, 254], [624, 254], [596, h], [572, h]], { fill: '#D9C3A6', width: 4, raw: true });
   for (const lx of [460, 560, 700, 800]) p.rect(lx - 30, 254 - (lx - 380) * 0.036, 60, 7, { fill: '#FFF6D8', width: 2, r: 3 });
   // Two round-shouldered vintage pumps with glass globes.
   for (const px of [470, 690]) {
-    p.rect(px - 32, 410, 64, h - 410 - 12, { fill: '#D8463A', width: 4, r: 18 });
-    p.rect(px - 22, 430, 44, 36, { fill: '#F4EFE6', width: 3, r: 6 });
+    p.rect(px - 32, 410, 64, h - 410 - 12, { fill: '#E3263A', width: 4, r: 18 });
+    p.rect(px - 22, 430, 44, 36, { fill: '#F3E3CC', width: 3, r: 6 });
     p.line([[px - 12, 446], [px + 12, 446]], { width: 2, raw: true });
     p.ellipse(px, 394, 22, 22, { fill: '#FFF4DE', width: 4 });
-    p.rect(px - 22, 388, 44, 10, { fill: '#D8463A', stroke: null, r: 2 });
+    p.rect(px - 22, 388, 44, 10, { fill: '#E3263A', stroke: null, r: 2 });
     p.line([[px + 32, 470], [px + 52, 500], [px + 40, 540]], { width: 5 });
     p.rect(px - 40, h - 14, 80, 14, { fill: '#9A96A8', width: 3, r: 3 });
   }
   // The arrow pylon: a tall slanted blade with a round sign, and a chain of bulbs down its edge.
-  p.shape([[748, h], [770, 140], [800, 140], [790, h]], { fill: '#F4EFE6', width: 5, raw: true });
-  p.shape([[690, 60], [840, 50], [850, 130], [700, 136]], { fill: '#D8463A', width: 6, raw: true });
+  p.shape([[748, h], [770, 140], [800, 140], [790, h]], { fill: '#F3E3CC', width: 5, raw: true });
+  p.shape([[690, 60], [840, 50], [850, 130], [700, 136]], { fill: '#E3263A', width: 6, raw: true });
   p.shape([[700, 70], [832, 60], [840, 122], [708, 128]], { fill: '#8E1E24', stroke: null, raw: true });
   p.shape([[770, 180], [860, 214], [790, 250]], { fill: '#FFB23F', width: 4, raw: true });
   // Tyres stacked, a soda machine, an air post and flowers by the door.

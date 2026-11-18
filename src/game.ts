@@ -1133,7 +1133,7 @@ export class PlayScene extends Phaser.Scene {
     applyBiomeFX(this.cameras.main, this.leg.biome);
     const tun = (x: number) => inTunnel(x, tunnel);
     if (meadow) {
-      const sun = this.add.image(1480, 250, 'sun').setScrollFactor(0.04).setDepth(-45);
+      const sun = this.add.image(1180, 400, 'sun').setScrollFactor(0.04).setDepth(-45);
       this.fx.light(sun, 0xffc65a, 0.75, 250, 0.12);
     }
 

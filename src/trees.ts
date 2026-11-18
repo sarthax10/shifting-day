@@ -17,12 +17,13 @@ export interface Palette {
 }
 
 export const P: Record<string, Palette> = {
-  oak: { shadow: '#1F4A4A', mid: '#3E8A68', light: '#8CC870', rim: '#E8F0A0' },
-  oakDeep: { shadow: '#1E4040', mid: '#357A5E', light: '#7AB862', rim: '#E0EC98' },
+  // Old Street's trees, in the poster's inks: bottle-green shade, olive body, the low sun's gold on the rim.
+  oak: { shadow: '#1A2E24', mid: '#2A4636', light: '#7E8A44', rim: '#FFB23F' },
+  oakDeep: { shadow: '#140F18', mid: '#24402E', light: '#5E7038', rim: '#FF6A30' },
   red: { shadow: '#7A2A2E', mid: '#D8563A', light: '#F29A4A', rim: '#FFD27A' },
   gold: { shadow: '#A86A24', mid: '#F2B23A', light: '#FFE07A', rim: '#FFF2B0' },
   rust: { shadow: '#6A3A2A', mid: '#C9702E', light: '#EE9A4A', rim: '#FFD8A0' },
-  pine: { shadow: '#163A3A', mid: '#2E6A56', light: '#4E9070', rim: '#C8E8A8' },
+  pine: { shadow: '#140F18', mid: '#1A2E24', light: '#2A4636', rim: '#FF6A30' },
   snow: { shadow: '#14283C', mid: '#1E3448', light: '#2E4E66', rim: '#E8F0FF' },
   sea: { shadow: '#1F4A3E', mid: '#3E7A5E', light: '#6AA878', rim: '#E8F4C8' },
 };

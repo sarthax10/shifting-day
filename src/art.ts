@@ -128,11 +128,11 @@ function shine(p: Pen, pts: Pt[], width = 3) {
 
 /** A cardboard box: flaps, parcel tape, a hand hole and a scribbled label. */
 function box(p: Pen, x: number, y: number, w: number, h: number) {
-  p.rect(x, y, w, h, { fill: C.wood, r: 5, shade: [{ pts: [[x + w * 0.7, y], [x + w, y], [x + w, y + h], [x + w * 0.76, y + h]], color: C.woodLine }] });
+  p.rect(x, y, w, h, { fill: '#E8B878', r: 4, shade: [{ pts: [[x + w * 0.7, y], [x + w, y], [x + w, y + h], [x + w * 0.76, y + h]], color: '#C98A48' }] });
   p.line([[x + 3, y + h * 0.18], [x + w - 3, y + h * 0.18]], { width: 2.5, opacity: 0.45, raw: true });
-  p.rect(x + w * 0.42, y + 2, w * 0.16, h * 0.5, { fill: '#F3DDB4', stroke: null, r: 2, opacity: 0.9 });
-  p.rect(x + w * 0.38, y + h * 0.36, w * 0.24, h * 0.1, { fill: C.walnut, r: 4, width: 2 });
-  p.rect(x + w * 0.1, y + h * 0.6, w * 0.3, h * 0.22, { fill: C.cream, r: 3, width: 2.5 });
+  p.rect(x + w * 0.42, y + 2, w * 0.16, h * 0.5, { fill: '#FF6A30', stroke: null, r: 1, opacity: 0.95 });
+  p.rect(x + w * 0.38, y + h * 0.36, w * 0.24, h * 0.1, { fill: '#0A0712', r: 3, width: 2 });
+  p.rect(x + w * 0.1, y + h * 0.6, w * 0.3, h * 0.22, { fill: '#F3E3CC', r: 2, width: 2.5 });
   p.line([[x + w * 0.14, y + h * 0.68], [x + w * 0.34, y + h * 0.68]], { width: 2, raw: true });
   p.line([[x + w * 0.14, y + h * 0.75], [x + w * 0.27, y + h * 0.75]], { width: 2, raw: true });
   shine(p, [[x + 6, y + 4], [x + w * 0.35, y + 4]]);
@@ -171,30 +171,30 @@ export const ITEMS: ItemSpec[] = [
   {
     key: 'sofa', name: 'Sofa', w: m(2.0), h: m(0.8), density: 0.0011, friction: 0.9, hearts: 2,
     draw(p, x, y, w, h) {
-      const fabric = C.plum;
-      const light = '#9A6A9C';
-      p.rect(x + 22, y, w - 44, h * 0.66, { fill: fabric, r: 20, shade: [{ pts: [[x, y + h * 0.4], [x + w, y + h * 0.36], [x + w, y + h], [x, y + h]], color: '#663E6B' }] });
+      const fabric = '#7A2440';
+      const light = '#A8384A';
+      p.rect(x + 22, y, w - 44, h * 0.66, { fill: fabric, r: 20, shade: [{ pts: [[x, y + h * 0.4], [x + w, y + h * 0.36], [x + w, y + h], [x, y + h]], color: '#5A1A3A' }] });
       for (let i = 0; i < 3; i++) p.line([[x + 40 + i * (w - 80) / 2, y + 14], [x + 40 + i * (w - 80) / 2, y + h * 0.4]], { width: 2.5, opacity: 0.4, raw: true });
       const seat = (sx: number) => p.rect(sx, y + h * 0.44, (w - 72) / 2 - 2, h * 0.3, { fill: light, r: 12, width: 4.5 });
       seat(x + 36);
       seat(x + w / 2 + 2);
-      p.rect(x, y + h * 0.3, 42, h * 0.58, { fill: fabric, r: 18, shade: [{ pts: [[x + 24, y], [x + 50, y], [x + 50, y + h], [x + 24, y + h]], color: '#663E6B' }] });
+      p.rect(x, y + h * 0.3, 42, h * 0.58, { fill: fabric, r: 18, shade: [{ pts: [[x + 24, y], [x + 50, y], [x + 50, y + h], [x + 24, y + h]], color: '#5A1A3A' }] });
       p.rect(x + w - 42, y + h * 0.3, 42, h * 0.58, { fill: fabric, r: 18 });
-      p.rect(x + 12, y + h * 0.76, w - 24, h * 0.16, { fill: C.walnut, r: 6, width: 4.5 });
+      p.rect(x + 12, y + h * 0.76, w - 24, h * 0.16, { fill: '#3A0F22', r: 4, width: 4.5 });
       for (const lx of [x + 28, x + w - 28]) p.shape([[lx - 6, y + h * 0.9], [lx + 6, y + h * 0.9], [lx + 3, y + h], [lx - 3, y + h]], { fill: C.woodDark, raw: true, width: 3.5 });
-      p.rect(x + w * 0.62, y + h * 0.18, w * 0.16, h * 0.3, { fill: C.mustard, r: 10, width: 4 });
+      p.rect(x + w * 0.62, y + h * 0.18, w * 0.16, h * 0.3, { fill: '#FFB23F', r: 8, width: 4 });
       shine(p, [[x + 40, y + 8], [x + w * 0.45, y + 6]]);
     },
   },
   {
     key: 'armchair', name: 'Armchair', w: m(0.85), h: m(0.9), density: 0.0012, friction: 0.9, hearts: 2,
     draw(p, x, y, w, h) {
-      p.shape([[x + 16, y + h * 0.62], [x + 14, y + 18], [x + w * 0.5, y + 2], [x + w - 14, y + 18], [x + w - 16, y + h * 0.62]], { fill: C.teal, width: 5.5, shade: [{ pts: [[x + w * 0.6, y], [x + w, y], [x + w, y + h], [x + w * 0.66, y + h]], color: '#2C7F8C' }] });
-      for (const [bx, by] of [[0.32, 0.25], [0.68, 0.25], [0.5, 0.42]]) p.dot(x + w * bx, y + h * by, 3.5, '#1F6470');
-      p.rect(x + 18, y + h * 0.55, w - 36, h * 0.22, { fill: '#7DCBD4', r: 10, width: 4.5 });
-      p.rect(x, y + h * 0.42, 26, h * 0.42, { fill: C.teal, r: 12, width: 5 });
-      p.rect(x + w - 26, y + h * 0.42, 26, h * 0.42, { fill: C.teal, r: 12, width: 5 });
-      p.rect(x + 10, y + h * 0.8, w - 20, h * 0.1, { fill: '#2C7F8C', r: 4, width: 4 });
+      p.shape([[x + 16, y + h * 0.62], [x + 14, y + 18], [x + w * 0.5, y + 2], [x + w - 14, y + 18], [x + w - 16, y + h * 0.62]], { fill: '#2A4636', width: 5.5, shade: [{ pts: [[x + w * 0.6, y], [x + w, y], [x + w, y + h], [x + w * 0.66, y + h]], color: '#1A2E24' }] });
+      for (const [bx, by] of [[0.32, 0.25], [0.68, 0.25], [0.5, 0.42]]) p.dot(x + w * bx, y + h * by, 3.5, '#FFB23F');
+      p.rect(x + 18, y + h * 0.55, w - 36, h * 0.22, { fill: '#7E8A44', r: 8, width: 4.5 });
+      p.rect(x, y + h * 0.42, 26, h * 0.42, { fill: '#2A4636', r: 10, width: 5 });
+      p.rect(x + w - 26, y + h * 0.42, 26, h * 0.42, { fill: '#2A4636', r: 10, width: 5 });
+      p.rect(x + 10, y + h * 0.8, w - 20, h * 0.1, { fill: '#1A2E24', r: 3, width: 4 });
       for (const lx of [x + 18, x + w - 18]) p.line([[lx, y + h * 0.9], [lx + (lx < x + w / 2 ? -4 : 4), y + h]], { width: 6 });
       shine(p, [[x + w * 0.24, y + 16], [x + w * 0.48, y + 8]]);
     },
@@ -202,28 +202,28 @@ export const ITEMS: ItemSpec[] = [
   {
     key: 'fridge', name: 'Fridge', w: m(0.7), h: m(1.7), density: 0.0022, friction: 0.7, hearts: 2,
     draw(p, x, y, w, h) {
-      p.rect(x, y, w, h, { fill: '#E9F3F1', r: 16, shade: [{ pts: [[x + w * 0.74, y], [x + w, y], [x + w, y + h], [x + w * 0.8, y + h]], color: '#BFD6D6' }] });
+      p.rect(x, y, w, h, { fill: '#F3E3CC', r: 14, shade: [{ pts: [[x + w * 0.74, y], [x + w, y], [x + w, y + h], [x + w * 0.8, y + h]], color: '#D9C3A6' }] });
       p.line([[x + 3, y + h * 0.36], [x + w - 3, y + h * 0.36]], { width: 4 });
-      p.rect(x + 12, y + h * 0.1, 8, h * 0.18, { fill: '#B9BCCB', r: 4, width: 3 });
-      p.rect(x + 12, y + h * 0.42, 8, h * 0.22, { fill: '#B9BCCB', r: 4, width: 3 });
-      p.rect(x + w * 0.46, y + h * 0.08, 26, 20, { fill: C.sticky, width: 2.5, r: 2 });
+      p.rect(x + 12, y + h * 0.1, 8, h * 0.18, { fill: '#3A0F22', r: 3, width: 3 });
+      p.rect(x + 12, y + h * 0.42, 8, h * 0.22, { fill: '#3A0F22', r: 3, width: 3 });
+      p.rect(x + w * 0.46, y + h * 0.08, 26, 20, { fill: '#FFB23F', width: 2.5, r: 1 });
       p.dot(x + w * 0.46 + 13, y + h * 0.08 + 3, 3.5, C.terracotta);
       p.ellipse(x + w * 0.6, y + h * 0.5, 9, 9, { fill: C.mustard, width: 2.5 });
-      p.rect(x + w * 0.32, y + h * 0.58, 24, 30, { fill: '#FFFFFF', width: 2.5, r: 2 });
+      p.rect(x + w * 0.32, y + h * 0.58, 24, 30, { fill: '#FFF6E6', width: 2.5, r: 1 });
       p.line([[x + w * 0.32 + 5, y + h * 0.58 + 10], [x + w * 0.32 + 19, y + h * 0.58 + 10]], { width: 1.8, raw: true });
-      p.rect(x + 6, y + h - 10, w - 12, 8, { fill: '#B9BCCB', stroke: null, r: 2 });
+      p.rect(x + 6, y + h - 10, w - 12, 8, { fill: '#3A0F22', stroke: null, r: 1 });
       shine(p, [[x + 8, y + 10], [x + 8, y + h * 0.3]], 4);
     },
   },
   {
     key: 'washer', name: 'Washing machine', w: m(0.6), h: m(0.85), density: 0.003, friction: 0.7, hearts: 1,
     draw(p, x, y, w, h) {
-      p.rect(x, y, w, h, { fill: '#F4F6F8', r: 10, shade: [{ pts: [[x + w * 0.74, y], [x + w, y], [x + w, y + h], [x + w * 0.82, y + h]], color: '#C7CCD8' }] });
+      p.rect(x, y, w, h, { fill: '#F3E3CC', r: 8, shade: [{ pts: [[x + w * 0.74, y], [x + w, y], [x + w, y + h], [x + w * 0.82, y + h]], color: '#D9C3A6' }] });
       p.line([[x + 3, y + h * 0.2], [x + w - 3, y + h * 0.2]], { width: 3.5 });
       p.dot(x + 14, y + h * 0.1, 4.5, C.terracotta);
-      p.ellipse(x + w * 0.62, y + h * 0.1, 8, 8, { fill: '#B9BCCB', width: 2.5 });
-      p.ellipse(x + w / 2, y + h * 0.6, w * 0.32, w * 0.32, { fill: '#B9BCCB', width: 5 });
-      p.ellipse(x + w / 2, y + h * 0.6, w * 0.23, w * 0.23, { fill: GLASS, width: 3, shade: [{ pts: [[x, y + h * 0.62], [x + w, y + h * 0.58], [x + w, y + h], [x, y + h]], color: C.sky }] });
+      p.ellipse(x + w * 0.62, y + h * 0.1, 8, 8, { fill: '#FFB23F', width: 2.5 });
+      p.ellipse(x + w / 2, y + h * 0.6, w * 0.32, w * 0.32, { fill: '#3A0F22', width: 5 });
+      p.ellipse(x + w / 2, y + h * 0.6, w * 0.23, w * 0.23, { fill: '#7E8A44', width: 3, shade: [{ pts: [[x, y + h * 0.62], [x + w, y + h * 0.58], [x + w, y + h], [x, y + h]], color: '#2A4636' }] });
       p.line([[x + w * 0.4, y + h * 0.52], [x + w * 0.5, y + h * 0.48]], { width: 3, color: '#FFFFFF', opacity: 0.8 });
     },
   },
@@ -232,9 +232,9 @@ export const ITEMS: ItemSpec[] = [
     draw(p, x, y, w, h) {
       p.line([[x + w * 0.42, y + 8], [x + w * 0.28, y - 2]], { width: 3, raw: true });
       p.line([[x + w * 0.58, y + 8], [x + w * 0.74, y - 4]], { width: 3, raw: true });
-      p.rect(x, y + 6, w, h - 16, { fill: C.woodDark, r: 12, shade: [{ pts: [[x + w * 0.76, y], [x + w, y], [x + w, y + h], [x + w * 0.8, y + h]], color: C.walnut }] });
-      p.rect(x + 8, y + 14, w * 0.66, h - 34, { fill: '#46507A', r: 14, width: 4.5, shade: [{ pts: [[x, y + 10], [x + w * 0.4, y + 10], [x, y + h * 0.5]], color: '#6E7BAE' }] });
-      p.dot(x + w * 0.86, y + h * 0.3, 4.5, C.mustard);
+      p.rect(x, y + 6, w, h - 16, { fill: '#7A2440', r: 10, shade: [{ pts: [[x + w * 0.76, y], [x + w, y], [x + w, y + h], [x + w * 0.8, y + h]], color: '#3A0F22' }] });
+      p.rect(x + 8, y + 14, w * 0.66, h - 34, { fill: '#2A4636', r: 12, width: 4.5, shade: [{ pts: [[x, y + 10], [x + w * 0.4, y + 10], [x, y + h * 0.5]], color: '#7E8A44' }] });
+      p.dot(x + w * 0.86, y + h * 0.3, 4.5, '#FFB23F');
       p.dot(x + w * 0.86, y + h * 0.5, 4.5, C.cream);
       for (const lx of [x + 12, x + w - 12]) p.line([[lx, y + h - 10], [lx + (lx < x + w / 2 ? -4 : 4), y + h]], { width: 5 });
     },
@@ -242,13 +242,13 @@ export const ITEMS: ItemSpec[] = [
   {
     key: 'bookshelf', name: 'Bookshelf', w: m(0.8), h: m(1.6), density: 0.0018, friction: 0.8, hearts: 2,
     draw(p, x, y, w, h) {
-      p.rect(x, y, w, h, { fill: C.woodDark, r: 6, shade: [{ pts: [[x + w * 0.84, y], [x + w, y], [x + w, y + h], [x + w * 0.88, y + h]], color: C.walnut }] });
+      p.rect(x, y, w, h, { fill: '#7A2440', r: 4, shade: [{ pts: [[x + w * 0.84, y], [x + w, y], [x + w, y + h], [x + w * 0.88, y + h]], color: '#3A0F22' }] });
       const shelves = 4;
-      const colours = [C.terracotta, C.teal, C.mustard, C.plum, C.sage, C.pink, C.dusk];
+      const colours = ['#E3263A', '#F3E3CC', '#FFB23F', '#2A4636', '#FF6A30', '#7E8A44', '#0A0712'];
       for (let s = 0; s < shelves; s++) {
         const top = y + 10 + s * ((h - 20) / shelves);
         const bottom = top + (h - 20) / shelves - 8;
-        p.rect(x + 8, top, w - 16, bottom - top, { fill: '#5B3A4E', stroke: null, r: 2 });
+        p.rect(x + 8, top, w - 16, bottom - top, { fill: '#2A0B18', stroke: null, r: 1 });
         let bx = x + 12;
         let i = s * 3;
         while (bx < x + w - 20) {
@@ -266,9 +266,9 @@ export const ITEMS: ItemSpec[] = [
   {
     key: 'mattress', name: 'Mattress', w: m(1.9), h: m(0.25), density: 0.0006, friction: 0.9, bounce: 0.25, hearts: 1,
     draw(p, x, y, w, h) {
-      p.rect(x, y, w, h, { fill: '#F7E7F0', r: 14, shade: [{ pts: [[x, y + h * 0.65], [x + w, y + h * 0.6], [x + w, y + h], [x, y + h]], color: '#E4C6D8' }] });
-      for (let i = 1; i < 9; i++) p.dot(x + (w / 9) * i, y + h / 2, 2.5, C.lavender);
-      p.line([[x + 6, y + h * 0.3], [x + w - 6, y + h * 0.3]], { width: 2, color: C.pink, raw: true });
+      p.rect(x, y, w, h, { fill: '#F3E3CC', r: 12, shade: [{ pts: [[x, y + h * 0.65], [x + w, y + h * 0.6], [x + w, y + h], [x, y + h]], color: '#D9C3A6' }] });
+      for (let i = 1; i < 9; i++) p.dot(x + (w / 9) * i, y + h / 2, 2.5, '#FF6A30');
+      p.line([[x + 6, y + h * 0.3], [x + w - 6, y + h * 0.3]], { width: 2.4, color: '#E3263A', raw: true });
     },
   },
   {
@@ -293,15 +293,15 @@ export const ITEMS: ItemSpec[] = [
         const mx = (cx + tx) / 2;
         const my = (y + h * 0.56 + ty) / 2;
         p.shape([[cx, y + h * 0.58], [mx + nx, my + ny], [tx, ty], [mx - nx, my - ny]], { fill, width: 4 });
-        p.line([[cx, y + h * 0.58], [tx, ty]], { width: 2, color: C.moss, opacity: 0.7 });
+        p.line([[cx, y + h * 0.58], [tx, ty]], { width: 2, color: '#1A2E24', opacity: 0.7 });
         // The splits monstera leaves are known for.
-        p.line([[mx + nx * 0.6, my + ny * 0.6], [mx + nx * 0.2, my + ny * 0.2]], { width: 3, color: '#FFF2DA', opacity: 0.8 });
+        p.line([[mx + nx * 0.6, my + ny * 0.6], [mx + nx * 0.2, my + ny * 0.2]], { width: 3, color: '#F3E3CC', opacity: 0.8 });
       };
-      leaf(-Math.PI * 0.84, h * 0.4, C.sageDark);
-      leaf(-Math.PI * 0.18, h * 0.42, C.sageDark);
-      leaf(-Math.PI * 0.64, h * 0.52, C.sage);
-      leaf(-Math.PI * 0.38, h * 0.54, C.sage);
-      leaf(-Math.PI * 0.5, h * 0.46, '#7FC48E');
+      leaf(-Math.PI * 0.84, h * 0.4, '#1A2E24');
+      leaf(-Math.PI * 0.18, h * 0.42, '#1A2E24');
+      leaf(-Math.PI * 0.64, h * 0.52, '#2A4636');
+      leaf(-Math.PI * 0.38, h * 0.54, '#2A4636');
+      leaf(-Math.PI * 0.5, h * 0.46, '#7E8A44');
       p.shape([[x + 8, y + h * 0.6], [x + w - 8, y + h * 0.6], [x + w - 18, y + h], [x + 18, y + h]], { fill: C.terracotta, raw: true, shade: [{ pts: [[x + w * 0.62, y + h * 0.5], [x + w, y + h * 0.5], [x + w, y + h], [x + w * 0.7, y + h]], color: C.terracottaDark }] });
       p.rect(x + 4, y + h * 0.56, w - 8, 14, { fill: C.terracotta, r: 5, width: 4.5 });
       p.line([[x + 22, y + h * 0.8], [x + w - 22, y + h * 0.8]], { width: 3, color: C.cream, raw: true });
@@ -313,20 +313,20 @@ export const ITEMS: ItemSpec[] = [
       const r = w / 2;
       const cx = x + r;
       const cy = y + r;
-      p.ellipse(cx, cy, r, r, { fill: GLASS, width: 3.5, shade: [{ pts: [[x, cy - r * 0.15], [x + w, cy - r * 0.25], [x + w, y + w], [x, y + w]], color: C.sky }] });
+      p.ellipse(cx, cy, r, r, { fill: '#F7EFE0', width: 3.5, shade: [{ pts: [[x, cy - r * 0.15], [x + w, cy - r * 0.25], [x + w, y + w], [x, y + w]], color: '#7E8A44' }] });
       p.shape([[cx - r * 0.4, cy + r * 0.3], [cx + r * 0.1, cy + r * 0.05], [cx + r * 0.5, cy + r * 0.3], [cx + r * 0.1, cy + r * 0.6]], { fill: C.mustard, width: 2.5 });
       p.shape([[cx - r * 0.4, cy + r * 0.3], [cx - r * 0.75, cy + r * 0.05], [cx - r * 0.7, cy + r * 0.6]], { fill: C.terracotta, width: 2.5, raw: true });
       p.dot(cx + r * 0.25, cy + r * 0.25, 2);
       p.line([[cx - r * 0.55, cy - r * 0.5], [cx - r * 0.25, cy - r * 0.72]], { width: 3, color: '#FFFFFF' });
-      p.rect(cx - r * 0.55, y - 1, r * 1.1, 6, { fill: GLASS, r: 3, width: 2.5 });
+      p.rect(cx - r * 0.55, y - 1, r * 1.1, 6, { fill: '#F7EFE0', r: 2, width: 2.5 });
     },
   },
   {
     key: 'jam', name: 'Homemade jam', w: m(0.12), h: m(0.16) + 12, density: 0.0018, friction: 0.6, hearts: 3, fragile: 11,
     draw(p, x, y, w, h) {
-      p.rect(x + 2, y + 12, w - 4, h - 12, { fill: GLASS, r: 9, width: 3.5, shade: [{ pts: [[x, y + h * 0.36], [x + w, y + h * 0.32], [x + w, y + h], [x, y + h]], color: '#C9405E' }] });
+      p.rect(x + 2, y + 12, w - 4, h - 12, { fill: '#F7EFE0', r: 8, width: 3.5, shade: [{ pts: [[x, y + h * 0.36], [x + w, y + h * 0.32], [x + w, y + h], [x, y + h]], color: '#E3263A' }] });
       p.rect(x + 6, y + h * 0.5, w - 12, h * 0.22, { fill: C.cream, r: 2, width: 2 });
-      p.rect(x + 5, y, w - 10, 14, { fill: '#F0F0F0', r: 3, width: 3, shade: [{ pts: [[x, y], [x + w, y], [x + w, y + 7], [x, y + 7]], color: C.terracotta }] });
+      p.rect(x + 5, y, w - 10, 14, { fill: '#F3E3CC', r: 2, width: 3, shade: [{ pts: [[x, y], [x + w, y], [x + w, y + 7], [x, y + 7]], color: '#E3263A' }] });
       shine(p, [[x + 8, y + 18], [x + 8, y + h * 0.42]], 2.5);
     },
   },
@@ -334,10 +334,10 @@ export const ITEMS: ItemSpec[] = [
     key: 'suitcase', name: 'Suitcase', w: m(0.7), h: m(0.45), density: 0.0024, friction: 0.6, hearts: 1,
     draw(p, x, y, w, h) {
       p.rect(x + w * 0.36, y - 2, w * 0.28, 12, { fill: C.walnut, r: 5, width: 3.5 });
-      p.rect(x, y + 8, w, h - 8, { fill: C.dusk, r: 9, shade: [{ pts: [[x, y + h * 0.72], [x + w, y + h * 0.66], [x + w, y + h], [x, y + h]], color: '#2E2F5E' }] });
-      for (const sx of [x + w * 0.26, x + w * 0.74]) p.rect(sx - 4, y + 9, 8, h - 10, { fill: C.woodDark, r: 2, width: 2.5 });
-      p.rect(x + w * 0.4, y + h * 0.42, w * 0.2, h * 0.22, { fill: C.sticky, r: 2, width: 2.5 });
-      p.ellipse(x + w * 0.12, y + h * 0.4, 7, 7, { fill: C.pink, width: 2.5 });
+      p.rect(x, y + 8, w, h - 8, { fill: '#E3263A', r: 8, shade: [{ pts: [[x, y + h * 0.72], [x + w, y + h * 0.66], [x + w, y + h], [x, y + h]], color: '#9E1A2E' }] });
+      for (const sx of [x + w * 0.26, x + w * 0.74]) p.rect(sx - 4, y + 9, 8, h - 10, { fill: '#3A0F22', r: 1, width: 2.5 });
+      p.rect(x + w * 0.4, y + h * 0.42, w * 0.2, h * 0.22, { fill: '#FFB23F', r: 1, width: 2.5 });
+      p.ellipse(x + w * 0.12, y + h * 0.4, 7, 7, { fill: '#F3E3CC', width: 2.5 });
       p.ellipse(x + w * 0.9, y + h * 0.65, 6, 6, { fill: C.mustard, width: 2.5 });
       shine(p, [[x + 8, y + 13], [x + w * 0.2, y + 13]]);
     },
@@ -348,8 +348,8 @@ export const ITEMS: ItemSpec[] = [
       p.rect(x + w * 0.3, y, w * 0.4, 10, { stroke: C.ink, width: 4, r: 4 });
       p.rect(x, y + 8, w, h - 8, { fill: C.terracotta, r: 4, shade: [{ pts: [[x, y + h * 0.7], [x + w, y + h * 0.66], [x + w, y + h], [x, y + h]], color: C.terracottaDark }] });
       p.line([[x + 3, y + h * 0.42], [x + w - 3, y + h * 0.42]], { width: 2.5, raw: true });
-      p.rect(x + w * 0.44, y + h * 0.36, w * 0.12, 6, { fill: '#B9BCCB', r: 2, width: 2 });
-      p.line([[x + w * 0.66, y + 6], [x + w * 0.82, y - 8]], { width: 4, color: '#B9BCCB' });
+      p.rect(x + w * 0.44, y + h * 0.36, w * 0.12, 6, { fill: '#F3E3CC', r: 1, width: 2 });
+      p.line([[x + w * 0.66, y + 6], [x + w * 0.82, y - 8]], { width: 4, color: '#3A0F22' });
     },
   },
   {
@@ -358,7 +358,7 @@ export const ITEMS: ItemSpec[] = [
       p.rect(x, y + h * 0.3, w, h * 0.7, { fill: C.mustard, r: 6, shade: [{ pts: [[x, y + h * 0.8], [x + w, y + h * 0.75], [x + w, y + h], [x, y + h]], color: C.dry }] });
       p.ellipse(x + w * 0.42, y + h * 0.3, w * 0.34, h * 0.14, { fill: C.ink, width: 2.5 });
       p.ellipse(x + w * 0.42, y + h * 0.3, w * 0.1, h * 0.05, { fill: C.terracotta, stroke: null });
-      p.line([[x + w * 0.86, y + h * 0.2], [x + w * 0.62, y + h * 0.3]], { width: 3, color: '#B9BCCB' });
+      p.line([[x + w * 0.86, y + h * 0.2], [x + w * 0.62, y + h * 0.3]], { width: 3, color: '#3A0F22' });
       p.dot(x + w * 0.14, y + h * 0.72, 3.5, C.cream);
       p.dot(x + w * 0.28, y + h * 0.72, 3.5, C.cream);
     },
@@ -369,9 +369,9 @@ export const ITEMS: ItemSpec[] = [
       const cx = x + w / 2;
       p.rect(cx - 6, y + 8, 12, h * 0.48, { fill: C.walnut, r: 3, width: 3.5 });
       p.rect(cx - 9, y, 18, 18, { fill: C.walnut, r: 4, width: 3.5 });
-      for (const py of [y + 4, y + 11]) for (const s of [-1, 1]) p.dot(cx + s * 11, py, 2.5, '#B9BCCB');
+      for (const py of [y + 4, y + 11]) for (const s of [-1, 1]) p.dot(cx + s * 11, py, 2.5, '#F3E3CC');
       const bodyPts: Pt[] = [[cx, y + h * 0.48], [cx + w * 0.38, y + h * 0.52], [cx + w * 0.3, y + h * 0.66], [cx + w * 0.5, y + h * 0.84], [cx, y + h], [cx - w * 0.5, y + h * 0.84], [cx - w * 0.3, y + h * 0.66], [cx - w * 0.38, y + h * 0.52]];
-      p.shape(bodyPts, { fill: C.wood, width: 4.5, shade: [{ pts: [[cx + 4, y + h * 0.4], [x + w + 10, y + h * 0.4], [x + w + 10, y + h + 10], [cx + 8, y + h + 10]], color: C.woodLine }] });
+      p.shape(bodyPts, { fill: '#F2C98A', width: 4.5, shade: [{ pts: [[cx + 4, y + h * 0.4], [x + w + 10, y + h * 0.4], [x + w + 10, y + h + 10], [cx + 8, y + h + 10]], color: '#D99A3A' }] });
       p.ellipse(cx, y + h * 0.72, w * 0.16, w * 0.16, { fill: C.ink, width: 2.5 });
       p.rect(cx - w * 0.18, y + h * 0.86, w * 0.36, 6, { fill: C.walnut, r: 2, width: 2 });
       for (const s of [-3, 0, 3]) p.line([[cx + s, y + 14], [cx + s, y + h * 0.88]], { width: 1, color: '#E8E8E8', raw: true });
@@ -380,7 +380,7 @@ export const ITEMS: ItemSpec[] = [
   {
     key: 'clock', name: 'Grandfather clock', w: m(0.5), h: m(1.9), density: 0.0016, friction: 0.7, hearts: 3, fragile: 14,
     draw(p, x, y, w, h) {
-      p.shape([[x, y + 30], [x + w * 0.2, y + 6], [x + w / 2, y], [x + w * 0.8, y + 6], [x + w, y + 30], [x + w, y + h], [x, y + h]], { fill: C.walnut, raw: true, width: 5, shade: [{ pts: [[x + w * 0.76, y], [x + w + 4, y], [x + w + 4, y + h], [x + w * 0.8, y + h]], color: '#41283A' }] });
+      p.shape([[x, y + 30], [x + w * 0.2, y + 6], [x + w / 2, y], [x + w * 0.8, y + 6], [x + w, y + 30], [x + w, y + h], [x, y + h]], { fill: '#5A1A3A', raw: true, width: 5, shade: [{ pts: [[x + w * 0.76, y], [x + w + 4, y], [x + w + 4, y + h], [x + w * 0.8, y + h]], color: '#3A0F22' }] });
       p.ellipse(x + w / 2, y + 48, w * 0.34, w * 0.34, { fill: C.cream, width: 4 });
       for (let k = 0; k < 12; k++) {
         const a = (k / 12) * Math.PI * 2;
@@ -388,19 +388,19 @@ export const ITEMS: ItemSpec[] = [
       }
       p.line([[x + w / 2, y + 48], [x + w / 2, y + 36]], { width: 2.5, raw: true });
       p.line([[x + w / 2, y + 48], [x + w / 2 + 9, y + 50]], { width: 2.5, raw: true });
-      p.rect(x + w * 0.2, y + h * 0.3, w * 0.6, h * 0.48, { fill: '#3B2534', r: 6, width: 4 });
+      p.rect(x + w * 0.2, y + h * 0.3, w * 0.6, h * 0.48, { fill: '#2A0B18', r: 4, width: 4 });
       p.line([[x + w / 2, y + h * 0.32], [x + w / 2 + 4, y + h * 0.66]], { width: 2.5, color: C.mustard, raw: true });
       p.ellipse(x + w / 2 + 4, y + h * 0.68, 10, 10, { fill: C.mustard, width: 3 });
-      p.rect(x - 4, y + h - 16, w + 8, 16, { fill: C.walnut, r: 3, width: 4 });
+      p.rect(x - 4, y + h - 16, w + 8, 16, { fill: '#3A0F22', r: 2, width: 4 });
       shine(p, [[x + 6, y + 34], [x + 6, y + h * 0.4]]);
     },
   },
   {
     key: 'chair', name: 'Kitchen chair', w: m(0.45), h: m(0.9), density: 0.0012, friction: 0.8, hearts: 1,
     draw(p, x, y, w, h) {
-      p.rect(x + 4, y, 10, h * 0.55, { fill: C.sky, r: 3, width: 3.5 });
-      for (const ry of [y + 10, y + h * 0.22, y + h * 0.34]) p.rect(x + 4, ry, w * 0.5, 8, { fill: C.sky, r: 3, width: 3 });
-      p.rect(x, y + h * 0.5, w, 14, { fill: C.sky, r: 4, width: 4, shade: [{ pts: [[x, y + h * 0.5 + 8], [x + w, y + h * 0.5 + 8], [x + w, y + h], [x, y + h]], color: '#3E8FB0' }] });
+      p.rect(x + 4, y, 10, h * 0.55, { fill: '#7E8A44', r: 2, width: 3.5 });
+      for (const ry of [y + 10, y + h * 0.22, y + h * 0.34]) p.rect(x + 4, ry, w * 0.5, 8, { fill: '#7E8A44', r: 2, width: 3 });
+      p.rect(x, y + h * 0.5, w, 14, { fill: '#7E8A44', r: 3, width: 4, shade: [{ pts: [[x, y + h * 0.5 + 8], [x + w, y + h * 0.5 + 8], [x + w, y + h], [x, y + h]], color: '#2A4636' }] });
       for (const lx of [x + 6, x + w - 8]) p.line([[lx, y + h * 0.5 + 12], [lx + (lx < x + w / 2 ? -2 : 2), y + h]], { width: 6, color: C.ink });
       p.line([[x + 8, y + h * 0.8], [x + w - 8, y + h * 0.8]], { width: 3.5, raw: true });
     },
@@ -410,9 +410,9 @@ export const ITEMS: ItemSpec[] = [
     draw(p, x, y, w, h) {
       const cx = x + w / 2;
       p.line([[cx, y + 64], [cx, y + h - 12]], { width: 7, raw: true });
-      p.line([[cx - 2, y + 70], [cx - 2, y + h - 16]], { width: 2, color: '#B9BCCB', raw: true });
-      p.rect(x + 6, y + h - 14, w - 12, 14, { fill: C.walnut, r: 6, width: 4.5 });
-      p.shape([[x + 14, y], [x + w - 14, y], [x + w, y + 66], [x, y + 66]], { fill: C.sticky, raw: true, shade: [{ pts: [[cx + 6, y], [x + w, y], [x + w, y + 66], [cx + 14, y + 66]], color: C.mustard }] });
+      p.line([[cx - 2, y + 70], [cx - 2, y + h - 16]], { width: 2, color: '#FF6A30', raw: true });
+      p.rect(x + 6, y + h - 14, w - 12, 14, { fill: '#3A0F22', r: 4, width: 4.5 });
+      p.shape([[x + 14, y], [x + w - 14, y], [x + w, y + 66], [x, y + 66]], { fill: '#FFB23F', raw: true, shade: [{ pts: [[cx + 6, y], [x + w, y], [x + w, y + 66], [cx + 14, y + 66]], color: '#FF6A30' }] });
       p.line([[x + 4, y + 62], [x + w - 4, y + 62]], { width: 3, color: C.terracotta, raw: true });
     },
   },
@@ -571,7 +571,7 @@ export const ITEMS: ItemSpec[] = [
       face(p, cx + 2, y + h * 0.54, mood, 0.38);
       for (let i = 0; i < 6; i++) p.line([[x + 6 + i * (w - 12) / 5, y + 24 + (i === 0 || i === 5 ? 10 : 0)], [x + 6 + i * (w - 12) / 5, y + h - 10]], { width: 2.2, raw: true });
       p.line([[x + 8, y + h * 0.78], [x + w - 8, y + h * 0.78]], { width: 3, color: C.walnut, raw: true });
-      p.rect(x, y + h - 12, w, 12, { fill: C.teal, r: 3, width: 3.5 });
+      p.rect(x, y + h - 12, w, 12, { fill: '#2A4636', r: 2, width: 3.5 });
     },
   },
 ];
