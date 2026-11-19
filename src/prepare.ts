@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import * as art from './art';
 import type { Pt } from './ink';
-import { BIOMES, blendAt, recolor } from './biomes';
+import { BIOMES, blendAt, posterize, recolor } from './biomes';
 import { stopBuildingArts } from './stops';
 import { treeArts } from './trees';
 import { tunnelMouthArt } from './tunnel';
@@ -38,7 +38,9 @@ function legArts(n: number): art.Art[] {
     for (const key of new Set([...Object.keys(prev), ...Object.keys(biome.ground)].map((k) => k.trim()))) {
       map[key] = mix(prev[key] ?? key, biome.ground[key] ?? key, w);
     }
-    out.push(Object.keys(map).length ? recolor(a, a.key, map) : a);
+    const coloured = Object.keys(map).length ? recolor(a, a.key, map) : a;
+    // The town's road (its asphalt and neon puddles) printed in the poster's inks like the rest of the town.
+    out.push(style === 'town' ? posterize(coloured) : coloured);
   }
   if (leg.biome !== 'meadow') out.push(recolor(grassStripArt(), grassKey(n), biome.grass));
   out.push(...biome.arts());

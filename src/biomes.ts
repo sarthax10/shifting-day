@@ -675,11 +675,11 @@ function skylineArt(key: string, h: number, base: string, seed: number, tall: nu
 
 /** A storefront for the main street, inked, with a sign board (the neon words are added in the game). */
 export const SHOPS = [
-  { name: 'DINER', colour: '#FF5C8A', wall: '#3A3A5E', awning: '#E84A6A' },
-  { name: 'LAUNDRY', colour: '#5CF2FF', wall: '#2E4A5E', awning: '#3FA7B5' },
-  { name: 'CINEMA', colour: '#FFC94A', wall: '#4A2E4E', awning: '#C8302C' },
-  { name: 'PIZZA', colour: '#7CFF8A', wall: '#3E3A4E', awning: '#2F7F6A' },
-  { name: 'HOTEL', colour: '#C79BFF', wall: '#2A2E50', awning: '#7A4B7E' },
+  { name: 'DINER', colour: '#FF6A6A', wall: '#1E2A44', awning: '#E3566A' },
+  { name: 'LAUNDRY', colour: '#5ED6C2', wall: '#1A3040', awning: '#2E6E6A' },
+  { name: 'CINEMA', colour: '#FFB23F', wall: '#2A2A4A', awning: '#E3263A' },
+  { name: 'PIZZA', colour: '#FF8A4A', wall: '#22283E', awning: '#C8502E' },
+  { name: 'HOTEL', colour: '#FF8AA0', wall: '#1C2440', awning: '#5A3A6E' },
 ];
 function shopArt(n: number): Art {
   const s = SHOPS[n];
@@ -722,25 +722,34 @@ function shopArt(n: number): Art {
 
 const TOWN: Biome = {
   key: 'town',
+  // A rainy night in the city, the way illustrators love to print it: deep indigo overhead, violet low
+  // down, and the city's own light glowing coral and peach along the horizon - cool above, warm below.
   sky: [
-    [0, '#07051A'],
-    [0.4, '#160C38'],
-    [0.7, '#3A145A'],
-    [0.88, '#8A2A78'],
-    [1, '#E04A90'],
+    [0, '#0B0E24'],
+    [0.38, '#1A1E46'],
+    [0.66, '#352C64'],
+    [0.86, '#8A4A7A'],
+    [1, '#F08A7A'],
   ],
-  ground: { '#C47F58': '#2A2838', '#9C5C48': '#222030', '#5E3A44': '#16141E', '#B06E50': '#2E2C3E', '#93594A': '#262434', '#774650': '#1E1C2A', '#EDB27D': '#3A3850', '#F8CC97': '#4C4A64', '#E2A27A': '#5A5874', '#FFE2BC': '#8A8AA8', '#D69A6A': '#4A4860', '#B97E5E': '#3A3850' },
-  grass: { '#2F6B55': '#1A1A2E', '#3E8A68': '#262640', '#4F9C74': '#2E2E48', '#62AE7E': '#36365A' },
+  ground: { '#C47F58': '#1E2236', '#9C5C48': '#181C2E', '#5E3A44': '#0E1020', '#B06E50': '#22283E', '#93594A': '#1C2034', '#774650': '#141828', '#EDB27D': '#2E3450', '#F8CC97': '#3E4664', '#E2A27A': '#4E567A', '#FFE2BC': '#8A90B0', '#D69A6A': '#363E5A', '#B97E5E': '#2E3450' },
+  grass: { '#2F6B55': '#121628', '#3E8A68': '#1C2236', '#4F9C74': '#262C44', '#62AE7E': '#323A56' },
   grip: 0.8,
   lamps: true,
-  arts: () => [megaArt(false), megaArt(true), cityArt('far', false), cityArt('far', true), cityArt('mid', false), cityArt('mid', true), railArt(), trainArt(), wetStreetArt(), holoFishArt(), ...SHOPS.map((_, i) => shopArt(i))],
+  // Every picture of the town printed in one night palette: indigo and teal-navy buildings, warm amber
+  // windows, and a few neon accents in coral, mint and gold.
+  arts: () => [
+    ...[megaArt(false), megaArt(true)].map((a) => posterize(a, ['#8A78B8', 0.5])),
+    ...[cityArt('far', false), cityArt('far', true)].map((a) => posterize(a, ['#5E5498', 0.32])),
+    ...[cityArt('mid', false), cityArt('mid', true)].map((a) => posterize(a, ['#3A3A70', 0.12])),
+    ...[railArt(), trainArt(), wetStreetArt(), holoFishArt(), ...SHOPS.map((_, i) => shopArt(i))].map((a) => posterize(a)),
+  ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_town', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
     // The city's light thrown up onto the low clouds, magenta at the horizon; lightning now and then.
-    const glow = scene.add.image(960, 760, 'halo').setScrollFactor(0).setDepth(-48).setDisplaySize(2800, 760).setTint(0xff3fa0).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD);
-    const flash = scene.add.rectangle(0, 0, 1920, 1080, 0xdfe6ff, 0).setOrigin(0).setScrollFactor(0).setDepth(-47);
+    const glow = scene.add.image(960, 760, 'halo').setScrollFactor(0).setDepth(-48).setDisplaySize(2800, 760).setTint(0xff8a6a).setAlpha(0.32).setBlendMode(Phaser.BlendModes.ADD);
+    const flash = scene.add.rectangle(0, 0, 1920, 1080, 0xe8e6ff, 0).setOrigin(0).setScrollFactor(0).setDepth(-47);
     const clouds: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < 6; i++) clouds.push(scene.add.image(i * 720 - 300, 120 + ((i * 97) % 160), `bd_cloud_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-46).setTint(0x5a2a7a).setAlpha(0.8).setScale(1.1));
+    for (let i = 0; i < 6; i++) clouds.push(scene.add.image(i * 720 - 300, 120 + ((i * 97) % 160), `bd_cloud_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-46).setTint(0x3a3470).setAlpha(0.75).setScale(1.1));
     // Each lit layer twice: the buildings, then a blurred copy of only their lights, added on top to bloom.
     const layer = (key: string, bottom: number, sf: number, depth: number, offset = 0, bloom = 0.85) => {
       tiles(scene, key, bottom, sf, depth, o.reach, offset);
@@ -750,21 +759,21 @@ const TOWN: Biome = {
     layer('bd_n_mega', o.horizon - 180, 0.05, -44, 0, 0.7);
     const beacons: Phaser.GameObjects.Image[] = [];
     const megaN = Math.ceil((1920 + o.reach * 0.05) / TILE) + 1;
-    for (let i = 0; i < megaN; i++) for (const [bx, by] of MEGA_BEACONS) beacons.push(scene.add.image(i * TILE + bx, o.horizon - 180 - 1100 + by, 'halo').setScrollFactor(0.05, 1).setDepth(-43.8).setDisplaySize(30, 30).setTint(0xff3030).setBlendMode(Phaser.BlendModes.ADD));
-    haze(scene, o.horizon - 520, 420, 0xff3fa0, 0.22, -43, 0.05);
+    for (let i = 0; i < megaN; i++) for (const [bx, by] of MEGA_BEACONS) beacons.push(scene.add.image(i * TILE + bx, o.horizon - 180 - 1100 + by, 'halo').setScrollFactor(0.05, 1).setDepth(-43.8).setDisplaySize(30, 30).setTint(0xff5a5a).setBlendMode(Phaser.BlendModes.ADD));
+    haze(scene, o.horizon - 520, 420, 0xb0607a, 0.18, -43, 0.05);
     layer('bd_n_far', o.horizon - 110, 0.12, -42);
-    haze(scene, o.horizon - 380, 300, 0x7a2a9a, 0.3, -41, 0.12);
+    haze(scene, o.horizon - 380, 300, 0x3a3a7a, 0.3, -41, 0.12);
     // A giant hologram fish, swimming slowly across the sky between the towers, flickering now and then.
     const fish = scene.add.image(0, o.horizon - 560, 'holo_fish').setScrollFactor(0.07, 1).setDepth(-43.4).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.55).setScale(1.3);
     // Steam rising from the street's grates.
     for (let x = Math.max(2400, from(o)); x < Math.min(o.finish - 600, to(o)); x += 1300) {
-      scene.add.particles(x, o.groundY(x) + 4, 'halo', { lifespan: 2600, speedX: { min: -14, max: 14 }, speedY: { min: -60, max: -30 }, scale: { start: 0.25, end: 1.1 }, alpha: { start: 0.22, end: 0 }, tint: 0xd8d0f0, frequency: 220 }).setDepth(-5.2);
+      scene.add.particles(x, o.groundY(x) + 4, 'halo', { lifespan: 2600, speedX: { min: -14, max: 14 }, speedY: { min: -60, max: -30 }, scale: { start: 0.25, end: 1.1 }, alpha: { start: 0.22, end: 0 }, tint: 0xc8c8e8, frequency: 220 }).setDepth(-5.2);
     }
     // Flying cars crossing between the towers, their lights trailing.
     const flyers = [0, 1, 2, 3].map((k) => {
-      const body = scene.add.rectangle(0, 0, 34, 10, 0x1a1430).setScrollFactor(0).setDepth(-40.5);
-      const lamp = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.4).setDisplaySize(26, 16).setTint(k % 2 ? 0x3ff2ff : 0xffb43f).setBlendMode(Phaser.BlendModes.ADD);
-      const trail = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.45).setDisplaySize(160, 8).setTint(k % 2 ? 0x3ff2ff : 0xff3fd0).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
+      const body = scene.add.rectangle(0, 0, 34, 10, 0x0a0712).setScrollFactor(0).setDepth(-40.5);
+      const lamp = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.4).setDisplaySize(26, 16).setTint(k % 2 ? 0xf3e3cc : 0xffb23f).setBlendMode(Phaser.BlendModes.ADD);
+      const trail = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.45).setDisplaySize(160, 8).setTint(k % 2 ? 0x5ed6c2 : 0xff6a6a).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
       return { body, lamp, trail, y: 160 + k * 90, speed: (0.05 + k * 0.02) * (k % 2 ? 1 : -1), off: k * 700 };
     });
     layer('bd_n_mid', o.horizon - 20, 0.25, -38, -500);
@@ -777,20 +786,20 @@ const TOWN: Biome = {
       BILLBOARDS.forEach((b, k) => {
         const x = i * TILE - 500 + b.x + b.w / 2;
         const y = midTop + b.y + b.h / 2;
-        const c = [0xff3fd0, 0x3ff2ff, 0xffb43f][(i + k) % 3];
+        const c = [0xff6a6a, 0x5ed6c2, 0xffb23f][(i + k) % 3];
         const panel = scene.add.rectangle(x, y, b.w, b.h, c, 0.28).setScrollFactor(0.25, 1).setDepth(-37.85).setStrokeStyle(3, c, 0.9);
         const halo = scene.add.image(x, y, 'halo').setScrollFactor(0.25, 1).setDepth(-37.84).setDisplaySize(b.w * 1.6, b.h * 2.2).setTint(c).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
-        const text = scene.add.text(x, y, words[(i * 3 + k) % words.length], { fontFamily: 'Karla', fontSize: '26px', fontStyle: 'bold', color: '#FFFFFF' }).setOrigin(0.5).setScrollFactor(0.25, 1).setDepth(-37.83).setShadow(0, 0, Phaser.Display.Color.IntegerToColor(c).rgba, 12, true, true);
+        const text = scene.add.text(x, y, words[(i * 3 + k) % words.length], { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '30px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0.5).setScrollFactor(0.25, 1).setDepth(-37.83).setShadow(0, 0, Phaser.Display.Color.IntegerToColor(c).rgba, 12, true, true);
         text.setScale(Math.min(1, (b.w * 0.86) / text.width));
         boards.push({ text, panel, halo, n: i * 3 + k });
       });
     }
-    haze(scene, o.horizon - 300, 260, 0x3a1e6a, 0.3, -37, 0.25);
+    haze(scene, o.horizon - 300, 260, 0x1e2448, 0.3, -37, 0.25);
     // The elevated railway, and a train along it now and then.
     tiles(scene, 'bd_n_rail', o.horizon + 60, 0.42, -36, o.reach);
     const deckY = o.horizon + 60 - 520 + RAIL_DECK;
     const train = scene.add.image(0, deckY + 4, 'bd_n_train').setOrigin(0, 1).setScrollFactor(0.42, 1).setDepth(-35.9);
-    const trainGlow = scene.add.image(0, deckY - 46, 'halo').setScrollFactor(0.42, 1).setDepth(-35.85).setDisplaySize(1600, 70).setTint(0x9fe8ff).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
+    const trainGlow = scene.add.image(0, deckY - 46, 'halo').setScrollFactor(0.42, 1).setDepth(-35.85).setDisplaySize(1600, 70).setTint(0xffd27a).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
     // Main street: storefronts behind the road, each with a buzzing neon sign and its reflection.
     const signs: { glow: Phaser.GameObjects.Image; text: Phaser.GameObjects.Text; buzz: number }[] = [];
     let i = 0;
@@ -802,7 +811,7 @@ const TOWN: Biome = {
       const gy = o.groundY(x) + 6;
       scene.add.image(x, gy, `shop_${n}`).setOrigin(0.5, 1).setDepth(-9).setScale(k);
       const sy = gy - (460 - 242) * k;
-      const text = scene.add.text(x, sy, SHOPS[n].name, { fontFamily: '"Fraunces", serif', fontSize: '40px', color: SHOPS[n].colour, stroke: '#ffffff', strokeThickness: 1 }).setOrigin(0.5).setDepth(-8.9).setShadow(0, 0, SHOPS[n].colour, 16, true, true);
+      const text = scene.add.text(x, sy, SHOPS[n].name, { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '44px', color: SHOPS[n].colour, stroke: '#0A0712', strokeThickness: 2, letterSpacing: 3 }).setOrigin(0.5).setDepth(-8.9).setShadow(0, 0, SHOPS[n].colour, 16, true, true);
       const g = scene.add.image(x, sy, 'halo').setDepth(-8.8).setDisplaySize(380, 140).setTint(Phaser.Display.Color.HexStringToColor(SHOPS[n].colour).color).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
       // The sign and the shop window, mirrored as long streaks on the wet road.
       scene.add.image(x, o.groundY(x) + 30, 'halo').setOrigin(0.5, 0).setDepth(0.6).setDisplaySize(70, 150).setTint(Phaser.Display.Color.HexStringToColor(SHOPS[n].colour).color).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
@@ -813,8 +822,8 @@ const TOWN: Biome = {
     if (!scene.textures.exists('raindrop')) {
       const t = scene.textures.createCanvas('raindrop', 3, 40)!;
       const g = t.context.createLinearGradient(0, 0, 0, 40);
-      g.addColorStop(0, 'rgba(200,215,255,0)');
-      g.addColorStop(1, 'rgba(220,230,255,0.9)');
+      g.addColorStop(0, 'rgba(210,215,255,0)');
+      g.addColorStop(1, 'rgba(225,228,255,0.85)');
       t.context.fillStyle = g;
       t.context.fillRect(0, 0, 3, 40);
       t.refresh();
@@ -876,7 +885,7 @@ const TOWN: Biome = {
         // Splashes: little rings popping on the road in front of the camera.
         if (Math.random() < 0.6) {
           const x = scrollX + Math.random() * 1920;
-          const e = scene.add.ellipse(x, 900 + Math.random() * 30, 6, 2, 0xdfe6ff, 0.6).setDepth(1);
+          const e = scene.add.ellipse(x, 900 + Math.random() * 30, 6, 2, 0xdfe2ff, 0.6).setDepth(1);
           splashes.push(e);
           scene.tweens.add({ targets: e, scaleX: 5, scaleY: 3, alpha: 0, duration: 420, onComplete: () => (e.destroy(), splashes.splice(splashes.indexOf(e), 1)) });
         }
@@ -1047,6 +1056,55 @@ const MEADOW: Biome = {
 export const BIOMES: Record<BiomeKey, Biome> = { meadow: MEADOW, autumn: AUTUMN, snow: SNOW, town: TOWN, coast: COAST };
 
 /** An art with some of its colours swapped: how the ground and grass take on a biome's colours. */
+/**
+ * Prints a picture of the town in one night palette, mapping every colour in it by its family, for the
+ * cool-against-warm look of the city prints people pin: dark and muted tones (walls, roofs, shadows) become
+ * indigo, or teal-navy where they were teal, at the same lightness; lit windows and pale blue lights turn
+ * warm amber; neon becomes a few clear accents - cyan to mint, violet and magenta to coral and rose, green
+ * to gold - and near-whites a warm white.
+ */
+export function posterize(art: Art, haze?: [string, number]): Art {
+  const toHsl = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const mx = Math.max(r, g, b);
+    const mn = Math.min(r, g, b);
+    const l = (mx + mn) / 2;
+    const d = mx - mn;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let h = 0;
+    if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [(h * 60 + 360) % 360, s, l];
+  };
+  const toHex = (h: number, s: number, l: number) => {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return '#' + [r, g, b].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
+  const map = (hex: string) => {
+    const [h, s, l] = toHsl(hex);
+    if (l > 0.86 && s < 0.6) return toHex(38, 0.7, Math.min(0.93, l * 0.98));
+    const warm = h < 50 || h > 345;
+    if (l < 0.5 || s < 0.35) {
+      // Structure: indigo night, or teal-navy where it was teal, keeping how light or dark it was.
+      if (warm && s > 0.3 && l > 0.3) return toHex(h, Math.min(0.7, s), l);
+      const c = toHex(h >= 150 && h < 215 ? 202 : 232, Math.min(0.42, s * 0.55 + 0.12), l * 0.95);
+      // Distance: far layers sink into the violet haze, so the skyline reads in planes.
+      return haze ? mix(c, haze[0], haze[1]).toUpperCase() : c;
+    }
+    // Lights.
+    if (warm) return hex;
+    if (h >= 150 && h < 200) return toHex(168, 0.6, Math.min(0.7, Math.max(0.58, l)));
+    if (h >= 200 && h < 260) return toHex(40, 1, Math.max(0.68, l * 0.95));
+    if (h >= 260 && h <= 345) return toHex(h < 300 ? 350 : 0, 0.95, Math.min(0.72, Math.max(0.62, l)));
+    return toHex(40, 1, Math.max(0.6, l));
+  };
+  return { ...art, svg: art.svg.replace(/#[0-9A-Fa-f]{6}\b/g, (m) => map(m)) };
+}
+
 export function recolor(art: Art, key: string, map: Record<string, string>): Art {
   let svg = art.svg;
   const swap = (from: string, to: string) => {

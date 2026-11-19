@@ -17,7 +17,8 @@ import { TILE, plainPen, rnd, wave } from './backdrop';
 
 // ===================================================================================== Neon Town
 
-const NEON = ['#FF3FD0', '#3FF2FF', '#FCEE0A', '#FFB43F', '#B57BFF', '#FF3B3B', '#3AFF8A'];
+/** The town's neon: coral, mint, gold, rose and warm white - a few warm and cool lights on an indigo night. */
+const NEON = ['#FF6A6A', '#5ED6C2', '#FFB23F', '#FF8AA0', '#F3E3CC', '#FF8A4A', '#FFD27A'];
 
 /** A tall stack of floors: a block with set-backs near the top, a spire or antennae. */
 function tower(p: ReturnType<typeof plainPen>, x: number, w: number, h: number, base: number, fill: string, seed: number) {

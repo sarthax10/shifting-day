@@ -69,10 +69,10 @@ function gradeFor(camera: Phaser.Cameras.Scene2D.Camera, biome: BiomeKey) {
       cm.brightness(1.01, true);
       break;
     case 'town':
-      // Rainy neon night: heavy saturation and contrast so the signs sing, pulled a hair darker.
-      cm.saturate(0.4, false);
-      cm.contrast(0.18, true);
-      cm.brightness(0.97, true);
+      // Rainy neon night: enough saturation and contrast for the signs to sing, without burning the print.
+      cm.saturate(0.14, false);
+      cm.contrast(0.1, true);
+      cm.brightness(1.0, true);
       break;
     case 'coast':
       // Bright sea light: airy and a little bleached, like a beach photo at noon.
