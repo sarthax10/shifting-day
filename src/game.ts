@@ -1126,7 +1126,7 @@ export class PlayScene extends Phaser.Scene {
 
   /** The start of a leg: its name, large, and the mood of the place, fading away. */
   private legCard() {
-    const moods: Record<string, string> = { autumn: 'A misty autumn morning', snow: 'Blue hour on the high pass', town: 'A rainy night in town', coast: 'A bright morning by the sea', meadow: '' };
+    const moods: Record<string, string> = { autumn: 'A misty autumn morning', snow: 'The violet hour on the high pass', town: 'A rainy night in town', coast: 'A bright morning by the sea', meadow: '' };
     // The leg's title card, in the poster's type: the place in Anton, the mood in small mono on an ink strip.
     const t1 = this.add.text(W / 2, 330, `${this.leg.title.toUpperCase()}`, { fontFamily: POSTER_FONT, fontSize: '128px', color: BONE_CSS, stroke: INK_CSS, strokeThickness: 12, letterSpacing: 3 }).setOrigin(0.5).setScrollFactor(0).setDepth(150).setAlpha(0).setShadow(8, 10, '#E3263A', 0, true, false);
     const t2 = this.add.text(W / 2, 450, `LEG ${this.leg.n}  ·  ${moods[this.leg.biome].toUpperCase()}`, { fontFamily: POSTER_MONO, fontStyle: 'bold', fontSize: '28px', color: BONE_CSS, letterSpacing: 6, backgroundColor: INK_CSS, padding: { x: 20, y: 10 } }).setOrigin(0.5).setScrollFactor(0).setDepth(150).setAlpha(0);

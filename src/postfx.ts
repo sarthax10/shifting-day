@@ -63,11 +63,10 @@ function gradeFor(camera: Phaser.Cameras.Scene2D.Camera, biome: BiomeKey) {
       cm.brightness(1.01, true);
       break;
     case 'snow':
-      // Blue hour on the pass: cool, slightly flattened, a touch brighter.
-      cm.hue(6, false);
-      cm.saturate(-0.1, true);
-      cm.contrast(0.04, true);
-      cm.brightness(1.03, true);
+      // The violet hour on the pass: the print's own colours, a little extra punch for the snow.
+      cm.saturate(0.08, false);
+      cm.contrast(0.06, true);
+      cm.brightness(1.01, true);
       break;
     case 'town':
       // Rainy neon night: heavy saturation and contrast so the signs sing, pulled a hair darker.

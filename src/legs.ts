@@ -2,7 +2,7 @@ import { LEG1_FEATURES, type Feature } from './terrain';
 
 /**
  * The trip, in five legs. Each leg is its own stretch of road through its own biome, at its own time
- * of day and weather: the afternoon you leave, a misty autumn morning in the valley, blue hour and snow
+ * of day and weather: the afternoon you leave, a misty autumn morning in the valley, the violet hour and snow
  * on the pass, a rainy night in town, and a bright morning on the coast as you arrive. Every leg but the last ends at a roadside stop where you park,
  * with the handbrake on, to save the trip.
  */

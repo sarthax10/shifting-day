@@ -8,7 +8,7 @@ import { SWITCH, TUNNEL } from './tunnel';
 import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
 import { cloudBankArt as printCloudArt } from './oldstreet';
 import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
-import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from './night';
+import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostMoonArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from './night';
 
 /**
  * The look of each leg's world. Every biome follows the same rules (see docs/JOURNEY.md):
@@ -488,8 +488,10 @@ class Aurora {
       return c;
     };
     this.strips = [
-      strip([[0, 'rgba(150,90,255,0)'], [0.3, 'rgba(140,100,255,0.35)'], [0.6, 'rgba(60,230,200,0.7)'], [0.86, 'rgba(110,255,160,1)'], [0.95, 'rgba(220,255,220,1)'], [1, 'rgba(255,120,200,0.5)']]),
-      strip([[0, 'rgba(190,90,255,0)'], [0.5, 'rgba(170,90,255,0.45)'], [0.9, 'rgba(120,160,255,0.7)'], [1, 'rgba(255,140,220,0.3)']]),
+      // The aurora in the poster's inks: a red one, as the high passes sometimes see, burning to ember and
+      // gold at its hem.
+      strip([[0, 'rgba(120,40,120,0)'], [0.3, 'rgba(160,50,110,0.35)'], [0.6, 'rgba(227,38,58,0.6)'], [0.86, 'rgba(255,106,48,0.95)'], [0.95, 'rgba(255,178,63,1)'], [1, 'rgba(243,227,204,0.5)']]),
+      strip([[0, 'rgba(120,40,140,0)'], [0.5, 'rgba(150,60,140,0.45)'], [0.9, 'rgba(227,80,110,0.7)'], [1, 'rgba(255,178,63,0.3)']]),
     ];
     this.seeds = Array.from({ length: w }, () => Math.random());
   }
@@ -550,29 +552,32 @@ function snowPineArt(): Art {
 /** An orange snow pole: how drivers find the road edge when everything is white. */
 function snowPoleArt(): Art {
   return inked('snowpole', 30, 200, (p) => {
-    p.rect(10, 10, 10, 190, { fill: '#F2F2F2', width: 3, r: 3 });
-    for (let y = 14; y < 120; y += 34) p.rect(10, y, 10, 16, { fill: '#EE6A3D', stroke: null, r: 0 });
+    p.rect(10, 10, 10, 190, { fill: '#F3E3CC', width: 3, r: 3 });
+    for (let y = 14; y < 120; y += 34) p.rect(10, y, 10, 16, { fill: '#E3263A', stroke: null, r: 0 });
   });
 }
 
 const SNOW: Biome = {
   key: 'snow',
+  // The violet hour on the pass, printed: ink-violet overhead, the last of the dusk a rose glow low down.
   sky: [
-    [0, '#060E26'],
-    [0.4, '#12285A'],
-    [0.7, '#2E4C88'],
-    [0.88, '#6E7EB8'],
-    [1, '#B8A8D0'],
+    [0, '#0E0A1E'],
+    [0.35, '#1E1438'],
+    [0.62, '#38245A'],
+    [0.84, '#6A3A72'],
+    [1, '#B0607A'],
   ],
-  ground: { '#C47F58': '#E8EEF6', '#9C5C48': '#B8C6DC', '#5E3A44': '#6A7898', '#B06E50': '#D0DAEA', '#93594A': '#A8B6CE', '#774650': '#7E8CAA', '#EDB27D': '#C9D3E2', '#F8CC97': '#E2E8F2', '#E2A27A': '#FFFFFF' },
-  grass: { '#2F6B55': '#DCE6F4', '#3E8A68': '#F4F8FF', '#4F9C74': '#C6D4EA', '#62AE7E': '#FFFFFF' },
+  // A snow road in bone and lavender, its ruts and strata violet.
+  ground: { '#C47F58': '#EDE2E6', '#9C5C48': '#B8A6CC', '#5E3A44': '#4A3470', '#B06E50': '#D6CADA', '#93594A': '#A08EBC', '#774650': '#6A5290', '#EDB27D': '#D0C2D8', '#F8CC97': '#F3E3CC', '#E2A27A': '#FFF6EA' },
+  grass: { '#2F6B55': '#D6CADA', '#3E8A68': '#F3E3CC', '#4F9C74': '#C2B2D2', '#62AE7E': '#FFF6EA' },
   grip: 0.55,
   lamps: true,
   arts: () => [
     frostPeaksArt(true),
     frostPeaksArt(false),
-    frostForestArt('bd_s_pines_far', 520, '#2A3E70', '#8EA6D8', 61, 0.8, '#AEBCE0'),
-    frostForestArt('bd_s_pines', 560, '#14213E', '#7E96CC', 67, 1.25, '#D6E0F4'),
+    frostForestArt('bd_s_pines_far', 520, '#3A2A5E', '#C8B0D8', 61, 0.8, '#B8A4CC'),
+    frostForestArt('bd_s_pines', 560, '#1A2E24', '#E8D2DC', 67, 1.25, '#DCCEDC'),
+    frostMoonArt(),
     frostLakeArt(),
     snowNearArt(),
     snowPoleArt(),
@@ -581,17 +586,17 @@ const SNOW: Biome = {
     scene.add.image(0, 0, skyTexture(scene, 'sky_snow', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
     // Stars, twinkling.
     const stars: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < 120; i++) stars.push(scene.add.image(Math.random() * 1920, Math.random() * 420, 'halo').setScrollFactor(0).setDepth(-49).setDisplaySize(6, 6).setTint(0xeaf2ff).setAlpha(0.4 + Math.random() * 0.6));
+    for (let i = 0; i < 120; i++) stars.push(scene.add.image(Math.random() * 1920, Math.random() * 420, 'halo').setScrollFactor(0).setDepth(-49).setDisplaySize(6, 6).setTint(i % 9 ? 0xf3e3cc : 0xffb23f).setAlpha(0.4 + Math.random() * 0.6));
     // The aurora: a live ribbon across the whole sky, and its reflection in the frozen lake.
     const aurora = new Aurora(scene, 'aurora_live');
     aurora.draw(0);
     scene.add.image(960, -40, aurora.key).setOrigin(0.5, 0).setScrollFactor(0.02, 0).setDepth(-47).setDisplaySize(2400, 760).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.95);
-    const glow = scene.add.image(960, 420, 'halo').setScrollFactor(0.02, 0).setDepth(-48).setDisplaySize(2600, 700).setTint(0x40c090).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD);
-    scene.add.circle(1620, 170, 34, 0xf4f6ff).setScrollFactor(0.02, 0).setDepth(-46);
-    scene.add.image(1620, 170, 'halo').setScrollFactor(0.02, 0).setDepth(-46).setDisplaySize(260, 260).setTint(0xb8c8ff).setAlpha(0.5);
+    const glow = scene.add.image(960, 420, 'halo').setScrollFactor(0.02, 0).setDepth(-48).setDisplaySize(2600, 700).setTint(0xe3566a).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD);
+    scene.add.image(1620, 170, 'halo').setScrollFactor(0.02, 0).setDepth(-46).setDisplaySize(380, 380).setTint(0xf3c8c8).setAlpha(0.45);
+    scene.add.image(1620, 170, 'bd_s_moon').setScrollFactor(0.02, 0).setDepth(-46).setScale(0.62);
     // Two ranges of peaks: the far one paler and hazier.
     tiles(scene, 'bd_s_peaks_far', o.horizon - 150, 0.05, -43, o.reach, -700);
-    const fog = fogTexture(scene, 'fog_cold', '#A8B8E0');
+    const fog = fogTexture(scene, 'fog_violet', '#9A86C0');
     const fogs = [fogBand(scene, fog, o.horizon - 300, 0.07, -42.5, 0.35, 1.3)];
     tiles(scene, 'bd_s_peaks', o.horizon - 60, 0.09, -42, o.reach);
     fogs.push(fogBand(scene, fog, o.horizon - 200, 0.13, -39, 0.35, 1.1));
@@ -601,8 +606,8 @@ const SNOW: Biome = {
     // The cabins' windows glow in each copy of the lake; the moon shines in the ice.
     const n = Math.ceil((1920 + o.reach * 0.32) / TILE) + 1;
     for (let i = 0; i < n; i++) for (const cx of LAKE_CABINS) scene.add.image(i * TILE - 300 + cx, o.horizon + 40 - 380 + 110, 'halo').setScrollFactor(0.32, 1).setDepth(-35).setDisplaySize(130, 90).setTint(0xffc060).setAlpha(0.7).setBlendMode(Phaser.BlendModes.ADD);
-    const moonGlint = scene.add.image(1620, o.horizon + 40 - 380 + 230, 'halo').setScrollFactor(0.02, 1).setDepth(-35.5).setDisplaySize(70, 150).setTint(0xdfe8ff).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD);
-    haze(scene, o.horizon - 260, 260, 0x8ea0d8, 0.12, -30, 0.3);
+    const moonGlint = scene.add.image(1620, o.horizon + 40 - 380 + 230, 'halo').setScrollFactor(0.02, 1).setDepth(-35.5).setDisplaySize(70, 150).setTint(0xf3e3cc).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD);
+    haze(scene, o.horizon - 260, 260, 0x8e78b8, 0.1, -30, 0.3);
     // Roadside: snowy pines and orange snow poles marking the road edge.
     let seed = 3;
     for (let x = Math.max(1900, from(o)); x < Math.min(o.finish - 300, to(o)); x += 420 + rnd(11, seed) * 380, seed++) scene.add.image(x, o.groundY(x) + 8, 'snowpine').setOrigin(0.5, 1).setDepth(-9).setScale(0.8 + rnd(13, seed) * 0.5).setFlipX(seed % 2 === 0);
@@ -612,13 +617,13 @@ const SNOW: Biome = {
       f.vx = -0.8 - Math.random() * 0.6;
       f.vy = 1.4 + Math.random() * 1.2;
       f.sway = 0.8;
-      f.img.setDisplaySize(14, 14).setTint(0xffffff).setAlpha(0.9);
+      f.img.setDisplaySize(14, 14).setTint(0xfff6ea).setAlpha(0.9);
     });
     const far = fallers(scene, 'halo', 160, -28, (f) => {
       f.vx = -0.4 - Math.random() * 0.3;
       f.vy = 0.5 + Math.random() * 0.6;
       f.sway = 0.4;
-      f.img.setDisplaySize(6, 6).setTint(0xeef4ff).setAlpha(0.8);
+      f.img.setDisplaySize(6, 6).setTint(0xf3e3cc).setAlpha(0.8);
     });
     let lastScroll = 0;
     return {

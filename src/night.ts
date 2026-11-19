@@ -10,7 +10,7 @@ import { TILE, plainPen, rnd, wave } from './backdrop';
  * signs; an elevated railway; and, over each lit layer, a blurred copy of only its lights, added on top,
  * so neon and windows bloom.
  *
- * Frostpeak Pass, at blue hour under the aurora: jagged peaks lit by the moon on one side and in deep blue
+ * Frostpeak Pass, at the violet hour under a red aurora: jagged peaks lit by the moon on one side and in deep blue
  * shadow on the other; pine forests as spiky silhouettes, not stamped rows, with moonlit rims; rolling
  * snowdrifts with blue shadows; and a dark frozen lake that reflects the sky, with warm cabin windows.
  */
@@ -344,18 +344,19 @@ export function trainArt(): Art {
 // ===================================================================================== Frostpeak Pass
 
 /**
- * Jagged peaks under the moon (which is to the right): each mountain split by its ridge into a lit face,
- * pale lavender-white, and a face in deep blue shadow, with rock where the snow cannot hold. `far` makes a
- * paler, hazier range.
+ * Jagged peaks under the moon (which is to the right), printed: each mountain split by its ridge into a
+ * moonlit face in bone and a face in violet shadow screened with halftone dots, plum rock where the snow
+ * cannot hold. `far` makes a paler range, sinking into the dusk.
  */
 export function frostPeaksArt(far: boolean): Art {
   const key = far ? 'bd_s_peaks_far' : 'bd_s_peaks';
   const h = 760;
   const p = plainPen(key);
   const seed = far ? 401 : 431;
-  const lit = far ? '#B8C4E6' : '#E8EEFA';
-  const shade = far ? '#7A7AB8' : '#4E4C90';
-  const rock = far ? '#5E6AA0' : '#2E3A6A';
+  const lit = far ? '#B49CC4' : '#EDE0E4';
+  const shade = far ? '#6E5296' : '#4A3478';
+  const deep = far ? '#4A3470' : '#24183A';
+  const rock = far ? '#5A3A6E' : '#3A1A3E';
   const mts: [number, number, number][] = [];
   for (let i = 0, x = 0; x < TILE; i++) {
     const w = (far ? 380 : 460) + rnd(seed, i) * 380;
@@ -382,12 +383,14 @@ export function frostPeaksArt(far: boolean): Art {
         right.push([sx + (cx + w / 2 - sx) * t + jag * 0.5, sy + ht * t + (k % 2 ? 14 : -16)]);
       }
       const outline: Pt[] = [[cx - w / 2, base], ...left.reverse(), [sx, sy], ...right, [cx + w / 2, base]];
-      p.shape(outline, { fill: shade, stroke: null, raw: true, wobble: 0.2 });
+      p.shape(outline, { fill: shade, stroke: null, raw: true, wobble: 0.2, shade: [{ pts: outline, color: deep }] });
       // The lit face: from the summit, the ridge comes down and to the right; everything right of it faces
       // the moon.
       const ridge: Pt[] = [[sx, sy]];
       for (let k = 1; k <= 4; k++) ridge.push([sx + w * 0.06 * k + (rnd(seed + 5, cx0 + k) - 0.5) * 30, sy + ht * 0.22 * k]);
       p.shape([...ridge, [cx + w / 2, base], ...right.slice().reverse()], { fill: lit, stroke: null, raw: true, wobble: 0.2 });
+      // The moon catching the ridge line, a thin bone rim.
+      p.line(ridge, { width: far ? 2 : 3, color: '#FFF6EA', raw: true, opacity: 0.75, wobble: 0 });
       // Gullies on the lit face, and rock on the shadow face low down.
       for (let k = 0; k < 4; k++) {
         const gx = sx + w * (0.1 + k * 0.08);
@@ -479,8 +482,8 @@ export function frostForestArt(key: string, h: number, colour: string, rim: stri
   const under: Pt[] = [];
   for (let x = 0; x <= TILE; x += 16) under.push([x, at(x) - 30 * size]);
   p.shape([...under, [TILE, h], [0, h]], { fill: colour, stroke: null, raw: true, wobble: 0.2 });
-  const lit = near ? '#EEF2FC' : mix('#EEF2FC', '#8E9ACC', 0.45);
-  const shade = near ? '#8E94D0' : mix('#8E94D0', colour, 0.4);
+  const lit = near ? '#F3E3CC' : mix('#F3E3CC', '#8E78B4', 0.45);
+  const shade = near ? '#9A84C0' : mix('#9A84C0', colour, 0.4);
   for (const [x, th] of trees) {
     for (const shift of [0, x < 80 ? TILE : x > TILE - 80 ? -TILE : 0].filter((v, n) => n === 0 || v !== 0)) {
       snowyPine(p, x + shift, at(x) + 6, th, colour, lit, shade, near);
@@ -491,8 +494,8 @@ export function frostForestArt(key: string, h: number, colour: string, rim: stri
   // Snow drifted along the forest's edge, with a lit crest.
   const edge: Pt[] = [];
   for (let x = 0; x <= TILE; x += 16) edge.push([x, at(x) + 4 + Math.sin(x / 70) * 6]);
-  p.shape([...edge, [TILE, h], [0, h]], { fill: snow, stroke: null, raw: true, wobble: 0.3 });
-  p.line(edge, { width: 2.5, color: '#FFFFFF', raw: true, opacity: 0.8, wobble: 0 });
+  p.shape([...edge, [TILE, h], [0, h]], { fill: snow, stroke: null, raw: true, wobble: 0.3, shade: [{ pts: [...edge.map(([x, y]): Pt => [x, y + 30]), [TILE, h], [0, h]], color: '#8E78B4' }] });
+  p.line(edge, { width: 2.5, color: '#FFF6EA', raw: true, opacity: 0.8, wobble: 0 });
   return { key, svg: p.svg(TILE, h), w: TILE, h, blur: near ? 0.2 : 0.9 };
 }
 
@@ -506,37 +509,38 @@ export function frostLakeArt(): Art {
   const h = 380;
   const p = plainPen(key);
   // Far shore snow.
-  p.shape([[0, 118], [TILE, 118], [TILE, 200], [0, 200]], { fill: '#C6D2EE', stroke: null, raw: true, wobble: 0.3 });
+  p.shape([[0, 118], [TILE, 118], [TILE, 200], [0, 200]], { fill: '#D6C6DA', stroke: null, raw: true, wobble: 0.3 });
   // The ice, dark near its far edge where it reflects the night, paler towards us.
-  p.shape([[0, 168], [TILE, 168], [TILE, 294], [0, 294]], { fill: '#2E4678', stroke: null, raw: true, wobble: 0.3 });
-  p.shape([[0, 218], [TILE, 218], [TILE, 294], [0, 294]], { fill: '#4A6496', stroke: null, raw: true, wobble: 0.3, opacity: 0.8 });
+  p.shape([[0, 168], [TILE, 168], [TILE, 294], [0, 294]], { fill: '#2E1E4A', stroke: null, raw: true, wobble: 0.3 });
+  p.shape([[0, 218], [TILE, 218], [TILE, 294], [0, 294]], { fill: '#5A3A70', stroke: null, raw: true, wobble: 0.3, opacity: 0.8, shade: [{ pts: [[0, 250], [TILE, 250], [TILE, 294], [0, 294]], color: '#24183A' }] });
   for (let i = 0; i < 46; i++) {
     const x = rnd(91, i) * TILE;
     const y = 186 + rnd(93, i) * 96;
-    p.line([[x, y], [x + 40 + rnd(95, i) * 140, y + 1]], { width: 2, color: '#9AB0E0', raw: true, opacity: 0.6, wobble: 0 });
+    p.line([[x, y], [x + 40 + rnd(95, i) * 140, y + 1]], { width: 2, color: i % 3 ? '#B8A0D0' : '#E8869A', raw: true, opacity: 0.6, wobble: 0 });
   }
   // Cabins on the far shore, lit.
   for (const cx of LAKE_CABINS) {
-    p.rect(cx - 34, 92, 68, 40, { fill: '#3A2E3E', stroke: null, r: 2 });
-    p.shape([[cx - 44, 96], [cx, 62], [cx + 44, 96]], { fill: '#F4F8FF', stroke: null, raw: true });
-    p.rect(cx - 20, 104, 14, 12, { fill: '#FFD27A', stroke: null, r: 1 });
-    p.rect(cx + 6, 104, 14, 12, { fill: '#FFC05A', stroke: null, r: 1 });
+    p.rect(cx - 34, 92, 68, 40, { fill: '#5A1A2E', stroke: null, r: 2 });
+    p.shape([[cx - 44, 96], [cx, 62], [cx + 44, 96]], { fill: '#F3E3CC', stroke: null, raw: true });
+    p.rect(cx - 20, 104, 14, 12, { fill: '#FFC86B', stroke: null, r: 1 });
+    p.rect(cx + 6, 104, 14, 12, { fill: '#FFB23F', stroke: null, r: 1 });
+    p.rect(cx + 14, 54, 10, 22, { fill: '#3A0F22', stroke: null, r: 1 });
     // Their light, reflected in the ice.
-    p.line([[cx - 13, 178], [cx - 13, 230]], { width: 6, color: '#FFC05A', raw: true, opacity: 0.35, wobble: 0.3 });
-    p.line([[cx + 13, 178], [cx + 13, 226]], { width: 6, color: '#FFC05A', raw: true, opacity: 0.3, wobble: 0.3 });
+    p.line([[cx - 13, 178], [cx - 13, 230]], { width: 6, color: '#FFB23F', raw: true, opacity: 0.4, wobble: 0.3 });
+    p.line([[cx + 13, 178], [cx + 13, 226]], { width: 6, color: '#FFB23F', raw: true, opacity: 0.35, wobble: 0.3 });
   }
   // Drifts in front: rolling, a blue shadow on the side away from the moon, a lit crest.
   const drift = wave(97, [26, 14, 8]);
   const dTop = (x: number) => 300 - drift(x);
   const pts: Pt[] = [];
   for (let x = 0; x <= TILE; x += 12) pts.push([x, dTop(x)]);
-  p.shape([...pts, [TILE, h], [0, h]], { fill: '#DDE6F6', stroke: null, raw: true, wobble: 0.2 });
+  p.shape([...pts, [TILE, h], [0, h]], { fill: '#E6D8E0', stroke: null, raw: true, wobble: 0.2 });
   for (let x = 0; x < TILE; x += 12) {
     const a = dTop(x);
     const b = dTop(x + 12);
-    if (b > a) p.shape([[x, a], [x + 12, b], [x + 12, b + 40], [x, a + 40]], { fill: '#8E8CC8', stroke: null, raw: true, wobble: 0, opacity: 0.6 });
+    if (b > a) p.shape([[x, a], [x + 12, b], [x + 12, b + 40], [x, a + 40]], { fill: '#E6D8E0', stroke: null, raw: true, wobble: 0, shade: [{ pts: [[x, a], [x + 12, b], [x + 12, b + 40], [x, a + 40]], color: '#7A62A8' }] });
   }
-  p.line(pts, { width: 3, color: '#FFFFFF', raw: true, opacity: 0.9, wobble: 0 });
+  p.line(pts, { width: 3, color: '#FFF6EA', raw: true, opacity: 0.9, wobble: 0 });
   return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.3 };
 }
 
@@ -567,14 +571,33 @@ export function wetStreetArt(): Art {
   return { key, svg: p.svg(w, h), w, h };
 }
 
+/** The moon over the pass, printed: a bone disc breaking up into halftone dots at its rim. */
+export function frostMoonArt(): Art {
+  const s = 300;
+  const c = s / 2;
+  let dots = '';
+  const step = 10;
+  for (let y = 0; y < s; y += step) {
+    for (let x = (y / step) % 2 ? step / 2 : 0; x < s; x += step) {
+      const d = Math.hypot(x - c, y - c) / (c - 4);
+      if (d < 0.6 || d > 1) continue;
+      const k = 1 - (d - 0.6) / 0.4;
+      dots += `<circle cx="${x}" cy="${y}" r="${(step * 0.52 * Math.sqrt(k)).toFixed(2)}" fill="#F3E3CC"/>`;
+    }
+  }
+  const craters = [[-30, -20, 18], [26, 10, 12], [-6, 34, 9], [34, -32, 7]].map(([dx, dy, r]) => `<circle cx="${c + dx}" cy="${c + dy}" r="${r}" fill="#D6C2CC"/>`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"><circle cx="${c}" cy="${c}" r="${(c - 4) * 0.61}" fill="#FFF6EA"/>${craters}${dots}</svg>`;
+  return { key: 'bd_s_moon', svg, w: s, h: s };
+}
+
 /** The roadside pine on the pass: big, inked like the near world, its tiers bowed under pillows of snow. */
 export function roadsidePineArt(): Art {
   const key = 'snowpine';
   const w = 300;
   const h = 460;
   const p = pen(key);
-  p.rect(w / 2 - 12, h - 70, 24, 70, { fill: '#4A3438', width: 3.5, r: 3 });
-  snowyPine(p, w / 2, h - 50, 400, '#1E3450', '#F4F8FF', '#9EA2DA', true);
+  p.rect(w / 2 - 12, h - 70, 24, 70, { fill: '#3A0F22', width: 3.5, r: 3 });
+  snowyPine(p, w / 2, h - 50, 400, '#1A2E24', '#F3E3CC', '#9A84C0', true);
   return { key, svg: p.svg(w, h), w, h };
 }
 
@@ -587,15 +610,15 @@ export function snowNearArt(): Art {
   const top = (x: number) => h - 70 - Math.sin((x / w) * Math.PI * 6) * 14 - Math.sin((x / w) * Math.PI * 14 + 1) * 6;
   const pts: Pt[] = [];
   for (let x = 0; x <= w; x += 10) pts.push([x, top(x)]);
-  p.shape([...pts, [w, h], [0, h]], { fill: '#C6CCEE', stroke: null, raw: true, wobble: 0 });
-  p.shape([...pts.map(([x, y]): Pt => [x, y + 4]), [w, h], [0, h]], { fill: '#E6ECFA', stroke: null, raw: true, wobble: 0, opacity: 0.9 });
+  p.shape([...pts, [w, h], [0, h]], { fill: '#C8B6D6', stroke: null, raw: true, wobble: 0 });
+  p.shape([...pts.map(([x, y]): Pt => [x, y + 4]), [w, h], [0, h]], { fill: '#EDE2E6', stroke: null, raw: true, wobble: 0, opacity: 0.95, shade: [{ pts: [...pts.map(([x, y]): Pt => [x, y + 70]), [w, h], [0, h]], color: '#9A84C0' }] });
   for (let x = 0; x < w; x += 10) {
     const a = top(x);
     const b = top(x + 10);
-    if (b > a) p.shape([[x, a + 4], [x + 10, b + 4], [x + 10, b + 50], [x, a + 50]], { fill: '#9E9CD6', stroke: null, raw: true, wobble: 0, opacity: 0.45 });
+    if (b > a) p.shape([[x, a + 4], [x + 10, b + 4], [x + 10, b + 50], [x, a + 50]], { fill: '#8E78B4', stroke: null, raw: true, wobble: 0, opacity: 0.4 });
   }
-  p.line(pts, { width: 3, color: '#FFFFFF', raw: true, wobble: 0 });
-  for (let i = 0; i < 70; i++) p.ellipse(rnd(601, i) * w, top(rnd(601, i) * w) + 8 + rnd(603, i) * 60, 1.6, 1.6, { fill: '#FFFFFF', stroke: null });
+  p.line(pts, { width: 3, color: '#FFF6EA', raw: true, wobble: 0 });
+  for (let i = 0; i < 70; i++) p.ellipse(rnd(601, i) * w, top(rnd(601, i) * w) + 8 + rnd(603, i) * 60, 1.6, 1.6, { fill: '#FFF6EA', stroke: null });
   return { key, svg: p.svg(w, h), w, h };
 }
 
