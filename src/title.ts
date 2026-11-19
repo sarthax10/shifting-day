@@ -53,13 +53,6 @@ export function titleArts(): Art[] {
   return [];
 }
 
-interface MenuItem {
-  label: () => string;
-  act: () => void;
-  text: Phaser.GameObjects.Text;
-  num: Phaser.GameObjects.Text;
-}
-
 export class TitleScene extends Phaser.Scene {
   private truck!: Phaser.GameObjects.Container;
   private wheels: Phaser.GameObjects.Image[] = [];
@@ -74,9 +67,6 @@ export class TitleScene extends Phaser.Scene {
   private ghosts: Phaser.GameObjects.Image[] = [];
   private grain!: Phaser.GameObjects.Image;
   private layers: { obj: Phaser.GameObjects.Components.Transform; x: number; y: number; k: number }[] = [];
-  private items: MenuItem[] = [];
-  private sel = 0;
-  private tapeImg!: Phaser.GameObjects.Image;
   private stickCool = 0;
   private dustClock = 0;
   private route: Phaser.GameObjects.TileSprite[] = [];
@@ -100,8 +90,6 @@ export class TitleScene extends Phaser.Scene {
     this.slices = [];
     this.ghosts = [];
     this.layers = [];
-    this.items = [];
-    this.sel = 0;
     this.dustClock = 0;
     this.input.setDefaultCursor(CURSOR.point);
     music.play('title');
@@ -486,10 +474,6 @@ export class TitleScene extends Phaser.Scene {
   private move(d: number) {
     if (!this.ready || this.leaving) return;
     this.list?.move(d);
-  }
-
-  private select(i: number, quiet = false) {
-    this.list?.select(i, quiet);
   }
 
   private activate() {

@@ -24,8 +24,6 @@ export const SWITCH = (TUNNEL.from + TUNNEL.to) / 2;
 
 /** The mouth picture: the cliff and its portal, with the road at `road` and the arch's middle at `portal`. */
 const MOUTH = { w: 2100, h: 1700, road: 1640, portal: 1760 };
-/** The portal: its arch and the headwall around it. */
-const ARCH = { w: 400, h: 330 };
 const HEAD = { w: 600, h: 470 };
 /** The bore's height inside, from the road to the ceiling. */
 const BORE = 330;
@@ -489,11 +487,10 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
   };
   return {
     inside,
-    update(time, scrollX) {
+    update(_time, scrollX) {
       const k = inside(scrollX + W / 2);
       amber.setAlpha(k);
-      glows.forEach((l, i) => l.setVisible(k > 0.01));
-      void time;
+      glows.forEach((l) => l.setVisible(k > 0.01));
     },
   };
 }

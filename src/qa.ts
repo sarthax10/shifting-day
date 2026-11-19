@@ -119,7 +119,6 @@ export async function runQA(game: Phaser.Game): Promise<QAReport> {
       // would: pets free, everything else paid for out of the same bubble-wrap balance the HUD shows.
       if (s.lostFoundBtn) {
         log(`Claiming ${s.trip.lost.length} lost thing(s) and ${s.pendingBroken.length} broken one(s)...`);
-        const b = s.bed();
         let dropped = 0;
         for (const key of [...s.trip.lost]) {
           const spec = ITEMS.find((i) => i.key === key);

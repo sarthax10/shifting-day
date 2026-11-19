@@ -111,7 +111,6 @@ export function boiled(make: () => Art): Art[] {
 const GLASS = '#BFE6EE';
 /** Far-away things are drawn with a paler line, so they sit back. */
 const FAR_LINE = '#8D74A8';
-const TYRE = '#2E2638';
 
 /**
  * Everything is sized from real-world measurements against the truck: its bed is 2.5 metres long
@@ -647,17 +646,7 @@ export const TRUCK = {
 
 const CHROME = '#EEF0F2';
 const CHROME_SHADE = '#B9BCCB';
-const WELL = '#1E1830';
 
-/** An arch over a wheel: the top half of a circle, drawn from its right edge round to its left. */
-function archPts(cx: number, cy: number, r: number, from = 0): Pt[] {
-  const out: Pt[] = [];
-  for (let i = 0; i <= 8; i++) {
-    const a = -(i / 8) * Math.PI;
-    out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r + from]);
-  }
-  return out;
-}
 
 /**
  * The truck, designed from scratch in the title screen's inks - ember, bone, red and ink - by the three
@@ -1598,11 +1587,9 @@ export function officialSignArt(): Art {
 
 const G_INK = '#0A0712';
 const G_BONE = '#F3E3CC';
-const G_SAND = '#D9C3A6';
 const G_EMBER = '#FF6A30';
 const G_RED = '#E3263A';
 const G_GOLD = '#FFB23F';
-const G_OX = '#3A0F22';
 const G_OLIVE = '#7E8A44';
 
 /** The barrier: ember and ink stripes, gold lamps along it, a red STOP disc at its tip, an ink counterweight. */
@@ -2372,27 +2359,6 @@ export function aerialArt(): Art {
 
 /** The rev counter's face: 0 to 7 thousand rpm round a three-quarter circle, with the red zone marked. */
 export const TACH = { r: 108, from: Math.PI * 0.75, sweep: Math.PI * 1.5, max: 7000 };
-export function tachArt(): Art {
-  const p = pen('tach');
-  p.plain = true;
-  const s = 260;
-  const c = s / 2;
-  p.ellipse(c, c, TACH.r + 10, TACH.r + 10, { fill: C.cream, width: 7 });
-  const at = (rpm: number, rad: number): Pt => {
-    const a = TACH.from + (rpm / TACH.max) * TACH.sweep;
-    return [c + Math.cos(a) * rad, c + Math.sin(a) * rad];
-  };
-  // The red zone, from the redline to the end of the dial.
-  const red: Pt[] = [];
-  for (let r = 5800; r <= 7000; r += 100) red.push(at(r, TACH.r - 6));
-  for (let r = 7000; r >= 5800; r -= 100) red.push(at(r, TACH.r - 24));
-  p.shape(red, { fill: C.terracotta, raw: true, stroke: null });
-  for (let k = 0; k <= 7; k++) {
-    p.line([at(k * 1000, TACH.r - 2), at(k * 1000, TACH.r - 22)], { width: 5, raw: true });
-    if (k < 7) p.line([at(k * 1000 + 500, TACH.r - 4), at(k * 1000 + 500, TACH.r - 14)], { width: 3, raw: true, opacity: 0.6 });
-  }
-  return { key: 'tach', svg: p.svg(s, s), w: s, h: s };
-}
 
 /** Turns a drawing into a texture Phaser can use. */
 export function loadArt(textures: Phaser.Textures.TextureManager, art: Art): Promise<void> {

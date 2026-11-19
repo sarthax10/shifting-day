@@ -398,44 +398,6 @@ export function sunburst(size: number): HTMLCanvasElement {
   return c;
 }
 
-/**
- * A picture lit like it is standing in front of a low sun: graded down into the dusk, darker toward
- * the ground, with a hot rim of light along every top and leading edge. Returns the lit picture and
- * a soft glow made from the rim alone, to lay over it additively.
- */
-export function backlit(src: HTMLCanvasElement, rim = 5): { lit: HTMLCanvasElement; glow: HTMLCanvasElement } {
-  const { width: w, height: h } = src;
-  const [lit, l] = mk(w, h);
-  l.drawImage(src, 0, 0);
-  l.globalCompositeOperation = 'source-atop';
-  l.fillStyle = 'rgba(52, 26, 78, 0.46)';
-  l.fillRect(0, 0, w, h);
-  const fall = l.createLinearGradient(0, 0, 0, h);
-  fall.addColorStop(0, 'rgba(10, 6, 20, 0)');
-  fall.addColorStop(0.55, 'rgba(10, 6, 20, 0.12)');
-  fall.addColorStop(1, 'rgba(10, 6, 20, 0.55)');
-  l.fillStyle = fall;
-  l.fillRect(0, 0, w, h);
-  const [edge, e] = mk(w, h);
-  e.drawImage(src, 0, 0);
-  e.globalCompositeOperation = 'destination-out';
-  e.drawImage(src, -rim * 0.5, rim);
-  e.globalCompositeOperation = 'source-in';
-  const warm = e.createLinearGradient(0, 0, w, 0);
-  warm.addColorStop(0, '#FFB46A');
-  warm.addColorStop(1, '#FFE2A8');
-  e.fillStyle = warm;
-  e.fillRect(0, 0, w, h);
-  l.globalCompositeOperation = 'source-atop';
-  l.drawImage(edge, 0, 0);
-  const [glow, gc] = mk(w, h);
-  gc.filter = 'blur(7px)';
-  gc.drawImage(edge, 0, 0);
-  gc.filter = 'none';
-  gc.drawImage(edge, 0, 0);
-  return { lit, glow };
-}
-
 export { mk };
 
 // ====================================================================== poster pieces

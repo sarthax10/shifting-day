@@ -24,7 +24,6 @@ const RED_CSS = '#E3263A';
 const PW = 570;
 const PH = 250;
 const CORNER = { x: 14, y: 1066 };
-export const DASH_SCALE = 1;
 /** Where the dashboard's right edge is on screen, for things placed beside it. */
 export const DASH_RIGHT = CORNER.x + PW;
 /** Game speed (pixels a frame) to the number shown on the speedometer. */

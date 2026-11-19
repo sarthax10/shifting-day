@@ -37,7 +37,6 @@ const GOLD_DARK = '#D98A2A';
 const OX = '#3A0F22';
 const PLUM = '#5A1A3A';
 const WOOD = '#6A2E2E';
-const OLIVE = '#7E8A44';
 const PINE = '#2A4636';
 const LIT = '#FFC86B';
 const LIT_DEEP = '#FF9E4A';
@@ -444,7 +443,7 @@ export const STOP_ART_JOBS: (() => Art)[] = [cornerArt, millArt, millWheelArt, m
  * Places a stop with its building standing on the ground at x, writes its name, lights its windows
  * and sets its moving part going. Returns a function to call every frame.
  */
-export function placeStop(scene: Phaser.Scene, index: number, x: number, ground: number, name: string, light: (img: Phaser.GameObjects.Image, colour: number) => void) {
+export function placeStop(scene: Phaser.Scene, index: number, x: number, ground: number, name: string) {
   const look = STOP_LOOKS[index];
   const top = ground - look.h;
   scene.add.image(x, ground, look.key).setOrigin(0, 1).setDepth(-10);

@@ -20,8 +20,6 @@ import { TILE, plainPen, rnd } from './backdrop';
 export const HOUSE = { w: 420, h: 640, ground: 460 };
 /** The street band's plaza top, inside its picture. */
 export const STREET_TOP = 80;
-/** Where the game writes the shop's name: the middle of the sign band. */
-export const HOUSE_SIGN = { x: 210, y: 242 };
 
 const INK = '#0A0712';
 const AMBER = '#FFC86B';

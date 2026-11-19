@@ -1,14 +1,11 @@
-// Only the weights used are loaded, so every title is Fraunces Black and all other text Karla Bold.
-import '@fontsource/fraunces/900.css';
-import '@fontsource/karla/700.css';
-// The title screen's poster type: a heavy condensed display face and a mono for its small labels.
+// The poster's two faces, only the weights used: Anton for display, Space Mono for everything else.
 import '@fontsource/anton/400.css';
 import '@fontsource/space-mono/400.css';
 import '@fontsource/space-mono/700.css';
 import Phaser from 'phaser';
 import * as art from './art';
 import { tollArts } from './tolls';
-import { C, type Pt } from './ink';
+import { C } from './ink';
 import { PlayScene } from './game';
 import { prepareLeg } from './prepare';
 import { LEGS } from './legs';
@@ -226,8 +223,6 @@ game.events.once('ready', async () => {
     makeCursors(),
     drawAll(),
     prepareLeg(game.textures, 1),
-    document.fonts.load('700 40px "Karla"'),
-    document.fonts.load('900 40px "Fraunces"'),
     document.fonts.load('400 40px "Anton"'),
     document.fonts.load('400 40px "Space Mono"'),
     document.fonts.load('700 40px "Space Mono"'),

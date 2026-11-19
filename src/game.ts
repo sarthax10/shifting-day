@@ -1,11 +1,10 @@
 import Phaser from 'phaser';
 import { Engine, ambience, audio, chime, music, play, thud } from './audio';
-import { BOIL_FRAMES, HOUSE, MANOR, ITEMS, PLANK, OFFICIAL_SIGN, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, RAIL_SIGNAL } from './art';
+import { BOIL_FRAMES, HOUSE, MANOR, ITEMS, PLANK, OFFICIAL_SIGN, VALUE, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, RAIL_SIGNAL } from './art';
 import { PLAZAS, TOLL_LIGHT, TOLL_SKINS, tollKeys, type TollSkin } from './tolls';
 import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
 import { Fx } from './fx';
-import { buildBackdrop } from './backdrop';
 import { Drivetrain, REDLINE, type Gear } from './drivetrain';
 import { C } from './ink';
 import { FINISH, GROUND, H, W, WORLD_END, WORLD_START, groundY, setRoad } from './terrain';
@@ -21,7 +20,7 @@ import { CHUNK, CHUNK_TOP, groundKey, grassKey, holdLoadingWhile, legReady, prep
 import { applyBiomeFX } from './postfx';
 import { buildFinale } from './finale';
 import { showScorecard } from './scorecard';
-import { chip, hudText, uiText, INK_BG } from './ui';
+import { chip, hudText, uiText } from './ui';
 import { Prompter } from './prompts';
 import { PosterList, posterSheet, openControls, ensurePosterTextures, DISPLAY as POSTER_FONT, MONO as POSTER_MONO, BONE_CSS, EMBER_CSS, INK_CSS } from './poster';
 
@@ -35,7 +34,6 @@ const TEXT = '"Space Mono", monospace';
 const TITLE = '"Anton", "Impact", sans-serif';
 /** How hard the brakes slow the truck, in pixels a frame each frame. */
 const BRAKE = 0.3;
-const hexOf = (c: string) => Phaser.Display.Color.HexStringToColor(c).color;
 /** Where things sit on the truck, in its own coordinates: the headlight eye, the air freshener's hook, the aerial's foot, the exhaust. */
 const EYE_AT = { x: 401, y: -28 };
 /** Where the driver's head sits in the cab window, in the truck's own coordinates. */
@@ -234,7 +232,6 @@ export class PlayScene extends Phaser.Scene {
   private hudHomes: Phaser.GameObjects.Image[] = [];
   private hudClock!: Phaser.GameObjects.Text;
   private joltTip = false;
-  private scenery2: { sails: Phaser.GameObjects.Image[]; clouds: { img: Phaser.GameObjects.Image; speed: number }[] } = { sails: [], clouds: [] };
   private chimneys: { x: number; y: number; kind: 'old' | 'new'; n: number }[] = [];
   private boiling: Inked[] = [];
   private cursorNow = '';
@@ -296,7 +293,6 @@ export class PlayScene extends Phaser.Scene {
   /** The leg being driven, the trip so far, and the leg's living scenery. */
   private leg: Leg = LEGS[0];
   private trip!: Trip;
-  private world!: Built;
   /** The worlds on screen: this leg's own and, at its start, the last leg's, each split into depth bands that fade. */
   private worlds: { built: Built; layers: Phaser.GameObjects.Layer[]; prev: boolean }[] = [];
   private grassBands: { strips: Phaser.GameObjects.Image[]; prev: boolean }[] = [];
@@ -862,7 +858,7 @@ export class PlayScene extends Phaser.Scene {
   /** A checkpoint stop, its building standing so that its canopy or porch is over the bay centred on mid. */
   private stopAt(mid: number, stop: { name: string; palette: number }) {
     const look = STOP_LOOKS[stop.palette];
-    this.stopAnims.push(placeStop(this, stop.palette, mid - look.bay, GROUND + 6, stop.name, () => undefined));
+    this.stopAnims.push(placeStop(this, stop.palette, mid - look.bay, GROUND + 6, stop.name));
   }
 
   /** Loads the truck as it was left at the last stop: the same things, where they sat, broken or not, tied or not. */
@@ -1201,7 +1197,6 @@ export class PlayScene extends Phaser.Scene {
     const tunnel = !!before && before !== this.leg.biome;
     if (before && tunnel) this.worlds.push(this.buildWorld(before, [-1000, TUNNEL.from - 300], true));
     this.worlds.push(this.buildWorld(this.leg.biome, tunnel ? [TUNNEL.to + 300, FINISH] : [-1000, FINISH], false));
-    this.world = this.worlds[this.worlds.length - 1].built;
     // The way home: the last leg ends in golden hour, an avenue, arches and fireworks.
     this.finale = this.leg.stop ? undefined : buildFinale(this, { finish: FINISH, groundY, far: this.worlds[this.worlds.length - 1].layers[0], font: POSTER_FONT });
     this.tunnel = before && tunnel ? buildTunnel(this, before, this.leg.biome, groundY) : undefined;
@@ -1548,7 +1543,6 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private hud() {
-    const style = { fontFamily: TEXT, fontSize: '40px', color: C.ink };
     this.hint = this.add.text(40, 1006, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '24px', color: '#F3E3CC', letterSpacing: 1, backgroundColor: 'rgba(10, 7, 18, 0.88)', padding: { x: 20, y: 12 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
     this.ropeLines = this.add.graphics().setDepth(25);
     // The print over everything: a fine ink dot screen and paper grain across the whole picture, so the
@@ -2337,10 +2331,6 @@ export class PlayScene extends Phaser.Scene {
     t.ghost = true;
     t.img.setAlpha(0.6).setDepth(5);
     t.body.collisionFilter = { ...t.body.collisionFilter, group: TRUCK_GROUP };
-  }
-
-  private name(t: Thing): string {
-    return t.spec.pet || /^Goldie/.test(t.spec.name) ? t.spec.name : `the ${t.spec.name.toLowerCase()}`;
   }
 
   private lose(t: Thing) {

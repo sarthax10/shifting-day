@@ -27,21 +27,6 @@ export function applyBiomeFX(camera: Phaser.Cameras.Scene2D.Camera, biome: Biome
   }
 }
 
-/** A soft, warm vignette for the title screen's golden-hour look. */
-export function applyTitleFX(camera: Phaser.Cameras.Scene2D.Camera) {
-  try {
-    camera.filters.internal.clear();
-    camera.filters.external.clear();
-    const cm = camera.filters.internal.addColorMatrix();
-    cm.colorMatrix.saturate(0.12, false);
-    cm.colorMatrix.contrast(0.05, true);
-    cm.colorMatrix.brightness(1.015, true);
-    vignette(camera, 0x2a1810, 0.32);
-  } catch {
-    // ignore
-  }
-}
-
 function vignette(camera: Phaser.Cameras.Scene2D.Camera, color: number, strength: number) {
   camera.filters.external.addVignette(0.5, 0.5, 0.82, strength, color);
 }

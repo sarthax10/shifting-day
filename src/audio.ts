@@ -30,18 +30,6 @@ master.connect(comp).connect(ctx.destination);
 const meter = ctx.createAnalyser();
 meter.fftSize = 2048;
 comp.connect(meter);
-/** The current mix level: RMS and peak, 0 to 1. */
-export function mixLevel() {
-  const d = new Float32Array(meter.fftSize);
-  meter.getFloatTimeDomainData(d);
-  let sum = 0;
-  let peak = 0;
-  for (const v of d) {
-    sum += v * v;
-    peak = Math.max(peak, Math.abs(v));
-  }
-  return { rms: Math.sqrt(sum / d.length), peak };
-}
 const bus = (level: number) => {
   const g = ctx.createGain();
   g.gain.value = level;

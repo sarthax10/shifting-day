@@ -10,9 +10,7 @@ export const TITLE = '"Anton", "Impact", sans-serif';
 export const TEXT = '"Space Mono", monospace';
 
 export const INK_BG = 0x0a0712;
-export const PANEL_BG = 0xf3e3cc;
 const BONE = '#F3E3CC';
-const INK = '#0A0712';
 
 /** An ink chip with a bone hairline: the one backing for interface text over the scene. */
 export function chip(scene: Phaser.Scene, x: number, y: number, w: number, h: number, originX = 0, originY = 0.5) {
@@ -22,16 +20,6 @@ export function chip(scene: Phaser.Scene, x: number, y: number, w: number, h: nu
 /** A HUD readout: Anton, bone, with an ink edge so it holds up over any backdrop. */
 export function hudText(scale = 1): Phaser.Types.GameObjects.Text.TextStyle {
   return { fontFamily: TITLE, fontSize: `${Math.round(30 * scale)}px`, color: BONE, letterSpacing: 1 };
-}
-
-/** A menu heading. */
-export function headingText(size = 44, color: string = BONE): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TITLE, fontSize: `${size}px`, color, stroke: INK, strokeThickness: 6, letterSpacing: 2 };
-}
-
-/** A button label: ink on the button's tape. */
-export function buttonText(size = 32): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: TITLE, fontSize: `${size}px`, color: INK };
 }
 
 /** A small interface label (chips, hints): Space Mono, bold, a little tracked. */

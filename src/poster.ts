@@ -82,7 +82,7 @@ export class PosterList {
   private off: (() => void)[] = [];
 
   constructor(
-    private scene: Phaser.Scene,
+    scene: Phaser.Scene,
     private x: number,
     y: number,
     private items: ListItem[],

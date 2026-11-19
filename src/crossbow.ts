@@ -81,7 +81,7 @@ export class Crossbow {
     this.g = scene.add.graphics().setDepth(11.7);
     this.bow = scene.add.image(0, 0, 'crossbow').setOrigin(CROSSBOW.pivot.x / CROSSBOW.w, CROSSBOW.pivot.y / CROSSBOW.h).setDepth(11.6);
     this.boltImg = scene.add.image(0, 0, 'anchor_bolt').setOrigin(0.92, 0.5).setDepth(11.65).setVisible(false);
-    this.reloadLabel = scene.add.text(0, 0, 'RELOADING…', { fontFamily: '"Karla", sans-serif', fontSize: '18px', color: '#FFF2DA', stroke: '#2A2140', strokeThickness: 4 }).setOrigin(0.5).setDepth(11.8).setVisible(false);
+    this.reloadLabel = scene.add.text(0, 0, 'RELOADING…', { fontFamily: '"Space Mono", monospace', fontStyle: 'bold', fontSize: '16px', color: '#F3E3CC', stroke: '#0A0712', strokeThickness: 4, letterSpacing: 2 }).setOrigin(0.5).setDepth(11.8).setVisible(false);
     scene.matter.world.on('collisionstart', (e: { pairs: { bodyA: MatterJS.BodyType; bodyB: MatterJS.BodyType }[] }) => {
       if (this.state !== 'flying' || !this.bolt) return;
       for (const pr of e.pairs) {

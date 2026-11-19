@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { pen, type Art } from './art';
 import { C, mix, type Pt } from './ink';
-import { TILE, birdArts, buildBackdrop, cloudBankArt, haze, peaks, plainPen, rnd, wave } from './backdrop';
+import { TILE, buildBackdrop, haze, plainPen, rnd } from './backdrop';
 import type { BiomeKey } from './legs';
 import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from './falls';
 import { SWITCH, TUNNEL } from './tunnel';
@@ -9,7 +9,7 @@ import { FROST_TREES } from './trees';
 import { HOUSE, STREET_TOP, houseArt, streetArt } from './townhouses';
 import { blimpArt, hoverCarArt, synthSunArt } from './futurecity';
 import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
-import { cloudBankArt as printCloudArt } from './oldstreet';
+import { birdArts, cloudBankArt as printCloudArt } from './oldstreet';
 import { COVE, LIGHT, bayArt, coastSunArt, coveArt, dolphinArt, headlandsArt, palmArt, promLampArt, sailArt, seaArt, surfArt, wavesArt } from './coast';
 import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostMoonArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from './night';
 
@@ -55,10 +55,6 @@ const to = (o: { range?: [number, number] }) => o.range?.[1] ?? Infinity;
 export const BLEND = { from: TUNNEL.from, to: TUNNEL.to };
 /** Which biome is showing at x: the last one before the switch inside the tunnel, this one after. */
 export const blendAt = (x: number) => (x < SWITCH ? 0 : 1);
-export const smoothBlendAt = (x: number) => {
-  const t = Math.min(1, Math.max(0, (x - BLEND.from) / (BLEND.to - BLEND.from)));
-  return t * t * (3 - 2 * t);
-};
 
 /** A layer that tiles every TILE pixels, laid across the whole road at a scroll factor. */
 function tiles(scene: Phaser.Scene, key: string, bottom: number, sf: number, depth: number, reach: number, offset = 0) {
@@ -185,74 +181,6 @@ function inked(key: string, w: number, h: number, draw: (p: ReturnType<typeof pe
 
 // ======================================================================== AUTUMN: Maple Valley
 
-/**
- * A forest seen from afar, drawn the way painters and stylised games do it: not tree by tree but as one
- * mass with a scalloped top where the crowns meet the sky. Each crown is a bump in the silhouette, with a
- * lit cap on its sunny side (the light is from the upper left) and shadow pooled in the dips between
- * crowns, where one meets the next. Crowns change colour patch by patch, as autumn woods do. The bumps
- * are laid across exactly one tile and drawn again either side of it, so copies join without a seam.
- * `haze` mixes every colour towards the sky: far forests are paler and closer to the sky's colour.
- */
-function canopyBand(p: ReturnType<typeof plainPen>, opts: { at: (x: number) => number; bottom: number; size: number; hues: string[]; base?: string; seed: number; haze: [string, number]; skip?: (x: number) => boolean; rows?: number }) {
-  const { at, bottom, size, hues, seed } = opts;
-  const [sky, k] = opts.haze;
-  const tone = (c: string, toward: string, by: number) => mix(mix(c, toward, by), sky, k);
-  for (let row = 0; row < (opts.rows ?? 2); row++) {
-    // The bumps: widths chosen at random, then scaled so they exactly fill the tile.
-    const widths: number[] = [];
-    for (let i = 0, x = 0; x < TILE; i++) {
-      const w = size * (0.7 + rnd(seed + row * 17, i) * 0.7);
-      widths.push(w);
-      x += w;
-    }
-    const scale = TILE / widths.reduce((a, b) => a + b, 0);
-    const drop = row * size * 0.55;
-    const crowns: { cx: number; w: number; bh: number; hue: string; base: number }[] = [];
-    let x = (row * size) / 2;
-    widths.forEach((w0, i) => {
-      const w = w0 * scale;
-      const cx = x + w / 2;
-      x += w;
-      crowns.push({ cx, w, bh: w * (0.3 + rnd(seed + 9 + row, i) * 0.16), hue: hues[Math.floor(rnd(seed + 5 + row, i) * hues.length)], base: at(cx) + drop });
-    });
-    const shown = crowns.filter((c) => !opts.skip?.(c.cx));
-    for (const shift of [-TILE, 0, TILE]) {
-      // The mass: one shape whose top is the row of crowns, side by side, so the woods read as a whole.
-      // Gaps (where `skip` says) break it into separate runs.
-      let run: Pt[] = [];
-      const flush = () => {
-        if (run.length > 2) p.shape([...run, [run[run.length - 1][0], bottom], [run[0][0], bottom]], { fill: tone(opts.base ?? hues[0], '#3A2030', 0.25 + row * 0.08), stroke: null, raw: true, wobble: 0.4 });
-        run = [];
-      };
-      for (const c of crowns) {
-        if (opts.skip?.(c.cx)) {
-          flush();
-          continue;
-        }
-        for (let a = 0; a <= 6; a++) {
-          const t = Math.PI + (a / 6) * Math.PI;
-          run.push([c.cx + shift + (Math.cos(t) * c.w) / 2, c.base + Math.sin(t) * c.bh]);
-        }
-      }
-      flush();
-      // Each crown's own colour on its upper part, a lit cap towards the sun, and shadow where it meets the next.
-      for (const c of shown) {
-        const bx = c.cx + shift;
-        if (bx < -c.w || bx > TILE + c.w) continue;
-        const pts: Pt[] = [];
-        for (let a = 0; a <= 8; a++) {
-          const t = Math.PI + (a / 8) * Math.PI;
-          pts.push([bx + (Math.cos(t) * c.w) / 2, c.base + Math.sin(t) * c.bh]);
-        }
-        pts.push([bx + c.w * 0.4, c.base + c.bh * 0.35], [bx - c.w * 0.4, c.base + c.bh * 0.35]);
-        p.shape(pts, { fill: tone(c.hue, '#000000', row * 0.06), stroke: null, raw: true, wobble: 0.5 });
-        p.ellipse(bx - c.w * 0.12, c.base - c.bh * 0.55, c.w * 0.26, c.bh * 0.32, { fill: tone(c.hue, '#FFF2C8', 0.34), stroke: null, wobble: 0.6 });
-        p.ellipse(bx + c.w * 0.48, c.base + c.bh * 0.15, c.w * 0.16, c.bh * 0.42, { fill: tone(c.hue, '#3A2030', 0.45), stroke: null, wobble: 0.6, opacity: 0.85 });
-      }
-    }
-  }
-}
-
 /** The valley falls, for the live water: one sheet rolling over the notch's lip into the pool. */
 const VALLEY_FALLS: FallSpec = {
   canvas: { x: FALLS.x - 120, y: FALLS.top - 16, w: 240, h: 520 - 40 - (FALLS.top - 16) },
@@ -271,31 +199,6 @@ function mapleLeafArt(): Art {
   p.shape(shape.map(([x, y]) => [c[0] + x, c[1] + y] as Pt), { fill: '#FFFFFF', stroke: C.ink, width: 1.8, raw: true, wobble: 0.3 });
   p.line([[c[0], c[1] - 8], [c[0], c[1] + 10]], { width: 1.2, color: C.ink, raw: true, opacity: 0.7 });
   return { key: 'bd_a_leaf', svg: p.svg(32, 30), w: 32, h: 30 };
-}
-
-/** A roadside maple, inked like the rest of the near world. */
-function mapleArt(n: number): Art {
-  const colours = [
-    ['#E8743E', '#C9502E', '#F2A23A'],
-    ['#F2C45A', '#E8A23A', '#F7D97A'],
-    ['#D8463A', '#B83A34', '#EE6A4D'],
-  ][n];
-  return inked(`maple_${n}`, 260, 360, (p) => {
-    p.shape([[120, 360], [126, 220], [116, 180], [130, 176], [142, 220], [138, 360]], { fill: '#6A4A42', width: 4 });
-    p.line([[130, 240], [90, 200]], { width: 6, color: '#6A4A42' });
-    p.line([[132, 230], [176, 196]], { width: 6, color: '#6A4A42' });
-    const blobs: [number, number, number][] = [[130, 120, 90], [70, 170, 64], [190, 168, 66], [100, 80, 60], [168, 86, 58], [130, 190, 60]];
-    blobs.forEach(([x, y, r], i) => p.ellipse(x, y, r, r * 0.86, { fill: colours[i % 3], width: 4 }));
-    for (let i = 0; i < 18; i++) p.dot(40 + rnd(81 + n, i) * 180, 40 + rnd(83 + n, i) * 170, 5, colours[2]);
-  });
-}
-
-function birchArt(): Art {
-  return inked('birch', 120, 380, (p) => {
-    p.rect(50, 60, 18, 320, { fill: '#F2EEE6', width: 4, r: 6 });
-    for (let y = 90; y < 370; y += 34) p.line([[52, y], [62, y + 4]], { width: 3, color: C.ink, raw: true });
-    for (const [x, y, r] of [[60, 70, 40], [30, 110, 30], [92, 104, 32], [60, 40, 30]] as const) p.ellipse(x, y, r, r * 0.9, { fill: '#F2C45A', width: 3.5 });
-  });
 }
 
 const AUTUMN: Biome = {
@@ -394,77 +297,8 @@ const AUTUMN: Biome = {
 
 // ======================================================================== SNOW: Frostpeak Pass
 
-function snowPeaksArt(): Art {
-  const key = 'bd_s_peaks';
-  const h = 700;
-  const p = plainPen(key);
-  const ridge = peaks(53, [220, 90, 50, 26]);
-  const top: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 10) top.push([x, h - 180 - ridge(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: '#DCE6F4', stroke: null, raw: true, wobble: 0.2 });
-  // Shadowed faces in cold blue, and rock streaks where the snow cannot hold.
-  for (let x = 20; x < TILE - 20; x += 10) {
-    const a = ridge(x - 10);
-    const b = ridge(x + 10);
-    if (b < a - 2) p.shape([[x, h - 180 - ridge(x)], [x + 10, h - 180 - b], [x + 40, h - 30], [x + 4, h - 30]], { fill: '#8FA6CC', stroke: null, raw: true, wobble: 0.2, opacity: 0.75 });
-  }
-  for (let i = 0; i < 60; i++) {
-    const x = rnd(55, i) * TILE;
-    const y = h - 180 - ridge(x) + 30 + rnd(57, i) * 120;
-    p.line([[x, y], [x + 8, y + 40 + rnd(59, i) * 50]], { width: 3, color: '#5E7098', raw: true, opacity: 0.55, wobble: 0.4 });
-  }
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 1.1 };
-}
-
-/** Slopes of dark pines, every one carrying a cap of snow. */
-function snowPinesArt(key: string, h: number, base: string, seed: number, size: number): Art {
-  const p = plainPen(key);
-  const hill = wave(seed, [70, 30, 16]);
-  const at = (x: number) => h - 240 - hill(x);
-  const top: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 16) top.push([x, at(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: '#E6EEF8', stroke: null, raw: true, wobble: 0.2 });
-  for (let r = 0; r < 4; r++) {
-    for (let i = 0, x = (r * 13) % 21; x < TILE; i++) {
-      const y = at(x) + r * 34 + 8;
-      const s = size * (0.7 + rnd(seed + r, i) * 0.6);
-      const th = 58 * s;
-      p.shape([[x, y - th], [x + 15 * s, y + 4], [x - 15 * s, y + 4]], { fill: base, stroke: null, raw: true, wobble: 0.4 });
-      p.shape([[x, y - th], [x + 7 * s, y - th * 0.55], [x - 7 * s, y - th * 0.55]], { fill: '#F4F8FF', stroke: null, raw: true, wobble: 0.3 });
-      p.line([[x - 12 * s, y - th * 0.25], [x + 12 * s, y - th * 0.25]], { width: 3 * s, color: '#F4F8FF', raw: true, wobble: 0.3 });
-      x += 12 + rnd(seed + r + 3, i) * 14;
-    }
-  }
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: key === 'bd_s_pines_far' ? 1.4 : 0.4 };
-}
-
 /** A frozen lake on the valley floor, with a cabin on its shore whose window glows. */
 export const CABIN = { x: 900, y: 0 };
-function snowLakeArt(): Art {
-  const key = 'bd_s_lake';
-  const h = 360;
-  const p = plainPen(key);
-  p.shape([[0, 120], [TILE, 110], [TILE, h], [0, h]], { fill: '#EEF4FC', stroke: null, raw: true, wobble: 0.4 });
-  p.shape([[60, 190], [TILE - 60, 184], [TILE - 120, 300], [120, 306]], { fill: '#B8CDE8', stroke: null, raw: true, wobble: 0.8 });
-  // Ice: long reflective streaks and a few cracks.
-  for (let i = 0; i < 40; i++) {
-    const x = 140 + rnd(91, i) * (TILE - 280);
-    const y = 200 + rnd(93, i) * 90;
-    p.line([[x, y], [x + 60 + rnd(95, i) * 120, y + 2]], { width: 2.5, color: '#E8F2FF', raw: true, opacity: 0.8, wobble: 0 });
-  }
-  for (let i = 0; i < 6; i++) {
-    const x = 300 + i * 360;
-    p.line([[x, 220], [x + 24, 236], [x + 12, 252], [x + 40, 270]], { width: 1.6, color: '#8EA8CC', raw: true, opacity: 0.8 });
-  }
-  // The cabin.
-  const cx = CABIN.x;
-  p.rect(cx - 60, 110, 120, 70, { fill: '#6A4A42', stroke: null, r: 2 });
-  p.shape([[cx - 76, 114], [cx, 60], [cx + 76, 114]], { fill: '#F4F8FF', stroke: null, raw: true });
-  p.rect(cx + 30, 70, 14, 30, { fill: '#5A4A4A', stroke: null, r: 1 });
-  p.rect(cx - 30, 132, 26, 22, { fill: '#FFD27A', stroke: null, r: 2 });
-  p.rect(cx + 10, 132, 26, 22, { fill: '#FFC05A', stroke: null, r: 2 });
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.4 };
-}
 
 /**
  * The aurora, drawn live: a ribbon whose lower hem folds back and forth across the sky. From every point
@@ -541,18 +375,6 @@ class Aurora {
     ctx.globalCompositeOperation = 'source-over';
     this.tex.refresh();
   }
-}
-
-function snowPineArt(): Art {
-  return inked('snowpine', 200, 400, (p) => {
-    p.rect(92, 330, 16, 70, { fill: '#5A4040', width: 4, r: 3 });
-    for (let t = 0; t < 4; t++) {
-      const y = 70 + t * 70;
-      const w = 50 + t * 22;
-      p.shape([[100, y - 40], [100 + w, y + 60], [100 - w, y + 60]], { fill: '#24405A', width: 4, raw: true });
-      p.shape([[100, y - 40], [100 + w * 0.6, y + 22], [100 - w * 0.6, y + 22]], { fill: '#F4F8FF', width: 3, raw: true });
-    }
-  });
 }
 
 /** An orange snow pole: how drivers find the road edge when everything is white. */
@@ -650,33 +472,6 @@ const SNOW: Biome = {
 };
 
 // ======================================================================== TOWN: Neon Town, rainy night
-
-/** A distant skyline: blocks, a water tower and an antenna, scattered with lit windows. */
-function skylineArt(key: string, h: number, base: string, seed: number, tall: number, windows: number): Art {
-  const p = plainPen(key);
-  let x = 0;
-  let i = 0;
-  while (x < TILE) {
-    const w = 60 + rnd(seed, i) * 110;
-    const bh = tall * (0.4 + rnd(seed + 1, i) * 0.6);
-    const top = h - bh;
-    p.rect(x, top, w, bh + 4, { fill: base, stroke: null, r: 0 });
-    if (rnd(seed + 2, i) < 0.25) p.shape([[x + 4, top], [x + w / 2, top - 30], [x + w - 4, top]], { fill: base, stroke: null, raw: true });
-    if (rnd(seed + 3, i) < 0.15) p.line([[x + w / 2, top], [x + w / 2, top - 60]], { width: 3, color: base, raw: true });
-    for (let wy = top + 14; wy < h - 20; wy += 22) {
-      for (let wx = x + 10; wx < x + w - 14; wx += 18) {
-        const r = rnd(seed + 4, wx * 7 + wy);
-        if (r < windows) p.rect(wx, wy, 9, 12, { fill: r < windows * 0.25 ? '#9FE8FF' : '#FFD27A', stroke: null, r: 1, opacity: 0.85 });
-      }
-    }
-    x += w + 4 + rnd(seed + 5, i) * 20;
-    i++;
-  }
-  // A water tower.
-  p.rect(1200, h - tall * 0.9 - 70, 70, 50, { fill: base, stroke: null, r: 8 });
-  for (const lx of [1206, 1260]) p.line([[lx, h - tall * 0.9 - 20], [lx, h - tall * 0.5]], { width: 4, color: base, raw: true });
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: key === 'bd_n_far' ? 1 : 0.2 };
-}
 
 /** A storefront for the main street, inked, with a sign board (the neon words are added in the game). */
 export const SHOPS = [
@@ -912,16 +707,6 @@ const TOWN: Biome = {
 
 // ======================================================================== COAST: Coast Road, bright morning
 
-function lighthouseArt(): Art {
-  return inked('lighthouse', 180, 520, (p) => {
-    p.shape([[56, 500], [70, 120], [110, 120], [124, 500]], { fill: '#F4F0E8', width: 5, raw: true });
-    for (const y of [180, 300, 420]) p.shape([[64 - (y - 120) * 0.035, y], [116 + (y - 120) * 0.035, y], [118 + (y + 50 - 120) * 0.035, y + 50], [62 - (y + 50 - 120) * 0.035, y + 50]], { fill: '#D8463A', width: 3, raw: true });
-    p.rect(60, 88, 60, 34, { fill: '#FFE9A8', width: 4, r: 3 });
-    p.shape([[52, 90], [90, 50], [128, 90]], { fill: '#D8463A', width: 4, raw: true });
-    p.rect(48, 118, 84, 10, { fill: '#3A3A4E', width: 3, r: 2 });
-  });
-}
-
 function beachHutArt(n: number): Art {
   const colour = ['#EE6A4D', '#3FA7B5', '#FFB23F', '#7FC07A'][n];
   return inked(`hut_${n}`, 140, 180, (p) => {
@@ -929,13 +714,6 @@ function beachHutArt(n: number): Art {
     for (let x = 26; x < 116; x += 18) p.rect(x, 64, 9, 112, { fill: colour, stroke: null, r: 0 });
     p.shape([[10, 64], [70, 16], [130, 64]], { fill: colour, width: 4, raw: true });
     p.rect(52, 110, 36, 68, { fill: '#5A4A4E', width: 3, r: 2 });
-  });
-}
-
-function windswept(): Art {
-  return inked('seapine', 300, 340, (p) => {
-    p.line([[150, 340], [146, 250], [120, 180], [96, 120]], { width: 16, color: '#6A4A42' });
-    for (const [x, y, w] of [[90, 100, 120], [150, 130, 90], [70, 150, 80]] as const) p.ellipse(x + 20, y, w, 30, { fill: '#3E7A5E', width: 4 });
   });
 }
 
@@ -1186,46 +964,4 @@ export function recolor(art: Art, key: string, map: Record<string, string>): Art
 
 /** The stop's size, and where its name board sits (the name is written on in the game). */
 export const STOP = { w: 820, h: 460, sign: { x: 610, y: 62 }, pumpLight: { x: 610, y: 300 } };
-const STOP_PALETTES = [
-  { roof: '#D8463A', trim: '#F2E8DA', wall: '#F2DCC0', accent: '#2F7F6A' },
-  { roof: '#C9702E', trim: '#F4E6CE', wall: '#E8D2B0', accent: '#7A3A2E' },
-  { roof: '#3E6EA6', trim: '#EEF2F8', wall: '#C9A47A', accent: '#D8463A' },
-  { roof: '#7A4B7E', trim: '#F49AA0', wall: '#3A3458', accent: '#5CF2FF' },
-];
 
-/** A fuel stop: a canopy over two pumps on the right, a little shop with lit windows on the left. */
-export function stopArts(): Art[] {
-  return STOP_PALETTES.map((c, n) =>
-    inked(`stop_${n}`, STOP.w, STOP.h, (p) => {
-      // The shop.
-      p.rect(30, 170, 360, 290, { fill: c.wall, width: 5, r: 4 });
-      p.shape([[14, 176], [210, 96], [406, 176]], { fill: c.roof, width: 5, raw: true });
-      p.rect(60, 250, 120, 110, { fill: '#FFD98A', width: 4, r: 4 });
-      p.rect(230, 250, 120, 110, { fill: '#FFD98A', width: 4, r: 4 });
-      for (const wx of [60, 230]) {
-        p.line([[wx + 60, 250], [wx + 60, 360]], { width: 3, raw: true });
-        p.rect(wx - 6, 356, 132, 12, { fill: c.trim, width: 3, r: 2 });
-      }
-      p.rect(170, 380, 70, 80, { fill: c.accent, width: 4, r: 3 });
-      p.dot(226, 422, 5, '#FFD27A');
-      // The canopy: a deck on two posts, a coloured band, lights underneath.
-      p.rect(470, 180, 22, 280, { fill: '#B9BCCB', width: 4, r: 3 });
-      p.rect(740, 180, 22, 280, { fill: '#B9BCCB', width: 4, r: 3 });
-      p.rect(430, 150, 370, 42, { fill: c.trim, width: 5, r: 4 });
-      p.rect(430, 176, 370, 14, { fill: c.roof, stroke: null, r: 0 });
-      for (const lx of [500, 610, 720]) p.rect(lx - 26, 192, 52, 8, { fill: '#FFF6D8', width: 2.5, r: 3 });
-      // Two pumps on an island.
-      p.rect(500, 448, 220, 12, { fill: '#9A96A8', width: 3, r: 3 });
-      for (const px of [540, 650]) {
-        p.rect(px, 340, 50, 108, { fill: c.trim, width: 4, r: 6 });
-        p.rect(px, 340, 50, 22, { fill: c.roof, stroke: null, r: 4 });
-        p.rect(px + 8, 372, 34, 22, { fill: '#2A2140', width: 2.5, r: 3 });
-        p.line([[px + 50, 380], [px + 66, 420], [px + 58, 440]], { width: 4 });
-      }
-      // The name board on a pole over the canopy.
-      p.rect(STOP.sign.x - 4, 60, 8, 92, { fill: '#B9BCCB', width: 3, r: 2 });
-      p.rect(STOP.sign.x - 170, 26, 340, 72, { fill: c.trim, width: 5, r: 8 });
-      p.rect(STOP.sign.x - 160, 34, 320, 56, { fill: c.roof, stroke: null, r: 6 });
-    }),
-  );
-}

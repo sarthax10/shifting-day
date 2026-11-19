@@ -47,7 +47,7 @@ export class Extras {
   constructor(private host: ExtrasHost) {}
 
   build(coins: number) {
-    const { scene, leg, groundY } = this.host;
+    const { leg, groundY } = this.host;
     this.coins = coins;
     const clear = (x: number) =>
       x > 1800 &&

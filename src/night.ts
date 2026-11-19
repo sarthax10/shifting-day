@@ -1,4 +1,4 @@
-import { pen, type Art } from './art';
+import type { Art } from './art';
 import { mix, type Pt } from './ink';
 import { TILE, plainPen, rnd, wave } from './backdrop';
 import { futureSkylineArt } from './futurecity';
@@ -20,19 +20,6 @@ import { futureSkylineArt } from './futurecity';
 
 /** The town's neon: coral, mint, gold, rose and warm white - a few warm and cool lights on an indigo night. */
 const NEON = ['#FF6A6A', '#5ED6C2', '#FFB23F', '#FF8AA0', '#F3E3CC', '#FF8A4A', '#FFD27A'];
-
-/** A tall stack of floors: a block with set-backs near the top, a spire or antennae. */
-function tower(p: ReturnType<typeof plainPen>, x: number, w: number, h: number, base: number, fill: string, seed: number) {
-  const top = base - h;
-  p.rect(x, top, w, h + 4, { fill, stroke: null, r: 0 });
-  // Set-backs: the top two storeys narrower.
-  const s1 = w * 0.16;
-  p.rect(x + s1, top - h * 0.08, w - s1 * 2, h * 0.08 + 2, { fill, stroke: null, r: 0 });
-  const s2 = w * 0.32;
-  p.rect(x + s2, top - h * 0.13, w - s2 * 2, h * 0.05 + 2, { fill, stroke: null, r: 0 });
-  if (rnd(seed, 1) < 0.6) p.line([[x + w / 2, top - h * 0.13], [x + w / 2, top - h * 0.13 - 90 - rnd(seed, 2) * 80]], { width: 4, color: fill, raw: true, wobble: 0 });
-  return top - h * 0.13;
-}
 
 /**
  * The megatowers on the horizon: few, very tall and slender, hazed purple with the glow beneath them.
@@ -396,60 +383,6 @@ export function frostPeaksArt(far: boolean): Art {
 }
 
 /**
- * A pine weighed down with snow, as painters draw them: tiers of boughs that droop at their tips under the
- * load, each carrying a rounded pillow of snow. The moon is to the right, so the snow's right side is lit
- * and its left side falls into blue-violet shadow (never grey). The lowest tier is widest.
- */
-export function snowyPine(p: ReturnType<typeof plainPen>, x: number, y: number, th: number, tree: string, lit: string, shade: string, detail: boolean) {
-  const tiers = detail ? 5 : 4;
-  for (let k = 0; k < tiers; k++) {
-    const ty = y - th + (k * th * 0.82) / tiers;
-    const tH = (th * 0.34) * (detail ? 1 : 1.1);
-    const hw = th * (0.09 + (k * 0.26) / tiers);
-    // The bough: out to a drooping tip each side, with a ragged underside.
-    const bough: Pt[] = [
-      [x, ty],
-      [x + hw * 0.5, ty + tH * 0.5],
-      [x + hw * 1.04, ty + tH * 1.02],
-      [x + hw * 0.74, ty + tH * 0.9],
-      [x + hw * 0.46, ty + tH * 1.0],
-      [x + hw * 0.18, ty + tH * 0.9],
-      [x - hw * 0.18, ty + tH * 0.92],
-      [x - hw * 0.46, ty + tH * 1.0],
-      [x - hw * 0.74, ty + tH * 0.9],
-      [x - hw * 1.04, ty + tH * 1.02],
-      [x - hw * 0.5, ty + tH * 0.5],
-    ];
-    p.shape(bough, { fill: tree, stroke: null, raw: true, wobble: 0.3 });
-    // The snow on it: a soft pillow on the upper side, in shadow on the left and moonlit on the right.
-    const pillow: Pt[] = [
-      [x, ty - 3],
-      [x + hw * 0.45, ty + tH * 0.4],
-      [x + hw * 0.92, ty + tH * 0.86],
-      [x + hw * 0.62, ty + tH * 0.72],
-      [x + hw * 0.3, ty + tH * 0.66],
-      [x, ty + tH * 0.6],
-      [x - hw * 0.3, ty + tH * 0.66],
-      [x - hw * 0.62, ty + tH * 0.72],
-      [x - hw * 0.92, ty + tH * 0.86],
-      [x - hw * 0.45, ty + tH * 0.4],
-    ];
-    p.shape(pillow, { fill: shade, stroke: null, wobble: 0.4 });
-    p.shape(
-      [
-        [x + 1, ty - 2],
-        [x + hw * 0.45, ty + tH * 0.4],
-        [x + hw * 0.9, ty + tH * 0.84],
-        [x + hw * 0.6, ty + tH * 0.68],
-        [x + hw * 0.28, ty + tH * 0.6],
-        [x + 2, ty + tH * 0.5],
-      ],
-      { fill: lit, stroke: null, wobble: 0.4 },
-    );
-  }
-}
-
-/**
  * The woods on the pass, in miniature, as one printed band: the same kinds of tree that stand by the road -
  * drooping spruces with snow along their boughs, narrow spires, snow ghosts buried in rime, bare birches and
  * berried rowans - over a dark mass of trunks and shadow, with snow drifted at their feet. Far away they are
@@ -659,17 +592,6 @@ export function frostMoonArt(): Art {
   const craters = [[-30, -20, 18], [26, 10, 12], [-6, 34, 9], [34, -32, 7]].map(([dx, dy, r]) => `<circle cx="${c + dx}" cy="${c + dy}" r="${r}" fill="#D6C2CC"/>`).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"><circle cx="${c}" cy="${c}" r="${(c - 4) * 0.61}" fill="#FFF6EA"/>${craters}${dots}</svg>`;
   return { key: 'bd_s_moon', svg, w: s, h: s };
-}
-
-/** The roadside pine on the pass: big, inked like the near world, its tiers bowed under pillows of snow. */
-export function roadsidePineArt(): Art {
-  const key = 'snowpine';
-  const w = 300;
-  const h = 460;
-  const p = pen(key);
-  p.rect(w / 2 - 12, h - 70, 24, 70, { fill: '#3A0F22', width: 3.5, r: 3 });
-  snowyPine(p, w / 2, h - 50, 400, '#1A2E24', '#F3E3CC', '#9A84C0', true);
-  return { key, svg: p.svg(w, h), w, h };
 }
 
 /** Frostpeak's near strip, in place of grass: pillowy drifts close to the camera, blue in the hollows, sparkling. */
