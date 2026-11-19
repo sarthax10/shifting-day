@@ -82,7 +82,7 @@ function boulder(p: ReturnType<typeof pen>, r: () => number, cx: number, cy: num
       [cx - w * 0.15, cy - h * 0.38],
       [cx + w * 0.12, cy - h * 0.4],
     ],
-    { width: 3, color: '#E8D2C0', opacity: 0.6 },
+    { width: 3, color: '#F9C890', opacity: 0.6 },
   );
   // A crack across the face.
   const cy0 = cy - h * (0.1 - r() * 0.3);
@@ -92,7 +92,7 @@ function boulder(p: ReturnType<typeof pen>, r: () => number, cx: number, cy: num
       [cx + w * 0.05, cy0 + h * 0.12],
       [cx + w * 0.02, cy0 + h * 0.3],
     ],
-    { width: 2.4, color: '#3E3040', opacity: 0.7 },
+    { width: 2.4, color: '#3A0F22', opacity: 0.7 },
   );
   return pts;
 }
@@ -107,7 +107,7 @@ function moss(p: ReturnType<typeof pen>, r: () => number, pts: Pt[], cy: number,
     under.push([x - 3, y + 10 + r() * 10]);
     if (i > 0) under.push([(x + top[i - 1][0]) / 2, (y + top[i - 1][1]) / 2 + 20 + r() * 16]);
   }
-  p.shape([...top.map(([x, y]): Pt => [x, y - 4]), ...under], { fill: '#7E9A5E', width: 2.6, wobble: 1 });
+  p.shape([...top.map(([x, y]): Pt => [x, y - 4]), ...under], { fill: '#7E8A44', width: 2.6, wobble: 1 });
 }
 
 export function gorgeArt(): Art {
@@ -124,7 +124,7 @@ export function gorgeArt(): Art {
       [530, 620],
       [230, 620],
     ],
-    { fill: '#3E3442', width: 3, wobble: 0.6 },
+    { fill: '#2E0F26', width: 3, wobble: 0.6 },
   );
   for (let i = 0; i < 14; i++) {
     const x = 240 + i * 21 + (r() - 0.5) * 8;
@@ -133,7 +133,7 @@ export function gorgeArt(): Art {
         [x, 150 + r() * 40],
         [x + (r() - 0.5) * 10, 600],
       ],
-      { width: 1.5 + r() * 2.5, color: r() < 0.5 ? '#5E5A70' : '#2E2634', raw: true, opacity: 0.7 },
+      { width: 1.5 + r() * 2.5, color: r() < 0.5 ? '#6A2E48' : '#1E0A18', raw: true, opacity: 0.7 },
     );
   }
   // The cliffs either side: boulders stacked into two towers, bigger at the bottom.
@@ -159,7 +159,7 @@ export function gorgeArt(): Art {
   // Upper rows first, so lower boulders overlap the ones above them.
   rocks.sort((a, b) => a[1] - b[1]);
   for (const [cx, cy, bw, bh, side] of rocks) {
-    const pts = boulder(p, r, cx, cy, bw, bh, side ? '#A88E80' : '#B39886', side ? '#5E4650' : '#6A5058');
+    const pts = boulder(p, r, cx, cy, bw, bh, side ? '#A86A6E' : '#C08A84', side ? '#5A1A3A' : '#7A3A4E');
     if (r() < 0.7) moss(p, r, pts, cy, bh);
   }
   // The ledge across the middle that the first drop lands on: a rounded lip of rock, wet on top.
@@ -172,7 +172,7 @@ export function gorgeArt(): Art {
       [390, 346],
       [258, 354],
     ],
-    { fill: '#6A5058', width: 3.5, wobble: 0.8 },
+    { fill: '#7A3A4E', width: 3.5, wobble: 0.8 },
   );
   p.line(
     [
@@ -180,12 +180,12 @@ export function gorgeArt(): Art {
       [390, 314],
       [518, 322],
     ],
-    { width: 3, color: '#9AB8C8', opacity: 0.7 },
+    { width: 3, color: '#B4C8B8', opacity: 0.7 },
   );
   // The plunge pool: deep teal in the middle, pale shallows at the rim, and a dark band where the cliff
   // shadows it.
   p.ellipse(POOL.x, POOL.y, POOL.rx, POOL.ry, {
-    fill: '#7CD0D4',
+    fill: '#9CCAB4',
     width: 3.5,
     shade: [
       {
@@ -195,11 +195,11 @@ export function gorgeArt(): Art {
           [POOL.x + 150, POOL.y + 22],
           [POOL.x - 150, POOL.y + 22],
         ],
-        color: '#2E7A86',
+        color: '#2E5A4E',
       },
     ],
   });
-  p.ellipse(POOL.x, POOL.y - 30, POOL.rx * 0.8, 10, { fill: '#1E5664', stroke: null, opacity: 0.6 });
+  p.ellipse(POOL.x, POOL.y - 30, POOL.rx * 0.8, 10, { fill: '#1E3A34', stroke: null, opacity: 0.6 });
   // Boulders at the foot, one half in the water, with wet dark bands where the water laps them.
   for (const [x, y, rx, ry] of [
     [180, 604, 64, 40],
@@ -208,14 +208,14 @@ export function gorgeArt(): Art {
     [80, 632, 74, 36],
     [720, 636, 70, 32],
   ] as const) {
-    boulder(p, r, x, y, rx * 2, ry * 2, '#8A7A80', '#4E4450');
+    boulder(p, r, x, y, rx * 2, ry * 2, '#8E4E5E', '#4A1A34');
     p.line(
       [
         [x - rx * 0.9, y + ry * 0.45],
         [x, y + ry * 0.6],
         [x + rx * 0.9, y + ry * 0.45],
       ],
-      { width: 3, color: '#E8F8FF', opacity: 0.7 },
+      { width: 3, color: '#F6F2E4', opacity: 0.7 },
     );
   }
   // Maples overhanging both lips of the gorge.
@@ -270,11 +270,11 @@ export function fallsSetArt(): Art {
   const xs: number[] = [];
   for (let x = 0; x <= w; x += 16) xs.push(x);
   p.shape([...xs.map((x): Pt => [x, top(x)]), [w, h], [0, h]], {
-    fill: '#A88068',
+    fill: '#B87A52',
     raw: true,
     width: 3,
     wobble: 0.4,
-    shade: [{ pts: [[w / 2 + 80, 0], [w, 0], [w, h], [w / 2 + 160, h]], color: '#8A6654' }],
+    shade: [{ pts: [[w / 2 + 80, 0], [w, 0], [w, h], [w / 2 + 160, h]], color: '#6A2E2E' }],
   });
   // Forest: rows of maple canopies down the slopes, muted near the crest where the haze is, leaving the
   // river's channel and the gorge clear.
@@ -292,11 +292,11 @@ export function fallsSetArt(): Art {
   // The river's channel: dark wet banks, with stones poking out at its edges. The water itself is live.
   const ys: number[] = [];
   for (let y = start; y <= lipY; y += 10) ys.push(y);
-  p.shape([...ys.map((y): Pt => [riverX(y) - riverW(y) / 2 - 10, y]), ...ys.slice().reverse().map((y): Pt => [riverX(y) + riverW(y) / 2 + 10, y])], { fill: '#4A3A44', raw: true, width: 3, wobble: 0.5 });
+  p.shape([...ys.map((y): Pt => [riverX(y) - riverW(y) / 2 - 10, y]), ...ys.slice().reverse().map((y): Pt => [riverX(y) + riverW(y) / 2 + 10, y])], { fill: '#3E1430', raw: true, width: 3, wobble: 0.5 });
   for (let y = start + 30; y < lipY - 20; y += 34 + r() * 20) {
     const side = r() < 0.5 ? -1 : 1;
     const bx = riverX(y) + side * (riverW(y) / 2 - 2);
-    p.ellipse(bx, y, 8 + r() * 6, 5 + r() * 3, { fill: '#8A7A80', width: 2.4 });
+    p.ellipse(bx, y, 8 + r() * 6, 5 + r() * 3, { fill: '#8E4E5E', width: 2.4 });
   }
   return { key, svg: p.svg(w, h), w, h };
 }
@@ -345,13 +345,13 @@ class LiveRiver {
     }
     ctx.closePath();
     const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#6ABCCC');
-    g.addColorStop(1, '#46AABE');
+    g.addColorStop(0, '#7AAE98');
+    g.addColorStop(1, '#4E8A7A');
     ctx.fillStyle = g;
     ctx.fill();
     ctx.save();
     ctx.clip();
-    ctx.fillStyle = 'rgba(30,110,140,0.22)';
+    ctx.fillStyle = 'rgba(30,70,60,0.22)';
     ctx.beginPath();
     for (let i = 0; i <= 30; i++) {
       const [x, y] = at(i / 30, 0.62);
@@ -372,7 +372,7 @@ class LiveRiver {
       const [x0, y0] = at(k0, l.u);
       const [x1, y1] = at(k1, l.u);
       ctx.globalAlpha = 0.75 * Math.min(1, a * 5, (1 - a) * 5);
-      ctx.strokeStyle = '#CDEFF6';
+      ctx.strokeStyle = '#E2EEDC';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(x0, y0);
@@ -387,7 +387,7 @@ class LiveRiver {
       const [xm, ym] = at(k, 0.45);
       const [xr, yr] = at(k, 0.92);
       ctx.globalAlpha = 0.9 * Math.min(1, a * 6, (1 - a) * 4);
-      ctx.strokeStyle = '#F6FDFF';
+      ctx.strokeStyle = '#FDF8EE';
       ctx.lineWidth = 2.6;
       ctx.beginPath();
       ctx.moveTo(xl, yl + 2);
@@ -400,7 +400,7 @@ class LiveRiver {
     const [ex1] = at(0.9, 1);
     const rush = ctx.createLinearGradient(0, ey, 0, h);
     rush.addColorStop(0, 'rgba(255,255,255,0)');
-    rush.addColorStop(1, 'rgba(230,250,255,0.75)');
+    rush.addColorStop(1, 'rgba(246,240,224,0.75)');
     ctx.fillStyle = rush;
     ctx.fillRect(ex0 - 6, ey, ex1 - ex0 + 12, h - ey);
     ctx.restore();
@@ -436,7 +436,7 @@ export function fallsFrontArt(): Art {
         [tx + 8, base - 200],
         [tx + 14, base],
       ],
-      { fill: '#5A3E3A', width: 3.5 },
+      { fill: '#3A0F22', width: 3.5 },
     );
     clump(p, tx - 60, base - 250, 90, 70, pal1, r);
     clump(p, tx + 60, base - 240, 86, 66, pal2, r);
@@ -446,11 +446,11 @@ export function fallsFrontArt(): Art {
   const xs: number[] = [];
   for (let x = 0; x <= w; x += 12) xs.push(x);
   p.shape([...xs.map((x): Pt => [x, bank(x)]), [w, h], [0, h]], {
-    fill: '#C29A4E',
+    fill: '#D98A2A',
     raw: true,
     width: 3.5,
     wobble: 0.5,
-    shade: [{ pts: [...xs.map((x): Pt => [x, bank(x) + 34]), [w, h], [0, h]], color: '#93703A' }],
+    shade: [{ pts: [...xs.map((x): Pt => [x, bank(x) + 34]), [w, h], [0, h]], color: '#B87A52' }],
   });
   // Mossy boulders sitting in the mounds, and bushes beside them.
   for (const [bx, by, bw, bh] of [
@@ -461,7 +461,7 @@ export function fallsFrontArt(): Art {
     [mid - 250, foot - 10, 90, 50],
     [mid + 250, foot - 6, 100, 54],
   ] as const) {
-    const pts = boulder(p, r, bx, by, bw, bh, '#B39886', '#6A5058');
+    const pts = boulder(p, r, bx, by, bw, bh, '#C08A84', '#7A3A4E');
     moss(p, r, pts, by, bh);
   }
   for (const [bx, pal] of [
@@ -484,7 +484,7 @@ export function fallsFrontArt(): Art {
         [x + side * 6, y - tall * 0.6],
         [x + side * 14, y - tall],
       ],
-      { width: 3, color: r() < 0.5 ? '#7E8A4A' : '#9A8A4A' },
+      { width: 3, color: r() < 0.5 ? '#6A7638' : '#A3A653' },
     );
   }
   // Riffles where the pool spills over its pebbly front rim.
@@ -496,7 +496,7 @@ export function fallsFrontArt(): Art {
         [x + 14, foot - 11],
         [x + 26, foot - 7],
       ],
-      { width: 2.5, color: '#F4FCFF', opacity: 0.85 },
+      { width: 2.5, color: '#FBF6EA', opacity: 0.85 },
     );
   }
   return { key, svg: p.svg(w, h), w, h };
@@ -554,7 +554,7 @@ export class FallsWater {
           u,
           width: edge ? 1.2 + r() * 1.8 : 1.6 + r() * 3.4,
           // A few dark strands are gaps in the sheet, where the rock shows through.
-          color: k < 0.1 && !edge ? '#3F8EA4' : k < 0.25 ? '#7EC4D6' : k < 0.55 ? '#D8F4FA' : '#FFFFFF',
+          color: k < 0.1 && !edge ? '#3E6E5E' : k < 0.25 ? '#8EB8A4' : k < 0.55 ? '#ECF2E2' : '#FFFFFF',
           alpha: edge ? 0.6 : k < 0.1 ? 0.45 : 0.85,
           phases: Array.from({ length: segs }, () => r()),
           lens: Array.from({ length: segs }, () => 0.08 + r() * 0.22),
@@ -609,9 +609,9 @@ export class FallsWater {
     }
     ctx.closePath();
     const g = ctx.createLinearGradient(0, y0, 0, y1);
-    g.addColorStop(0, s.lip ? 'rgba(70,170,190,0.95)' : 'rgba(150,215,228,0.85)');
-    g.addColorStop(0.18, 'rgba(150,215,228,0.8)');
-    g.addColorStop(0.5, 'rgba(214,242,248,0.78)');
+    g.addColorStop(0, s.lip ? 'rgba(78,138,122,0.95)' : 'rgba(156,202,180,0.85)');
+    g.addColorStop(0.18, 'rgba(156,202,180,0.8)');
+    g.addColorStop(0.5, 'rgba(232,240,224,0.78)');
     g.addColorStop(1, 'rgba(255,255,255,0.95)');
     ctx.fillStyle = g;
     ctx.fill();
@@ -651,7 +651,7 @@ export class FallsWater {
       const [l, rr] = this.edges(s, 0, t);
       const mid = (l + rr) / 2;
       ctx.lineWidth = 9;
-      ctx.strokeStyle = 'rgba(40,120,140,0.55)';
+      ctx.strokeStyle = 'rgba(40,80,70,0.55)';
       ctx.beginPath();
       ctx.moveTo(l + 2, y0 + 14);
       ctx.quadraticCurveTo(mid, y0 + 6, rr - 2, y0 + 14);

@@ -5,6 +5,8 @@ import { TILE, birdArts, buildBackdrop, cloudBankArt, haze, peaks, plainPen, rnd
 import type { BiomeKey } from './legs';
 import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from './falls';
 import { SWITCH, TUNNEL } from './tunnel';
+import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
+import { cloudBankArt as printCloudArt } from './oldstreet';
 import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
 import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from './night';
 
@@ -177,23 +179,6 @@ function inked(key: string, w: number, h: number, draw: (p: ReturnType<typeof pe
 
 // ======================================================================== AUTUMN: Maple Valley
 
-/** Far blue hills behind the valley, soft with morning haze. */
-function autumnFarArt(): Art {
-  const key = 'bd_a_far';
-  const h = 560;
-  const p = plainPen(key);
-  const ridge = peaks(31, [120, 50, 30, 16]);
-  const top: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 12) top.push([x, h - 200 - ridge(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: '#A9B7CF', stroke: null, raw: true, wobble: 0.2 });
-  for (let x = 24; x < TILE - 24; x += 12) {
-    const a = ridge(x - 12);
-    const b = ridge(x + 12);
-    if (b < a - 3) p.shape([[x, h - 200 - ridge(x)], [x + 12, h - 200 - b], [x + 30, h - 60], [x + 6, h - 60]], { fill: '#97A6C2', stroke: null, raw: true, wobble: 0.2, opacity: 0.7 });
-  }
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 1.4 };
-}
-
 /**
  * A forest seen from afar, drawn the way painters and stylised games do it: not tree by tree but as one
  * mass with a scalloped top where the crowns meet the sky. Each crown is a bump in the silhouette, with a
@@ -262,95 +247,6 @@ function canopyBand(p: ReturnType<typeof plainPen>, opts: { at: (x: number) => n
   }
 }
 
-/** Rounded hills covered in autumn woods, paled and cooled by the distance. */
-function autumnRidgeArt(): Art {
-  const key = 'bd_a_ridge';
-  const h = 520;
-  const p = plainPen(key);
-  const hill = wave(37, [80, 34, 18]);
-  const at = (x: number) => h - 250 - hill(x);
-  const top: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 16) top.push([x, at(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: mix('#B9806A', '#C9D6E6', 0.35), stroke: null, raw: true, wobble: 0.2 });
-  canopyBand(p, { at, bottom: h, size: 54, hues: ['#E2925E', '#D47452', '#EAB866', '#C9604E', '#D99A5A', '#8E9A5A'], base: '#C9785A', seed: 61, haze: ['#C9D6E6', 0.38], rows: 3 });
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.6 };
-}
-
-/**
- * The valley itself: mossy cliffs either side of a gorge, a waterfall pouring into a pool, a stone
- * arch bridge across the river, and maples blazing orange, red and gold along the banks.
- * The waterfall's moving water is a separate strip, laid over the gap left for it.
- */
-export const FALLS = { x: 1180, top: 120, bottom: 360, w: 90 };
-function autumnValleyArt(): Art {
-  const key = 'bd_a_valley';
-  const h = 520;
-  const p = plainPen(key);
-  const hill = wave(41, [60, 30, 14]);
-  const at = (x: number) => h - 260 - hill(x) - (Math.abs(x - FALLS.x) < 260 ? 90 * Math.cos(((x - FALLS.x) / 260) * (Math.PI / 2)) : 0);
-  const top: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 12) top.push([x, at(x)]);
-  p.shape([...top, [TILE, h], [0, h]], { fill: '#8E7C72', stroke: null, raw: true, wobble: 0.3 });
-  // Cliff strata and moss.
-  for (let k = 1; k < 6; k++) p.line(top.map(([x, y]) => [x, y + 28 * k + Math.sin(x / 70 + k) * 5] as Pt), { width: 2.5, color: '#7A6A62', raw: true, opacity: 0.5, wobble: 0 });
-  for (let x = 10; x < TILE; x += 22) p.ellipse(x, at(x) + 4, 16, 6, { fill: '#7E9A5E', stroke: null, wobble: 0.5, opacity: 0.9 });
-  // The river along the bottom: it winds, widens and narrows, with a sandy shore on the near side, a deep
-  // channel down the middle, and the blazing trees on its far bank reflected in it. (Every wave has a whole
-  // number of turns across the tile, so copies meet seamlessly.)
-  const turn = (x: number, k: number, ph = 0) => Math.sin((x / TILE) * Math.PI * 2 * k + ph);
-  const far = (x: number) => h - 74 + turn(x, 5) * 7 + turn(x, 13, 1) * 3;
-  const near = (x: number) => h - 26 + turn(x, 4, 2) * 6 + turn(x, 11) * 2;
-  const xs: number[] = [];
-  for (let x = 0; x <= TILE; x += 12) xs.push(x);
-  p.shape([...xs.map((x): Pt => [x, near(x) - 4]), [TILE, h], [0, h]], { fill: '#D8C4A2', stroke: null, raw: true, wobble: 0.2 });
-  p.shape([...xs.map((x): Pt => [x, far(x)]), ...xs.slice().reverse().map((x): Pt => [x, near(x)])], { fill: '#86BCCC', stroke: null, raw: true, wobble: 0.2 });
-  p.shape([...xs.map((x): Pt => [x, (far(x) * 2 + near(x)) / 3]), ...xs.slice().reverse().map((x): Pt => [x, (far(x) + near(x) * 2) / 3])], { fill: '#6CA4BA', stroke: null, raw: true, wobble: 0.2, opacity: 0.8 });
-  // Pebbles along the shore.
-  for (let i = 0, x = 6; x < TILE; i++, x += 18 + rnd(91, i) * 40) p.ellipse(x, near(x) + 4, 5 + rnd(93, i) * 6, 3, { fill: rnd(95, i) < 0.5 ? '#B8A68A' : '#C9B9A0', stroke: null });
-  // The pool the falls drop into: deep and dark under the falls, paler at its rim.
-  p.ellipse(FALLS.x, h - 60, 140, 26, { fill: '#5E9AB0', stroke: null, wobble: 0.5 });
-  p.ellipse(FALLS.x, h - 54, 110, 16, { fill: '#7FB6C8', stroke: null, wobble: 0.5 });
-  // The notch the water has cut into the cliff: dark and wet behind the falls, with a lip at the top.
-  p.shape(
-    [
-      [FALLS.x - 50, FALLS.top + 6],
-      [FALLS.x + 50, FALLS.top + 4],
-      [FALLS.x + 96, h - 70],
-      [FALLS.x - 96, h - 66],
-    ],
-    { fill: '#4A3E46', stroke: null, raw: true, wobble: 0.6 },
-  );
-  for (let i = 0; i < 6; i++) p.line([[FALLS.x - 60 + i * 24, FALLS.top + 20], [FALLS.x - 64 + i * 25, h - 80]], { width: 2, color: '#62586A', raw: true, opacity: 0.6, wobble: 0.4 });
-  p.shape(
-    [
-      [FALLS.x - 60, FALLS.top + 4],
-      [FALLS.x, FALLS.top - 4],
-      [FALLS.x + 60, FALLS.top + 2],
-      [FALLS.x + 56, FALLS.top + 18],
-      [FALLS.x, FALLS.top + 10],
-      [FALLS.x - 56, FALLS.top + 20],
-    ],
-    { fill: '#5E4E52', stroke: null, wobble: 0.5 },
-  );
-  // Stone arch bridge.
-  const bx = 1750;
-  const by = at(bx) + 40;
-  p.shape([[bx - 200, by], [bx + 200, by], [bx + 200, by + 26], [bx - 200, by + 26]], { fill: '#B8A898', stroke: null, raw: true });
-  for (const ax of [bx - 110, bx + 110]) p.ellipse(ax, by + 90, 80, 70, { fill: '#8E7C72', stroke: null, wobble: 0.3 });
-  for (let x = bx - 196; x < bx + 196; x += 22) p.rect(x, by - 12, 14, 12, { fill: '#C9B9A8', stroke: null, r: 2 });
-  // Maples: clusters of round canopies on the banks and the cliff tops, in blazing colour.
-  const blaze = ['#E8743E', '#F2A23A', '#D8463A', '#F2C45A', '#C9502E', '#EE8A44'];
-  // Woods along the cliff tops: one canopy mass, nearer and so richer than the ridge behind, broken where
-  // the falls come over.
-  canopyBand(p, { at: (x) => at(x) + 10, bottom: h - 140, size: 46, hues: blaze, base: '#B8462E', seed: 71, haze: ['#F4DCC6', 0.12], skip: (x) => Math.abs(x - FALLS.x) < 90, rows: 2 });
-  // Their colours, broken and wavering, reflected in the river.
-  for (let i = 0, x = 20; x < TILE; i++, x += 60 + rnd(73, i) * 50) {
-    if (Math.abs(x - FALLS.x) < 160) continue;
-    for (let k = 0; k < 3; k++) p.line([[x - 14 + k * 14, far(x) + 4 + k * 3], [x - 14 + k * 14, far(x) + 18 + k * 4]], { width: 6, color: blaze[(i + k) % blaze.length], raw: true, opacity: 0.3, wobble: 0.6 });
-  }
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.3 };
-}
-
 /** The valley falls, for the live water: one sheet rolling over the notch's lip into the pool. */
 const VALLEY_FALLS: FallSpec = {
   canvas: { x: FALLS.x - 120, y: FALLS.top - 16, w: 240, h: 520 - 40 - (FALLS.top - 16) },
@@ -360,18 +256,16 @@ const VALLEY_FALLS: FallSpec = {
   scale: 0.55,
 };
 
-/** Glints of light drifting down the river: short white dashes inside the band the river always covers. */
-function riverGlintArt(): Art {
-  const key = 'bd_a_glint';
-  const h = 40;
-  const p = plainPen(key);
-  for (let i = 0, x = 4; x < TILE - 40; i++, x += 30 + rnd(97, i) * 60) {
-    const y = 4 + rnd(99, i) * 30;
-    p.line([[x, y], [x + 10 + rnd(101, i) * 26, y]], { width: 2 + rnd(103, i) * 2, color: '#F4FCFF', raw: true, opacity: 0.85, wobble: 0 });
-  }
-  return { key, svg: p.svg(TILE, h), w: TILE, h };
-}
 
+/** A maple leaf for the wind to carry: white under an ink line, so each one can be tinted its own colour. */
+function mapleLeafArt(): Art {
+  const p = plainPen('bd_a_leaf');
+  const c: Pt = [16, 15];
+  const shape: Pt[] = [[0, -12], [3, -6], [7, -9], [6, -3], [12, -4], [8, 1], [10, 5], [2, 4], [1, 11], [-1, 11], [-2, 4], [-10, 5], [-8, 1], [-12, -4], [-6, -3], [-7, -9], [-3, -6]];
+  p.shape(shape.map(([x, y]) => [c[0] + x, c[1] + y] as Pt), { fill: '#FFFFFF', stroke: C.ink, width: 1.8, raw: true, wobble: 0.3 });
+  p.line([[c[0], c[1] - 8], [c[0], c[1] + 10]], { width: 1.2, color: C.ink, raw: true, opacity: 0.7 });
+  return { key: 'bd_a_leaf', svg: p.svg(32, 30), w: 32, h: 30 };
+}
 
 /** A roadside maple, inked like the rest of the near world. */
 function mapleArt(n: number): Art {
@@ -400,29 +294,38 @@ function birchArt(): Art {
 
 const AUTUMN: Biome = {
   key: 'autumn',
-  sky: [
-    [0, '#8FB6D8'],
-    [0.42, '#C9D6E6'],
-    [0.72, '#F4DCC6'],
-    [1, '#FBE6D0'],
-  ],
-  ground: { '#C47F58': '#9A6A4E', '#9C5C48': '#7A5040', '#5E3A44': '#4A3238', '#EDB27D': '#C9A988', '#F8CC97': '#DCC2A2', '#9C5C48 ': '#8A6A50' },
-  grass: { '#2F6B55': '#7A5A2E', '#3E8A68': '#B8862E', '#4F9C74': '#C9702E', '#62AE7E': '#D9A84A' },
+  // A misty dawn, printed: violet overhead, warming through rose to peach and bone at the horizon.
+  sky: MV_SKY,
+  // The valley's road: a darker, cooler earth than Old Street's - rust over plum, with a fallen-leaf surface.
+  ground: { '#C47F58': '#8E3A34', '#9C5C48': '#6A2432', '#5E3A44': '#2E0F22', '#B06E50': '#7E3436', '#93594A': '#5A1E30', '#774650': '#3E1228', '#EDB27D': '#C8703E', '#F8CC97': '#E8A04E', '#E2A27A': '#D9603A' },
+  grass: { '#2F6B55': '#5A2A2A', '#3E8A68': '#A8602E', '#4F9C74': '#D9803A', '#62AE7E': '#E8A84A' },
   grip: 1,
   lamps: false,
-  arts: () => [autumnFarArt(), autumnRidgeArt(), autumnValleyArt(), riverGlintArt(), fallsSetArt(), gorgeArt(), fallsFrontArt(), fallWaterArt()],
+  arts: () => [
+    valleySunArt(),
+    valleyFarArt(),
+    valleyRidgeArt(),
+    valleyArt(),
+    valleyGlintArt(),
+    mapleLeafArt(),
+    ...[0, 1, 2].map((n) => recolor(printCloudArt(n), `bd_cloud_dawn_${n}`, { '#FFF1DE': '#FBE2BC', '#FFC29E': '#E8967E' })),
+    fallsSetArt(),
+    gorgeArt(),
+    fallsFrontArt(),
+    fallWaterArt(),
+  ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_autumn', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
-    // A pale morning sun behind the haze.
-    scene.add.image(560, 230, 'halo').setScrollFactor(0.03).setDepth(-46).setTint(0xfff1d6).setDisplaySize(620, 620).setAlpha(0.8);
-    scene.add.circle(560, 230, 70, 0xfff6e2).setScrollFactor(0.03).setDepth(-45);
+    // The dawn sun, low over the mountains, printed: a warm core breaking into halftone at its rim.
+    scene.add.image(560, 270, 'halo').setScrollFactor(0.03).setDepth(-46).setTint(0xffc89a).setDisplaySize(900, 900).setAlpha(0.6);
+    scene.add.image(560, 270, 'bd_a_sun').setScrollFactor(0.03).setDepth(-45).setScale(0.72);
     const clouds: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < 6; i++) clouds.push(scene.add.image(i * 720 - 300, 140 + ((i * 97) % 160), `bd_cloud_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-44).setTint(0xfff2e6).setAlpha(0.8).setScale(0.9));
+    for (let i = 0; i < 6; i++) clouds.push(scene.add.image(i * 720 - 300, 120 + ((i * 97) % 170), `bd_cloud_dawn_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-44).setAlpha(0.92).setScale(0.8 + (i % 3) * 0.12));
     tiles(scene, 'bd_a_far', o.horizon - 260, 0.08, -42, o.reach);
-    const fog = fogTexture(scene, 'fog_warm', '#FFF4E6');
-    const fogs = [fogBand(scene, fog, o.horizon - 330, 0.1, -41, 0.5, 1.4)];
+    const fog = fogTexture(scene, 'fog_dawn', MV.mist);
+    const fogs = [fogBand(scene, fog, o.horizon - 330, 0.1, -41, 0.3, 1.4)];
     tiles(scene, 'bd_a_ridge', o.horizon - 150, 0.18, -38, o.reach);
-    fogs.push(fogBand(scene, fog, o.horizon - 210, 0.2, -37, 0.42, 1.2));
+    fogs.push(fogBand(scene, fog, o.horizon - 210, 0.2, -37, 0.26, 1.2));
     tiles(scene, 'bd_a_valley', o.horizon + 10, 0.36, -34, o.reach, -400);
     // The valley falls in each copy of the valley, all showing one live water picture, with spray at their feet.
     const valleyWater = new FallsWater(scene, 'falls_valley', VALLEY_FALLS);
@@ -444,11 +347,11 @@ const AUTUMN: Biome = {
         .setAlpha(0.7)
         .setFlipX(k === 1),
     );
-    fogs.push(fogBand(scene, fog, o.horizon - 60, 0.4, -31, 0.2, 0.9));
+    fogs.push(fogBand(scene, fog, o.horizon - 60, 0.4, -31, 0.14, 0.9));
     // The hero waterfalls, nearer than the valley, each on a stretch of road of its own.
     const heroes = [5500, 9800].map((x) => placeFalls(scene, x, o.horizon + 60, 0.5, -29.5));
-    const shafts = lightShafts(scene, 5, 0xfff0c8, -30);
-    haze(scene, o.horizon - 300, 300, 0xfff0e0, 0.06, -29, 0.3);
+    const shafts = lightShafts(scene, 5, 0xffc89a, -30);
+    haze(scene, o.horizon - 300, 300, 0xf6d9c0, 0.04, -29, 0.3);
     // Roadside: maples and birches.
     let seed = 1;
     for (let x = Math.max(1900, from(o)); x < Math.min(o.finish - 300, to(o)); x += 380 + rnd(5, seed) * 420, seed++) {
@@ -456,12 +359,12 @@ const AUTUMN: Biome = {
       scene.add.image(x, o.groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-9).setScale(0.85 + rnd(9, seed) * 0.4).setFlipX(seed % 2 === 0);
     }
     // Leaves: many, in three colours, tumbling across the screen.
-    const leaves = fallers(scene, 'bd_leaf', 40, 56, (f, i) => {
+    const leaves = fallers(scene, 'bd_a_leaf', 40, 56, (f, i) => {
       f.vx = -0.6 - Math.random() * 1.2;
       f.vy = 0.8 + Math.random() * 1.2;
       f.spin = (Math.random() - 0.5) * 6;
       f.sway = 1.2 + Math.random();
-      f.img.setTint([0xffffff, 0xffc04a, 0xe0503a][i % 3]).setScale(0.7 + Math.random() * 0.8);
+      f.img.setTint([0xe3263a, 0xff6a30, 0xffb23f, 0xc0602e][i % 4]).setScale(0.7 + Math.random() * 0.8);
     });
     let lastScroll = 0;
     return {

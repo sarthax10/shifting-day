@@ -116,6 +116,37 @@ const inTunnel = (x: number, on: boolean) => on && x > TUNNEL.from - 300 && x < 
 /** How far the truck reaches behind and in front of its middle (tailgate to bumper). */
 const TRUCK_BACK = 194;
 const TRUCK_NOSE = 476;
+/** A run's time as m:ss.t (or h:mm:ss for very long runs); without tenths for the receipt and best. */
+function clock(s: number, tenths = true) {
+  const t = Math.max(0, s);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const sec = Math.floor(t % 60);
+  const mm = h ? String(m).padStart(2, '0') : String(m);
+  const base = `${h ? `${h}:` : ''}${mm}:${String(sec).padStart(2, '0')}`;
+  return tenths && !h ? `${base}.${Math.floor((t * 10) % 10)}` : base;
+}
+const BEST_KEY = 'shifting-day-best-run';
+/** The quickest finished run on this device, in seconds, if there is one. */
+function bestRun(): number | null {
+  try {
+    const v = Number(localStorage.getItem(BEST_KEY));
+    return v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+/** Records a finished run; true when it beats the best. */
+function saveRun(s: number): boolean {
+  const best = bestRun();
+  if (best !== null && s >= best) return false;
+  try {
+    localStorage.setItem(BEST_KEY, String(s));
+  } catch {
+    // Private mode: the run still counts, it just is not remembered.
+  }
+  return true;
+}
 /** The toll gates, each partway up a hill so the stop is on a slope. */
 
 interface Thing {
@@ -200,6 +231,7 @@ export class PlayScene extends Phaser.Scene {
   private hudBar!: Phaser.GameObjects.Graphics;
   private hudTruck!: Phaser.GameObjects.Image;
   private hudHomes: Phaser.GameObjects.Image[] = [];
+  private hudClock!: Phaser.GameObjects.Text;
   private joltTip = false;
   private scenery2: { sails: Phaser.GameObjects.Image[]; clouds: { img: Phaser.GameObjects.Image; speed: number }[] } = { sails: [], clouds: [] };
   private chimneys: { x: number; y: number; kind: 'old' | 'new'; n: number }[] = [];
@@ -1520,7 +1552,7 @@ export class PlayScene extends Phaser.Scene {
 
     // Top right: the points on the truck, and how far along the road it is.
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) => o.setScrollFactor(0).setDepth(100);
-    fixed(this.add.rectangle(W - 14, 18, 566, 96, 0x0a0712, 0.9).setOrigin(1, 0).setStrokeStyle(2, 0xf3e3cc, 0.3));
+    fixed(this.add.rectangle(W - 14, 18, 566, 122, 0x0a0712, 0.9).setOrigin(1, 0).setStrokeStyle(2, 0xf3e3cc, 0.3));
     fixed(this.add.rectangle(W - 14, 18, 566, 5, 0xff6a30).setOrigin(1, 0));
     fixed(this.add.text(W - 560, 40, 'POINTS', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(0, 0.5));
     this.hudHearts = fixed(this.add.text(W - 560, 76, '', { fontFamily: TITLE, fontSize: '46px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
@@ -1528,6 +1560,12 @@ export class PlayScene extends Phaser.Scene {
     this.hudBar = fixed(this.add.graphics());
     this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.08)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.05))];
     this.hudTruck = fixed(this.add.image(W - 330, 54, 'truck#0').setScale(0.1));
+    // The run clock, one slim line along the foot of the same panel: the whole move so far, and the best yet.
+    fixed(this.add.rectangle(W - 22, 114, 550, 1, 0xf3e3cc, 0.18).setOrigin(1, 0));
+    const best = bestRun();
+    if (best) fixed(this.add.text(W - 560, 127, `BEST ${clock(best, false)}`, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5).setAlpha(0.55));
+    this.hudClock = fixed(this.add.text(W - 30, 127, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '15px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(1, 0.5));
+    fixed(this.add.text(W - 150, 127, 'RUN', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(1, 0.5));
 
     this.tag = this.add
       .text(0, 0, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '22px', color: '#F3E3CC', align: 'center', backgroundColor: 'rgba(10, 7, 18, 0.92)', padding: { x: 16, y: 10 }, lineSpacing: 2 })
@@ -2240,6 +2278,7 @@ export class PlayScene extends Phaser.Scene {
   /** The card at the top right: hearts, and either what is on the truck or how far along the road it is. */
   private updateHud(onTruck: number, points: number, pct: number) {
     this.hudHearts.setText(String(points));
+    this.hudClock.setText(clock(this.trip.time + this.driveTime));
     const packing = this.phase === 'pack' || this.phase === 'intro';
     this.hudLabel.setVisible(packing).setText(`${onTruck} / ${this.things.length} ON THE TRUCK`);
     this.hudTruck.setVisible(!packing);
@@ -2507,6 +2546,7 @@ export class PlayScene extends Phaser.Scene {
     const lostCount = lost.length + this.trip.lost.length;
     const parking = [...this.trip.parking, this.parkBonus].reduce((a, b) => a + b, 0);
     const tripTime = this.trip.time + this.driveTime;
+    const record = saveRun(tripTime);
     clearTrip();
     const earned = delivered.reduce((n, t) => n + this.valueOf(t), 0);
     const penalty = broken.reduce((n, t) => n + Math.round(this.valueOf(t) / 2), 0);
@@ -2539,7 +2579,7 @@ export class PlayScene extends Phaser.Scene {
     keep(fixed(this.add.image(cx, top - 6, 'ribbon'), 202));
     keep(fixed(this.add.text(cx, top - 18, 'Home sweet home!', { fontFamily: TITLE, fontSize: '62px', color: C.cream, stroke: C.terracottaDark, strokeThickness: 4 }).setOrigin(0.5), 203));
     keep(fixed(this.add.text(left, top + 104, 'SHIFT HAPPENS MOVING CO.', { fontFamily: TITLE, fontSize: '28px', color: C.ink }).setOrigin(0, 0.5), 202));
-    keep(fixed(this.add.text(left, top + 136, `Delivery note No. ${String(1000 + (score % 9000)).padStart(4, '0')}  ·  ${tripTime >= 60 ? `${Math.floor(tripTime / 60)} min ` : ''}${Math.round(tripTime % 60)} s on the road`, { fontFamily: TEXT, fontSize: '20px', color: C.walnut }).setOrigin(0, 0.5), 202));
+    keep(fixed(this.add.text(left, top + 136, `Delivery note No. ${String(1000 + (score % 9000)).padStart(4, '0')}  ·  ${clock(tripTime, false)} start to finish${record ? '  ·  NEW BEST!' : ''}`, { fontFamily: TEXT, fontSize: '20px', color: C.walnut }).setOrigin(0, 0.5), 202));
     const ink = this.add.graphics();
     keep(fixed(ink, 202));
     const dashed = (y: number, x0: number, x1: number) => {
@@ -2742,6 +2782,8 @@ export class PlayScene extends Phaser.Scene {
     }
 
     if (this.phase !== 'pack' && this.phase !== 'intro') this.nearRoad(this.chassis.position.x);
+    // The run clock: it counts while you pack and while you drive, and stops once you park.
+    if (this.phase === 'pack' && !this.waiting) this.driveTime += delta / 1000;
     if (this.phase === 'drive') {
       this.driveTime += delta / 1000;
       const cx = this.chassis.position.x;
