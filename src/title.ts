@@ -432,6 +432,7 @@ export class TitleScene extends Phaser.Scene {
     const hint = touch ? 'TAP TO CHOOSE' : 'UP / DOWN  CHOOSE   ·   ENTER / A  GO   ·   M  SOUND';
     const h = this.add.text(W - LEFT, ROAD + 46, hint, { fontFamily: MONO, fontStyle: 'bold', fontSize: '22px', color: BONE, letterSpacing: 4 }).setOrigin(1, 0.5).setDepth(60).setAlpha(0);
     this.tweens.add({ targets: h, alpha: 0.6, duration: 800, delay: 2600 });
+    this.buildCredit();
 
     const kb = this.input.keyboard!;
     kb.on('keydown-SPACE', () => this.activate());
@@ -441,6 +442,15 @@ export class TitleScene extends Phaser.Scene {
     };
     this.input.gamepad?.on('down', pad);
     this.events.once('shutdown', () => this.input.gamepad?.off('down', pad));
+  }
+
+  /** The maker's mark, bottom left, opposite the controls: small, in the poster's type, like a print's signature. */
+  private buildCredit() {
+    const by = this.add.text(0, 0, 'MADE BY', { fontFamily: MONO, fontStyle: 'bold', fontSize: '15px', color: BONE, letterSpacing: 5 }).setOrigin(0, 0.5).setAlpha(0.7);
+    const name = this.add.text(by.width + 12, -1, 'SARTHAX10', { fontFamily: DISPLAY, fontSize: '30px', color: BONE, letterSpacing: 2 }).setOrigin(0, 0.5).setShadow(3, 3, '#E3263A', 0, true, false);
+    const rule = this.add.rectangle(by.width + 12, 19, name.width, 4, EMBER).setOrigin(0, 0.5);
+    const credit = this.add.container(LEFT, ROAD + 46, [by, name, rule]).setDepth(60).setAlpha(0);
+    this.tweens.add({ targets: credit, alpha: 0.9, duration: 800, delay: 2800 });
   }
 
   private refreshMenu() {

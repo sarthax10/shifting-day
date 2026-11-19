@@ -2506,8 +2506,8 @@ export function cursorArt(kind: CursorKind): Art {
  * The driver, drawn the way cartoon drivers are on the reference boards: a big head that fills the
  * window, a strong silhouette (a red knit beanie with a pompom, a tuft of hair escaping at the back), a
  * face turned three-quarters towards the road so both eyes read, a button nose sticking out past the
- * cheek, and the acting done by thick eyebrows, eye shapes and the mouth. A mustard jacket, the arm out
- * along the sill and a mitten gripping the door.
+ * cheek, and the acting done by thick eyebrows, eye shapes and the mouth. A teal work jacket with a bone
+ * collar, and the back arm resting out of the window.
  *  - calm: a soft smile;  blink;  whistle: eyes shut, lips pursed;
  *  - strain: eyes screwed up, teeth gritted (high revs);  worried: brows up, glancing back at the load;
  *  - panic: eyes huge, mouth wide, beanie and hair flying up;  happy: a big grin;
@@ -2520,13 +2520,14 @@ export function driverArt(mood: DriverMood): Art {
   const key = `driver_${mood}`;
   const p = pen(key);
   const { x: cx, y: cy } = DRIVER.head;
-  const SKIN = '#FFD3AE';
-  const SKIN_SHADE = '#EFAE88';
-  const JACKET = C.mustard;
-  const JACKET_SHADE = '#D99A2E';
-  const HAT = '#D9483A';
-  const HAT_SHADE = '#B23A30';
-  const HAIR = '#5A3A2E';
+  const SKIN = '#F6C9A0';
+  const SKIN_SHADE = '#E0A27A';
+  const JACKET = '#2E6E6E';
+  const JACKET_SHADE = '#1E4A4E';
+  const HAT = '#E3263A';
+  const HAT_SHADE = '#9E1A2E';
+  const HAIR = '#3A1A26';
+  const BONE = '#F3E3CC';
   const INK = C.ink;
   const limb = (pts: Pt[], colour: string, thick: number) => {
     p.line(pts, { width: thick + 8, raw: true, wobble: 0.3 });
@@ -2535,14 +2536,18 @@ export function driverArt(mood: DriverMood): Art {
   const panic = mood === 'panic';
   // The beanie sits high, so the brows and eyes stay clear of it; it jumps when they do.
   const up = (panic ? -12 : mood === 'surprised' ? -5 : 0) - 11;
-  // Jacket shoulders, down to the sill, with a collar.
-  p.shape([[cx - 36, cy + 31], [cx - 32, cy + 20], [cx - 14, cy + 14], [cx + 14, cy + 14], [cx + 30, cy + 20], [cx + 34, cy + 31]], { fill: JACKET, width: 4.5, shade: [{ pts: [[cx + 6, cy + 8], [cx + 44, cy + 8], [cx + 44, cy + 36], [cx + 10, cy + 36]], color: JACKET_SHADE }] });
-  p.shape([[cx - 12, cy + 14], [cx + 2, cy + 26], [cx + 14, cy + 14]], { fill: '#F4F0E6', raw: true, width: 3 });
-  // The arm along the sill, and a mitten gripping the door.
-  limb([[cx + 18, cy + 24], [cx + 46, cy + 27], [cx + 62, cy + 30]], JACKET, 17);
-  limb([[cx + 63, cy + 33], [cx + 64, cy + 50]], JACKET, 14);
-  p.ellipse(cx + 64, cy + 58, 11, 10, { fill: HAT, width: 4 });
-  p.ellipse(cx + 56, cy + 53, 5, 6, { fill: HAT, width: 3 });
+  // A teal work jacket: shoulders down to the sill, a bone collar, a gold zip.
+  p.shape([[cx - 36, cy + 31], [cx - 32, cy + 19], [cx - 14, cy + 13], [cx + 14, cy + 13], [cx + 30, cy + 19], [cx + 34, cy + 31]], { fill: JACKET, width: 4.5, shade: [{ pts: [[cx + 4, cy + 8], [cx + 44, cy + 8], [cx + 44, cy + 36], [cx + 8, cy + 36]], color: JACKET_SHADE }] });
+  p.shape([[cx - 14, cy + 13], [cx - 4, cy + 25], [cx + 2, cy + 17], [cx + 8, cy + 25], [cx + 16, cy + 13]], { fill: BONE, raw: true, width: 3 });
+  p.line([[cx + 2, cy + 18], [cx + 2, cy + 31]], { width: 2.4, color: '#FFB23F', raw: true });
+  // The back arm out of the window: the elbow resting on the sill behind them, the forearm hanging down
+  // the door, a hand at its end.
+  limb([[cx - 16, cy + 22], [cx - 40, cy + 26], [cx - 56, cy + 30]], JACKET_SHADE, 16);
+  limb([[cx - 57, cy + 32], [cx - 58, cy + 50]], JACKET_SHADE, 13);
+  p.rect(cx - 66, cy + 47, 16, 7, { fill: BONE, width: 3, r: 2 });
+  p.shape([[cx - 51, cy + 53], [cx - 65, cy + 53], [cx - 66, cy + 63], [cx - 62, cy + 70], [cx - 54, cy + 70], [cx - 50, cy + 62]], { fill: SKIN, width: 3.5, shade: [{ pts: [[cx - 70, cy + 50], [cx - 59, cy + 50], [cx - 60, cy + 74], [cx - 70, cy + 74]], color: SKIN_SHADE }] });
+  for (const fx of [cx - 54, cx - 58, cx - 62]) p.line([[fx, cy + 64], [fx, cy + 70]], { width: 1.8, color: SKIN_SHADE, raw: true });
+  p.shape([[cx - 50, cy + 56], [cx - 45, cy + 60], [cx - 47, cy + 64], [cx - 51, cy + 62]], { fill: SKIN, width: 2.8 });
   // Hair escaping at the back, standing on end in a panic.
   if (panic) p.shape([[cx - 34, cy + 6], [cx - 44, cy - 10], [cx - 32, cy - 6], [cx - 38, cy - 22], [cx - 24, cy - 12], [cx - 22, cy + 8]], { fill: HAIR, raw: true, width: 3.5 });
   else p.shape([[cx - 32, cy + 12], [cx - 40, cy + 2], [cx - 34, cy - 6], [cx - 24, cy - 2], [cx - 22, cy + 10]], { fill: HAIR, width: 3.5 });
@@ -2557,9 +2562,9 @@ export function driverArt(mood: DriverMood): Art {
   p.line([[cx - 25, cy + 2], [cx - 23, cy + 9]], { width: 2.4, color: SKIN_SHADE, raw: true });
   // The beanie: a dome with a folded, ribbed band, and a pompom that jumps when they jump.
   p.shape([[cx - 32, cy - 6 + up], [cx - 26, cy - 26 + up], [cx - 6, cy - 38 + up], [cx + 14, cy - 36 + up], [cx + 30, cy - 22 + up], [cx + 33, cy - 6 + up]], { fill: HAT, width: 4.5, shade: [{ pts: [[cx + 8, cy - 50], [cx + 44, cy - 50], [cx + 44, cy], [cx + 8, cy]], color: HAT_SHADE }] });
-  p.rect(cx - 34, cy - 12 + up, 69, 13, { fill: '#F4F0E6', r: 5, width: 4 });
-  for (let k = 0; k < 8; k++) p.line([[cx - 28 + k * 8, cy - 10 + up], [cx - 28 + k * 8, cy - 1 + up]], { width: 2, color: '#C9C2B4', raw: true });
-  p.ellipse(cx - 12, cy - 42 + up * 1.6, 10, 9, { fill: '#F4F0E6', width: 3.5 });
+  p.rect(cx - 34, cy - 12 + up, 69, 13, { fill: BONE, r: 5, width: 4 });
+  for (let k = 0; k < 8; k++) p.line([[cx - 28 + k * 8, cy - 10 + up], [cx - 28 + k * 8, cy - 1 + up]], { width: 2, color: '#D9C3A6', raw: true });
+  p.ellipse(cx - 12, cy - 42 + up * 1.6, 10, 9, { fill: BONE, width: 3.5 });
   // Cheeks: rosy, rosier when happy or straining.
   const blush = mood === 'happy' || mood === 'strain' ? 0.9 : 0.55;
   p.ellipse(cx + 24, cy + 14, 6, 4, { fill: '#F48C86', stroke: null, opacity: blush });
