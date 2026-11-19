@@ -7,10 +7,11 @@ import * as art from './art/art';
 import { tollArts } from './art/tolls';
 import { C } from './art/ink';
 import { PlayScene } from './scenes/play';
-import { prepareLeg } from './world/prepare';
+import { prepareCore, prepareLeg } from './world/prepare';
+import type { ArtJob } from './world/biomes';
 import { LEGS } from './world/legs';
 import { makeCursors } from './art/cursors';
-import { TitleScene, titleArts } from './scenes/title';
+import { TitleScene } from './scenes/title';
 // Old Street, redrawn by hand in the poster identity.
 import * as os from './art/oldstreet';
 import { audio } from './systems/audio';
@@ -134,95 +135,91 @@ const game = new Phaser.Game({
   },
 });
 
+/** The cargo on the title screen's truck. */
+const TITLE_ITEMS = ['clock', 'armchair', 'box_l', 'plant', 'box_m', 'lamp', 'cat'];
+
 game.events.once('ready', async () => {
   const three = [0, 1, 2];
-  const arts: art.Art[] = [
+  // A cargo item in every state it can be in: each mood of a pet, a fragile thing broken.
+  const itemJob = (spec: art.ItemSpec): ArtJob => () =>
+    (spec.pet ? art.MOODS.map((m) => () => art.itemArt(spec, m)) : spec.fragile ? [() => art.itemArt(spec), () => art.itemArt(spec, 'broken')] : [() => art.itemArt(spec)]).flatMap(art.boiled);
+  // What the title screen's truck is built from, drawn before the title shows.
+  const titleJobs: ArtJob[] = [
+    () => art.boiled(() => art.truckArt()),
+    () => art.boiled(() => art.truckArt(true)),
+    () => art.boiled(() => art.wheelArt(false)),
+    () => art.boiled(() => art.wheelArt(true)),
+    () => art.boiled(() => art.driverArt('happy')),
+    ...art.ITEMS.filter((spec) => TITLE_ITEMS.includes(spec.key)).map(itemJob),
+  ];
+  // Everything here is drawn behind the title screen, a slice at a time: building and decoding these SVGs
+  // takes seconds, and the title needs none of them. Each entry is a job, so even the SVG text is only
+  // written when its turn comes.
+  const coreJobs: ArtJob[] = [
+    ...art.DRIVER_MOODS.filter((m) => m !== 'happy').map((m): ArtJob => () => art.boiled(() => art.driverArt(m))),
     // Things near the camera have a boiling line. Scenery further back holds still.
-    ...art.ITEMS.flatMap((spec) => (spec.pet ? art.MOODS.map((m) => () => art.itemArt(spec, m)) : spec.fragile ? [() => art.itemArt(spec), () => art.itemArt(spec, 'broken')] : [() => art.itemArt(spec)])).flatMap(art.boiled),
-    ...art.boiled(() => art.truckArt()),
-    ...art.boiled(() => art.truckArt(true)),
-    ...art.boiled(() => art.wheelArt(false)),
-    ...art.boiled(() => art.wheelArt(true)),
+    ...art.ITEMS.filter((spec) => !TITLE_ITEMS.includes(spec.key)).map(itemJob),
     // The houses are the biggest pictures in the game and barely move: one drawing each, no boil.
-    { ...art.shackArt('house_old'), key: 'house_old#0' },
-    { ...art.manorArt('house_new'), key: 'house_new#0' },
-    ...Array.from({ length: art.TREE_KINDS }, (_, n) => n).flatMap((n) => art.boiled(() => art.treeArt(n))),
+    () => ({ ...art.shackArt('house_old'), key: 'house_old#0' }),
+    () => ({ ...art.manorArt('house_new'), key: 'house_new#0' }),
+    () => Array.from({ length: art.TREE_KINDS }, (_, n) => n).flatMap((n) => art.boiled(() => art.treeArt(n))),
     // Far scenery is softened a little, so the truck and its cargo are the sharp things on screen.
-    ...three.map((n) => art.blurred(art.hillArt(n), 1.6)),
-    ...three.map((n) => art.blurred(art.farHillArt(n), 2.6)),
-    ...three.map(art.cloudArt),
-    ...three.map((n) => art.blurred(os.townArt(n), 1.4)),
-    ...three.map(art.pebbleArt),
-    ...[0, 1].flatMap((n) => [os.bushArt(n), os.tuftArt(n), os.flowerArt(n)]),
-    os.sunArt(),
-    ...art.EYE_MOODS.flatMap((m) => art.boiled(() => art.eyeArt(m))),
-    ...art.DRIVER_MOODS.flatMap((m) => art.boiled(() => art.driverArt(m))),
-    ...art.boiled(art.freshenerArt),
-    ...art.boiled(art.aerialArt),
-    os.bumpSignArt(),
-    os.hillSignArt(),
-    os.milestoneArt(),
-    os.homeSignArt(),
-    os.plankSignArt(),
-    art.officialSignArt(),
-    ...tollArts(),
-    art.tollArmArt(),
-    art.railSignalArt(),
-    art.fuelCanArt(),
-    art.bubbleWrapArt(),
-    art.crossbowArt(true),
-    art.crossbowArt(false),
-    art.boltArt(),
-    art.winchPostArt(),
-    art.dashArt(),
-    art.hbHandleArt(),
-    art.receiptArt(),
-    art.ribbonArt(),
-    art.stampArt(),
-    art.speedoArt(),
-    art.speedoGlassArt(),
-    art.gearBadgeArt(),
-    art.gateArt(),
-    art.knobArt(),
-    art.panelArt('card', 560, 100),
-    art.panelArt('pill', 1160, 60),
-    art.sparkArt(),
-    os.fieldArt(),
-    art.blurred(os.fenceArt(), 1.2),
-    art.blurred(os.poleArt(), 1.0),
-    os.lampPostArt(),
-    art.puffArt(),
-    art.buttonArt('btn', 300, C.mustard),
-    art.buttonArt('btn_rope', 260, C.oat),
-    art.panelArt('panel', 1000, 690),
-    art.coinArt(),
-    art.heartArt('heart', C.terracotta),
-    art.heartArt('heart_empty', C.creamShade),
-    ...titleArts(),
-    ...os.backdropArts(),
+    () => three.map((n) => art.blurred(art.hillArt(n), 1.6)),
+    () => three.map((n) => art.blurred(art.farHillArt(n), 2.6)),
+    () => three.map(art.cloudArt),
+    () => three.map((n) => art.blurred(os.townArt(n), 1.4)),
+    () => three.map(art.pebbleArt),
+    () => [0, 1].flatMap((n) => [os.bushArt(n), os.tuftArt(n), os.flowerArt(n)]),
+    () => os.sunArt(),
+    () => art.EYE_MOODS.flatMap((m) => art.boiled(() => art.eyeArt(m))),
+    () => art.boiled(art.freshenerArt),
+    () => art.boiled(art.aerialArt),
+    () => os.bumpSignArt(),
+    () => os.hillSignArt(),
+    () => os.milestoneArt(),
+    () => os.homeSignArt(),
+    () => os.plankSignArt(),
+    () => art.officialSignArt(),
+    () => tollArts(),
+    () => art.tollArmArt(),
+    () => art.railSignalArt(),
+    () => art.fuelCanArt(),
+    () => art.bubbleWrapArt(),
+    () => art.crossbowArt(true),
+    () => art.crossbowArt(false),
+    () => art.boltArt(),
+    () => art.winchPostArt(),
+    () => art.dashArt(),
+    () => art.hbHandleArt(),
+    () => art.receiptArt(),
+    () => art.ribbonArt(),
+    () => art.stampArt(),
+    () => art.speedoArt(),
+    () => art.speedoGlassArt(),
+    () => art.gearBadgeArt(),
+    () => art.gateArt(),
+    () => art.knobArt(),
+    () => art.panelArt('card', 560, 100),
+    () => art.panelArt('pill', 1160, 60),
+    () => art.sparkArt(),
+    () => os.fieldArt(),
+    () => art.blurred(os.fenceArt(), 1.2),
+    () => art.blurred(os.poleArt(), 1.0),
+    () => os.lampPostArt(),
+    () => art.puffArt(),
+    () => art.buttonArt('btn', 300, C.mustard),
+    () => art.buttonArt('btn_rope', 260, C.oat),
+    () => art.panelArt('panel', 1000, 690),
+    () => art.coinArt(),
+    () => art.heartArt('heart', C.terracotta),
+    () => art.heartArt('heart_empty', C.creamShade),
+    () => os.backdropArts(),
   ];
   softTextures(game.textures);
-  // The pictures are drawn a few at a time rather than all at once: a phone decoding hundreds of SVGs
-  // together can run out of memory and have its tab closed. The loading bar shows how far it has got.
   const bar = document.querySelector<HTMLElement>('#boot .bar span');
-  let done = 0;
-  const total = arts.length;
-  const drawAll = async () => {
-    let next = 0;
-    const worker = async () => {
-      while (next < arts.length) {
-        const a = arts[next++];
-        await art.loadArt(game.textures, a);
-        done++;
-        if (bar && done % 4 === 0) bar.style.width = `${Math.round((done / total) * 92)}%`;
-      }
-    };
-    await Promise.all(Array.from({ length: 6 }, worker));
-  };
   await Promise.all([
     makeCursors(),
-    drawAll(),
-    prepareLeg(game.textures, 1),
+    prepareCore(game.textures, titleJobs),
     document.fonts.load('400 40px "Anton"'),
     document.fonts.load('400 40px "Space Mono"'),
     document.fonts.load('700 40px "Space Mono"'),
@@ -233,6 +230,8 @@ game.events.once('ready', async () => {
     boot.style.opacity = '0';
     setTimeout(() => boot.remove(), 450);
   }
+  void prepareCore(game.textures, coreJobs);
+  void prepareLeg(game.textures, 1);
   game.scene.add('play', PlayScene, false);
   game.scene.add('title', TitleScene, true);
 });

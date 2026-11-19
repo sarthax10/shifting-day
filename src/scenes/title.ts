@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { TRUCK, DRIVER, type Art } from '../art/art';
+import { TRUCK, DRIVER } from '../art/art';
 import { DRIVER_AT } from './play';
 import { CURSOR } from '../art/cursors';
 import { H, W } from '../world/terrain';
-import { prepareLeg } from '../world/prepare';
+import { loadProgress, prepareLeg, setLoadBudget } from '../world/prepare';
 import { clearTrip, loadTrip, type Trip } from '../world/legs';
 import { ambience, audio, music, play } from '../systems/audio';
 import { PosterList, openControls } from '../ui/poster';
@@ -49,10 +49,6 @@ const SUN_Y = 420;
 let logoMeta: Logo | null = null;
 
 /** The title screen's pictures are painted on canvases when it opens; nothing to ink in advance. */
-export function titleArts(): Art[] {
-  return [];
-}
-
 export class TitleScene extends Phaser.Scene {
   private truck!: Phaser.GameObjects.Container;
   private wheels: Phaser.GameObjects.Image[] = [];
@@ -80,6 +76,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create() {
+    setLoadBudget(14);
     this.leaving = false;
     this.ready = false;
     this.wheels = [];
@@ -511,7 +508,11 @@ export class TitleScene extends Phaser.Scene {
     if (this.leaving) return;
     this.leaving = true;
     if (!trip) clearTrip();
-    const ready = trip ? prepareLeg(this.textures, trip.leg) : Promise.resolve();
+    // The leg may still be drawing in the background if the player starts straight away.
+    let loaded = false;
+    const ready = prepareLeg(this.textures, trip?.leg ?? 1).then(() => {
+      loaded = true;
+    });
     audio.unlock();
     play('click');
     play('honk');
@@ -526,7 +527,8 @@ export class TitleScene extends Phaser.Scene {
       ease: 'Cubic.easeIn',
       onComplete: () => {
         this.cameras.main.fadeOut(300, 0, 0, 0);
-        this.cameras.main.once('camerafadeoutcomplete', () =>
+        this.cameras.main.once('camerafadeoutcomplete', () => {
+          if (!loaded) this.showPacking();
           void ready.then(() => {
             // The title's large pieces are not needed in the game: let them go once the title has shut
             // down (they are painted again if it comes back). The small logo, the eye, the paper and
@@ -536,10 +538,30 @@ export class TitleScene extends Phaser.Scene {
               logoMeta = null;
             });
             this.scene.start('play', trip ? { leg: trip.leg, trip } : { intro: true });
-          }),
-        );
+          });
+        });
       },
     });
+  }
+
+  /** A loading line on black, for a start pressed before the road has finished drawing. */
+  private showPacking() {
+    setLoadBudget(48);
+    const cam = this.cameras.main;
+    cam.resetFX();
+    this.add.rectangle(0, 0, W, H, INK_N).setOrigin(0).setScrollFactor(0).setDepth(200);
+    const label = this.add
+      .text(W / 2, H / 2 - 10, 'PACKING THE TRUCK', { fontFamily: 'Anton', fontSize: '64px', color: '#F3E3CC' })
+      .setOrigin(0.5)
+      .setDepth(201);
+    label.setShadow(5, 5, '#E3263A', 0, false, true);
+    const track = this.add.rectangle(W / 2 - 260, H / 2 + 60, 520, 10, 0x3a0f22).setOrigin(0, 0.5).setDepth(201);
+    const fill = this.add.rectangle(track.x, track.y, 0, 10, EMBER).setOrigin(0, 0.5).setDepth(202);
+    const tick = () => {
+      fill.width = 520 * loadProgress();
+    };
+    tick();
+    this.time.addEvent({ delay: 100, loop: true, callback: tick });
   }
 
   // ------------------------------------------------------------------ every frame

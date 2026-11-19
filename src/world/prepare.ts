@@ -44,6 +44,7 @@ const ready = new Set<number>();
 const legOwner = (n: number) => `leg:${n}`;
 const placeOwner = (b: BiomeKey) => `place:${b}`;
 const SHARED = 'shared';
+const CORE = 'core';
 
 /** One piece of a leg's road, in its place's colours, blending from the last place's before the tunnel. */
 function groundJob(n: number, i: number, x0: number): ArtJob {
@@ -86,45 +87,81 @@ function legJobs(n: number): Job[] {
   return jobs;
 }
 
-/** Waits for the browser to be idle (or the next frame, where idle callbacks are not supported). */
-const idle = () => new Promise<void>((resolve) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(() => resolve(), { timeout: 60 }) : setTimeout(resolve, 0)));
+/**
+ * Gives the frame back: waits for the next frame to be drawn, then carries on straight after it. (Waiting for
+ * idle time instead starves the loading while the screen animates, as the title and the game always do.)
+ */
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 /** When this says so (the truck is on the move), loading waits, so a slow picture never stalls the drive. */
 let hold: () => boolean = () => false;
 export function holdLoadingWhile(fn: () => boolean) {
   hold = fn;
 }
 
-/** How long one slice of jobs may run before giving the frame back. */
-const SLICE_MS = 6;
+/**
+ * How long one slice of jobs may run before giving the frame back. Short in the game, so the drive keeps its
+ * frame rate; longer on the title screen, which has little to animate; long when the player is only waiting.
+ */
+let sliceMs = 6;
+export function setLoadBudget(ms: number) {
+  sliceMs = ms;
+}
 
 /**
- * Runs the jobs in order: each draws its picture, which is then decoded into a texture before the next one
- * starts. Turning a big SVG into a texture happens on the main thread, so decoding them one at a time (and
- * yielding between) keeps any single stall short, where loading them all at once lands as one long freeze.
+ * Runs the jobs in order: each draws its picture, which is then decoded into a texture. Turning a big SVG into
+ * a texture happens on the main thread, so in the game they are decoded one at a time (yielding between),
+ * which keeps any single stall short. Off the road, with a bigger budget, a few decode at once.
  */
 async function run(textures: Phaser.Textures.TextureManager, jobs: Job[]) {
   const owners = new Set<string>();
+  const inFlight = new Set<Promise<void>>();
   let slice = performance.now();
+  queued += jobs.length;
   for (const job of jobs) {
-    while (hold()) await idle();
+    while (hold()) await nextFrame();
     const out = job.run();
     for (const a of Array.isArray(out) ? out : [out]) {
       if (!owned.has(job.owner)) owned.set(job.owner, new Set());
       owned.get(job.owner)!.add(a.key);
-      await art.loadArt(textures, a);
-      if (performance.now() - slice > SLICE_MS) {
-        await idle();
+      const load = art.loadArt(textures, a).finally(() => inFlight.delete(load));
+      inFlight.add(load);
+      while (inFlight.size >= (sliceMs > 6 ? 4 : 1)) await Promise.race(inFlight);
+      if (performance.now() - slice > sliceMs) {
+        await nextFrame();
         slice = performance.now();
       }
     }
     owners.add(job.owner);
+    finished++;
   }
+  await Promise.all(inFlight);
   for (const o of owners) complete.add(o);
+}
+
+/** Jobs started and finished so far, for the title's loading readout. */
+let queued = 0;
+let finished = 0;
+/** How far the background drawing has got, 0 to 1 (1 when nothing is waiting). */
+export const loadProgress = () => (queued === 0 ? 1 : finished / queued);
+
+/**
+ * The pictures every leg uses (the truck, the cargo, the dashboard, the signs), drawn once, in the
+ * background behind the title screen. Every leg waits for them before its own pictures start.
+ */
+let core: Promise<void> = Promise.resolve();
+let corePending = 0;
+/** Queues core pictures behind any already queued; the promise settles when these are drawn. */
+export function prepareCore(textures: Phaser.Textures.TextureManager, jobs: ArtJob[]): Promise<void> {
+  corePending++;
+  core = core.then(() => run(textures, jobs.map((job) => ({ owner: CORE, run: job })))).then(() => {
+    corePending--;
+  });
+  return core;
 }
 
 /** Whether a leg's pictures are all in memory. */
 export function legReady(textures: Phaser.Textures.TextureManager, n: number): boolean {
-  return ready.has(n) && textures.exists(groundKey(n, 0));
+  return corePending === 0 && ready.has(n) && textures.exists(groundKey(n, 0));
 }
 
 /** Draws everything a leg needs, once, a slice at a time. Later calls return the same promise, so it is safe to call early. */
@@ -132,7 +169,7 @@ export function prepareLeg(textures: Phaser.Textures.TextureManager, n: number):
   if (n < 1 || n > LEGS.length) return Promise.resolve();
   let p = loading.get(n);
   if (!p) {
-    p = run(textures, legJobs(n)).then(() => {
+    p = core.then(() => run(textures, legJobs(n))).then(() => {
       ready.add(n);
     });
     loading.set(n, p);

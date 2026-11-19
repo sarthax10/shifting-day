@@ -78,8 +78,48 @@ function roughen(c: HTMLCanvasElement, amp: number, seed: number) {
   const out = ctx.createImageData(w, h);
   const s = src.data;
   const o = out.data;
+  // Only the shape and a margin round it can change: the rest of the canvas is empty, and stays so.
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
+      if (s[(y * w + x) * 4 + 3] === 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return;
+  const pad = Math.ceil(amp * 1.6) + 2;
+  x0 = Math.max(0, x0 - pad);
+  y0 = Math.max(0, y0 - pad);
+  x1 = Math.min(w - 1, x1 + pad);
+  y1 = Math.min(h - 1, y1 + pad);
+  // A summed-area table of the solid pixels: where everything within reach of the wobble is solid (or
+  // everything empty), the wobble cannot change the pixel, so the noise is only worked out along edges.
+  const reach = Math.ceil(amp * 0.8) + 1;
+  const sw = w + 1;
+  const sat = new Int32Array(sw * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let row = 0;
+    for (let x = 0; x < w; x++) {
+      row += s[(y * w + x) * 4 + 3] > 120 ? 1 : 0;
+      sat[(y + 1) * sw + x + 1] = sat[y * sw + x + 1] + row;
+    }
+  }
+  for (let y = y0; y <= y1; y++) {
+    const ya = Math.max(0, y - reach);
+    const yb = Math.min(h, y + reach + 1);
+    for (let x = x0; x <= x1; x++) {
+      const xa = Math.max(0, x - reach);
+      const xb = Math.min(w, x + reach + 1);
+      const solid = sat[yb * sw + xb] - sat[ya * sw + xb] - sat[yb * sw + xa] + sat[ya * sw + xa];
+      if (solid === 0) continue;
+      if (solid === (yb - ya) * (xb - xa)) {
+        const i = (y * w + x) * 4;
+        o[i] = o[i + 1] = o[i + 2] = o[i + 3] = 255;
+        continue;
+      }
       const dx = (noise(x / 14, y / 14, seed) - 0.5) * amp + (noise(x / 3.2, y / 3.2, seed + 3) - 0.5) * amp * 0.55;
       const dy = (noise(x / 14 + 40, y / 14, seed + 1) - 0.5) * amp + (noise(x / 3.2 + 9, y / 3.2, seed + 5) - 0.5) * amp * 0.55;
       const sx = Math.min(w - 1, Math.max(0, Math.round(x + dx)));

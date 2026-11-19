@@ -16,7 +16,7 @@ import type { BiomeKey } from '../world/legs';
 
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from '../world/prepare';
-import { CHUNK, CHUNK_TOP, groundKey, grassKey, holdLoadingWhile, legReady, prepareLeg, unloadLegsExcept } from '../world/prepare';
+import { CHUNK, CHUNK_TOP, groundKey, grassKey, holdLoadingWhile, legReady, prepareLeg, setLoadBudget, unloadLegsExcept } from '../world/prepare';
 import { applyBiomeFX } from '../systems/postfx';
 import { buildFinale } from '../world/finale';
 import { showScorecard } from '../ui/scorecard';
@@ -320,6 +320,7 @@ export class PlayScene extends Phaser.Scene {
     }
     setRoad(this.leg.features, this.leg.finish);
     this.prefetched = false;
+    setLoadBudget(6);
     // Background loading waits while the truck is moving, and runs whenever it stands still.
     holdLoadingWhile(() => this.sys.isActive() && this.phase === 'drive' && Math.abs(this.chassis?.velocity.x ?? 0) > 0.6);
     this.trip = data?.trip ?? { leg: 1, cargo: [], lost: [], broken: [], parking: [], time: 0 };
