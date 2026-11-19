@@ -9,7 +9,7 @@ will look before pasting anything.
 | `cover.png` | 630 × 500 cover | Edit game → Cover image |
 | `screenshots/*.jpg` | 1920 × 1080, numbered in order | Edit game → Screenshots |
 | `banner.jpg` | 1920 × 600, the title's sunburst and wordmark | Edit theme → Banner |
-| `launch.jpg` | 1920 × 1080, the sunset behind *Run game* | Nothing to upload: `theme.css` loads it from GitHub |
+| `launch.jpg` | 1920 × 1080, the sunset behind *Run game* | Edit theme → Embed BG |
 | `background.jpg` | 1920 × 1080, the home stretch (optional) | Edit theme → Background |
 | `description.html` | The page text | Edit game → Description, in HTML mode |
 | `theme.css` | The custom stylesheet | Edit theme → CSS |
