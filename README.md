@@ -38,7 +38,9 @@ Stack it well, tie it down, drive it gently, and catch whatever bounces off befo
 
 **Deliver.** Park between the cones at each stop. Whatever fell off waits in the stop's Lost & Found, and you buy it back with the bubble wrap you collect on the road.
 
-**Beat the clock.** A run clock sits under the score, and your best run is kept. At the end of the road the score card tallies what made it home.
+**Score at every stop.** Each checkpoint banks a score for the leg you just drove: the worth of everything still on the truck and intact, a parking bonus for stopping square in the bay, +50 for a leg where nothing fell off or broke, minus half the worth of anything that broke on the way. The trip's score is the five legs added up, so whatever you carry safely pays at every stop, and something lost early costs you every leg after (unless you buy it back at a Lost & Found).
+
+**Beat the clock.** A run clock sits under the score, and your best run is kept, separately from the score: rushing with an empty truck never pays.
 
 The game teaches itself as you go: when something new comes up, a key-cap prompt appears right next to it and goes away once you've done it.
 

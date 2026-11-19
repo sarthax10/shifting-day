@@ -234,6 +234,8 @@ export interface Trip {
   broken: string[];
   /** Parking bonuses earned at each stop. */
   parking: number[];
+  /** The score each leg banked at its checkpoint, by leg (see world/score.ts). */
+  scores?: number[];
   /** Coins picked up along the way, to spend at the stops. */
   coins?: number;
   /** Seconds on the road so far. */

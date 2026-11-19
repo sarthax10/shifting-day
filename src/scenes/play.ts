@@ -109,6 +109,7 @@ const bay = () => ({ from: FINISH + 80, to: FINISH + 900 });
 import { TUNNEL, buildTunnel, type Tunnel } from '../world/tunnel';
 import { Extras } from '../systems/extras';
 import { Crossbow } from '../systems/crossbow';
+import { banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
 /** True where the tunnel's rock hides the roadside, so nothing is put there. */
 const inTunnel = (x: number, on: boolean) => on && x > TUNNEL.from - 300 && x < TUNNEL.to + 300;
 /** How far the truck reaches behind and in front of its middle (tailgate to bumper). */
@@ -222,6 +223,7 @@ export class PlayScene extends Phaser.Scene {
   private lastForward = 0;
   private dash!: Dash;
   private hudHearts!: Phaser.GameObjects.Text;
+  private hudStake!: Phaser.GameObjects.Text;
   private tag!: Phaser.GameObjects.Text;
   private tagFor: Thing | null = null;
   private hudLabel!: Phaser.GameObjects.Text;
@@ -859,6 +861,20 @@ export class PlayScene extends Phaser.Scene {
     this.stopAnims.push(placeStop(this, stop.palette, mid - look.bay, GROUND + 6, stop.name));
   }
 
+  /** The packed things on the truck right now, as a checkpoint counts them. */
+  private onBoardNow() {
+    return this.things.filter((t) => t.packed && !t.lost && !t.ghost && this.onTruck(t));
+  }
+
+  /** What this leg banks as the truck parks (world/score.ts), and what fell off or broke on the way. */
+  private legTally(onBoard: Thing[]) {
+    const lostNow = this.things.filter((t) => t.packed && !onBoard.includes(t));
+    const brokeNow = this.things.filter((t) => t.packed && t.broken && !t.wasBroken);
+    const cargo = onBoard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
+    const penalty = brokeNow.reduce((n, t) => n + Math.round(this.valueOf(t) / 2), 0);
+    return { lostNow, brokeNow, leg: legScore(cargo, this.parkBonus, !lostNow.length && !brokeNow.length, penalty) };
+  }
+
   /** Loads the truck as it was left at the last stop: the same things, where they sat, broken or not, tied or not. */
   private restoreCargo() {
     const b = this.bed();
@@ -892,21 +908,28 @@ export class PlayScene extends Phaser.Scene {
     const b = this.bed();
     const cos = Math.cos(-this.chassis.angle);
     const sin = Math.sin(-this.chassis.angle);
-    const onBoard = this.things.filter((t) => t.packed && !t.lost && !t.ghost && this.onTruck(t));
+    const onBoard = this.onBoardNow();
     const cargo = onBoard.map((t) => {
       const dx = t.body.position.x - b.x;
       const dy = t.body.position.y - b.y;
       return { key: t.spec.key, broken: t.broken, dx: dx * cos - dy * sin, dy: dx * sin + dy * cos, angle: t.body.angle - this.chassis.angle, tied: !!t.rope };
     });
-    const lostNow = this.things.filter((t) => t.packed && !onBoard.includes(t)).map((t) => t.spec.key);
-    const brokeNow = this.things.filter((t) => t.packed && t.broken && !t.wasBroken).map((t) => t.spec.key);
+    const { lostNow, brokeNow, leg } = this.legTally(onBoard);
     this.extras.stop();
     this.crossbow.stop();
-    const trip: Trip = { leg: this.leg.n + 1, cargo, lost: [...this.trip.lost, ...lostNow], broken: [...this.trip.broken, ...brokeNow], parking: [...this.trip.parking, this.parkBonus], time: this.trip.time + this.driveTime, coins: this.extras.coins + (this.parkBonus >= 90 ? 1 : 0) };
+    const trip: Trip = {
+      leg: this.leg.n + 1,
+      cargo,
+      lost: [...this.trip.lost, ...lostNow.map((t) => t.spec.key)],
+      broken: [...this.trip.broken, ...brokeNow.map((t) => t.spec.key)],
+      parking: [...this.trip.parking, this.parkBonus],
+      scores: withLeg(this.trip.scores, this.leg.n, leg.score),
+      time: this.trip.time + this.driveTime,
+      coins: this.extras.coins + (this.parkBonus >= 90 ? 1 : 0),
+    };
     saveTrip(trip);
     void prepareLeg(this.textures, trip.leg);
-    const worth = onBoard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
-    this.time.delayedCall(900, () => this.checkpointCard(trip, lostNow.length, brokeNow.length, worth));
+    this.time.delayedCall(900, () => this.checkpointCard(trip, leg, lostNow.length, brokeNow.length));
   }
 
   /**
@@ -1069,6 +1092,7 @@ export class PlayScene extends Phaser.Scene {
         const at = this.pendingBroken.indexOf(t);
         if (at >= 0) this.pendingBroken.splice(at, 1);
         t.broken = false;
+        t.wasBroken = false;
         t.aboard = true;
         this.redraw(t.ink, t.spec.pet ? `${t.spec.key}_calm` : t.spec.key);
         const brokenAt = this.trip.broken.indexOf(t.spec.key);
@@ -1094,25 +1118,34 @@ export class PlayScene extends Phaser.Scene {
    * Parked at a checkpoint: a printed sheet over the scene, with the leg's tally, a TRIP SAVED stamp
    * slammed on, and the next leg named, in the same look as the title and the menus.
    */
-  private checkpointCard(trip: Trip, lost: number, broke: number, worth: number) {
+  private checkpointCard(trip: Trip, leg: LegScore, lost: number, broke: number) {
     const cx = W / 2;
     const sheet = posterSheet(this, `CHECKPOINT ${String(this.leg.n).padStart(2, '0')}`, 200, { alpha: 0.88, kicker: this.leg.stop!.name.toUpperCase() });
     sheet.setAlpha(0);
     this.tweens.add({ targets: sheet, alpha: 1, duration: 300 });
-    const lines: [string, string][] = [
-      ['STILL ON THE TRUCK', `${worth} PTS`],
-      ['BROKE ON THIS LEG', broke ? String(broke) : 'NONE'],
-      ['FELL OFF ON THIS LEG', lost ? String(lost) : 'NONE'],
-      [this.parkBonus >= 90 ? 'PARKING · PERFECT' : 'PARKING', `+${this.parkBonus}`],
+    const lines: [string, string, boolean][] = [
+      ['STILL ON THE TRUCK', `+${leg.cargo}`, true],
+      [this.parkBonus >= 90 ? 'PARKING · PERFECT' : 'PARKING', `+${leg.parking}`, true],
+      [leg.clean ? 'CLEAN LEG · NOTHING LOST' : `CLEAN LEG · ${lost ? `${lost} FELL OFF` : broke ? `${broke} BROKE` : 'EMPTY TRUCK'}`, leg.clean ? `+${leg.clean}` : '—', !!leg.clean],
+      [`BROKE ON THIS LEG${broke ? `  ×${broke}` : ''}`, broke ? `−${leg.penalty}` : '0', !broke],
     ];
-    lines.forEach(([label, value], i) => {
-      const y = 360 + i * 78;
-      sheet.add(this.add.rectangle(cx, y + 34, 820, 2, 0xf3e3cc, 0.18));
-      sheet.add(this.add.text(cx - 410, y, label, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '24px', color: '#F3E3CC', letterSpacing: 4 }).setOrigin(0, 0.5).setAlpha(0.85));
-      sheet.add(this.add.text(cx + 410, y, value, { fontFamily: TITLE, fontSize: '52px', color: i === 0 ? '#FF6A30' : '#F3E3CC', letterSpacing: 1 }).setOrigin(1, 0.5));
+    lines.forEach(([label, value, good], i) => {
+      const y = 326 + i * 58;
+      sheet.add(this.add.rectangle(cx, y + 27, 820, 2, 0xf3e3cc, 0.16));
+      sheet.add(this.add.text(cx - 410, y, label, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '22px', color: '#F3E3CC', letterSpacing: 4 }).setOrigin(0, 0.5).setAlpha(good ? 0.85 : 0.55));
+      sheet.add(this.add.text(cx + 410, y, value, { fontFamily: TITLE, fontSize: '42px', color: good ? '#F3E3CC' : '#E3263A', letterSpacing: 1 }).setOrigin(1, 0.5));
     });
+    // What this leg banked, and the trip's running total.
+    const y = 326 + lines.length * 58 + 26;
+    sheet.add(this.add.rectangle(cx, y - 10, 820, 3, 0xff6a30));
+    sheet.add(this.add.text(cx - 410, y + 32, `LEG ${this.leg.n} SCORE`, { fontFamily: TITLE, fontSize: '40px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5));
+    const legText = this.add.text(cx + 410, y + 30, '0', { fontFamily: TITLE, fontSize: '64px', color: '#FF6A30', letterSpacing: 1 }).setOrigin(1, 0.5);
+    sheet.add(legText);
+    sheet.add(this.add.text(cx + 410, y + 82, `TRIP SO FAR  ${banked(trip.scores)}`, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '20px', color: '#F3E3CC', letterSpacing: 4 }).setOrigin(1, 0.5).setAlpha(0.8));
+    const count = { v: 0 };
+    this.tweens.add({ targets: count, v: leg.score, delay: 400, duration: 900, ease: 'Cubic.easeOut', onUpdate: () => legText.setText(String(Math.round(count.v))) });
     const next = LEGS[trip.leg - 1];
-    sheet.add(this.add.text(cx, 700, `NEXT  ·  ${next.title.toUpperCase()}`, { fontFamily: TITLE, fontSize: '46px', color: '#0A0712', letterSpacing: 3, backgroundColor: '#FF6A30', padding: { x: 22, y: 6 } }).setOrigin(0.5).setAngle(-1.5));
+    sheet.add(this.add.text(cx, 770, `NEXT  ·  ${next.title.toUpperCase()}`, { fontFamily: TITLE, fontSize: '46px', color: '#0A0712', letterSpacing: 3, backgroundColor: '#FF6A30', padding: { x: 22, y: 6 } }).setOrigin(0.5).setAngle(-1.5));
     // The stamp, slammed on at an angle a moment after the sheet lands.
     const stamp = this.add.text(cx + 330, 250, 'TRIP SAVED', { fontFamily: TITLE, fontSize: '54px', color: '#E3263A', letterSpacing: 3, padding: { x: 14, y: 4 } }).setOrigin(0.5).setAngle(-12).setAlpha(0).setScrollFactor(0).setDepth(206);
     stamp.setStroke('#E3263A', 0);
@@ -1558,8 +1591,10 @@ export class PlayScene extends Phaser.Scene {
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) => o.setScrollFactor(0).setDepth(100);
     fixed(this.add.rectangle(W - 14, 18, 566, 122, 0x0a0712, 0.9).setOrigin(1, 0).setStrokeStyle(2, 0xf3e3cc, 0.3));
     fixed(this.add.rectangle(W - 14, 18, 566, 5, 0xff6a30).setOrigin(1, 0));
-    fixed(this.add.text(W - 560, 40, 'POINTS', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(0, 0.5));
+    fixed(this.add.text(W - 560, 40, 'SCORE', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(0, 0.5));
     this.hudHearts = fixed(this.add.text(W - 560, 76, '', { fontFamily: TITLE, fontSize: '46px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
+    // Beside the banked score, what the truck carries: banked at the next stop if it all gets there intact.
+    this.hudStake = fixed(this.add.text(W - 492, 40, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#F3E3CC', letterSpacing: 3 }).setOrigin(0, 0.5).setAlpha(0.75));
     this.hudLabel = fixed(this.add.text(W - 390, 66, '', { fontFamily: TITLE, fontSize: '32px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
     this.hudBar = fixed(this.add.graphics());
     this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.08)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.05))];
@@ -2281,7 +2316,8 @@ export class PlayScene extends Phaser.Scene {
 
   /** The card at the top right: hearts, and either what is on the truck or how far along the road it is. */
   private updateHud(onTruck: number, points: number, pct: number) {
-    this.hudHearts.setText(String(points));
+    this.hudHearts.setText(String(banked(this.trip.scores)));
+    this.hudStake.setText(`+${points} ON BOARD`);
     this.hudClock.setText(clock(this.trip.time + this.driveTime));
     const packing = this.phase === 'pack' || this.phase === 'intro';
     this.hudLabel.setVisible(packing).setText(`${onTruck} / ${this.things.length} ON THE TRUCK`);
@@ -2539,22 +2575,18 @@ export class PlayScene extends Phaser.Scene {
     this.phase = 'done';
     this.engine.stop();
     play('win');
-    const packed = this.things.filter((t) => t.packed);
-    const delivered = packed.filter((t) => t.aboard && !t.broken);
-    const broken = packed.filter((t) => t.broken);
-    const lost = packed.filter((t) => t.lost && !t.broken);
-    const lostCount = lost.length + this.trip.lost.length;
-    const parking = [...this.trip.parking, this.parkBonus].reduce((a, b) => a + b, 0);
+    const onBoard = this.onBoardNow();
+    const delivered = onBoard.filter((t) => !t.broken);
+    const broken = this.things.filter((t) => t.packed && t.broken);
+    const { leg } = this.legTally(onBoard);
+    const scores = withLeg(this.trip.scores, this.leg.n, leg.score);
     const tripTime = this.trip.time + this.driveTime;
     const best = bestRun();
     const record = saveRun(tripTime);
     clearTrip();
-    const earned = delivered.reduce((n, t) => n + this.valueOf(t), 0);
-    const penalty = broken.reduce((n, t) => n + Math.round(this.valueOf(t) / 2), 0);
-    const bonus = broken.length === 0 && lostCount === 0 && delivered.length > 0 ? 100 : 0;
-    const score = Math.max(0, earned - penalty + bonus + parking);
-    const stars = score >= 900 ? 3 : score >= 600 ? 2 : score >= 300 ? 1 : 0;
-    const catLeft = !this.things.find((t) => t.spec.key === 'cat')?.aboard;
+    const score = banked(scores);
+    const stars = starsFor(score);
+    const catLeft = !onBoard.some((t) => t.spec.key === 'cat');
     const verdict = catLeft
       ? 'Biscuit is walking home. Biscuit will not forget this.'
       : stars === 3
@@ -2570,12 +2602,7 @@ export class PlayScene extends Phaser.Scene {
       {
         delivered: delivered.map((t) => ({ key: t.img.texture.key, value: this.valueOf(t) })),
         broken: broken.map((t) => ({ key: t.img.texture.key, value: this.valueOf(t) })),
-        lost: lostCount,
-        earned,
-        penalty,
-        bonus,
-        parking,
-        stops: this.trip.parking.length + 1,
+        legs: LEGS.map((l, i) => ({ name: l.title, score: scores[i] ?? 0 })),
         score,
         stars,
         verdict,

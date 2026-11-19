@@ -7,7 +7,7 @@ import * as art from './art/art';
 import { tollArts } from './art/tolls';
 import { C } from './art/ink';
 import { PlayScene } from './scenes/play';
-import { prepareCore, prepareLeg } from './world/prepare';
+import { loadProgress, prepareCore, prepareLeg } from './world/prepare';
 import type { ArtJob } from './world/biomes';
 import { LEGS } from './world/legs';
 import { makeCursors } from './art/cursors';
@@ -217,6 +217,7 @@ game.events.once('ready', async () => {
   ];
   softTextures(game.textures);
   const bar = document.querySelector<HTMLElement>('#boot .bar span');
+  const filling = setInterval(() => bar && (bar.style.width = `${Math.round(loadProgress() * 100)}%`), 100);
   await Promise.all([
     makeCursors(),
     prepareCore(game.textures, titleJobs),
@@ -224,6 +225,7 @@ game.events.once('ready', async () => {
     document.fonts.load('400 40px "Space Mono"'),
     document.fonts.load('700 40px "Space Mono"'),
   ]);
+  clearInterval(filling);
   if (bar) bar.style.width = '100%';
   const boot = document.getElementById('boot');
   if (boot) {

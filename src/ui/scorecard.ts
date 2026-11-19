@@ -7,12 +7,8 @@ import { play } from '../systems/audio';
 export interface Tally {
   delivered: { key: string; value: number }[];
   broken: { key: string; value: number }[];
-  lost: number;
-  earned: number;
-  penalty: number;
-  bonus: number;
-  parking: number;
-  stops: number;
+  /** What each leg banked at its checkpoint; the score is their sum. */
+  legs: { name: string; score: number }[];
   score: number;
   stars: number;
   verdict: string;
@@ -98,14 +94,8 @@ export function showScorecard(scene: Phaser.Scene, t: Tally, onAgain: () => void
   });
   if (!tiles.length) text(x0, tileY, 'NOTHING. NOT ONE THING.', { fontFamily: DISPLAY, fontSize: '36px', color: OX_CSS });
 
-  // The bill, line by line, dotted leaders to the figures.
-  const lines: [string, string, string][] = [
-    [`DELIVERED SAFELY  ×${t.delivered.length}`, `+${t.earned}`, INK_CSS],
-    [`BROKEN  ×${t.broken.length}`, t.broken.length ? `−${t.penalty}` : '0', t.broken.length ? RED_CSS : OX_CSS],
-    [`FELL OFF ON THE WAY  ×${t.lost}`, '0', OX_CSS],
-    ['CAREFUL DRIVER BONUS', t.bonus ? `+${t.bonus}` : '—', t.bonus ? INK_CSS : OX_CSS],
-    [`PARKING AT ${t.stops} STOP${t.stops === 1 ? '' : 'S'}`, `+${t.parking}`, INK_CSS],
-  ];
+  // The bill: what each leg banked at its checkpoint, dotted leaders to the figures.
+  const lines: [string, string, string][] = t.legs.map((l, i) => [`${String(i + 1).padStart(2, '0')}  ${l.name.toUpperCase()}`, String(l.score), l.score ? INK_CSS : OX_CSS]);
   const leaders = scene.add.graphics();
   card.add(leaders);
   lines.forEach(([label, value, colour], i) => {
@@ -125,7 +115,8 @@ export function showScorecard(scene: Phaser.Scene, t: Tally, onAgain: () => void
   text(sx, top + 70, 'RUN TIME', { fontFamily: MONO, fontStyle: 'bold', fontSize: '18px', color: OX_CSS, letterSpacing: 6 }, 0.5);
   text(sx, top + 126, t.time, { fontFamily: DISPLAY, fontSize: '64px', color: INK_CSS, letterSpacing: 2 }, 0.5);
   text(sx, top + 182, t.best ? `BEST  ${t.best}` : 'FIRST RUN', { fontFamily: MONO, fontStyle: 'bold', fontSize: '18px', color: OX_CSS, letterSpacing: 4 }, 0.5);
-  if (t.record) {
+  // A best is only beaten once there was one: the first run says FIRST RUN instead.
+  if (t.record && t.best) {
     const tag = scene.add.container(sx + 110, top + 30).setRotation(0.18);
     tag.add(scene.add.rectangle(0, 0, 150, 40, RED).setStrokeStyle(3, INK));
     tag.add(scene.add.text(0, 0, 'NEW BEST', { fontFamily: DISPLAY, fontSize: '24px', color: BONE_CSS, letterSpacing: 2 }).setOrigin(0.5));
