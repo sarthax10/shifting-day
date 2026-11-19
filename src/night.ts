@@ -1,6 +1,7 @@
 import { pen, type Art } from './art';
 import { mix, type Pt } from './ink';
 import { TILE, plainPen, rnd, wave } from './backdrop';
+import { futureSkylineArt } from './futurecity';
 
 /**
  * The two night biomes' scenery.
@@ -39,51 +40,7 @@ function tower(p: ReturnType<typeof plainPen>, x: number, w: number, h: number, 
  */
 export const MEGA_BEACONS: Pt[] = [];
 export function megaArt(lights: boolean): Art {
-  const key = lights ? 'bd_n_mega_glow' : 'bd_n_mega';
-  const h = 1100;
-  const p = plainPen(key);
-  if (!lights) MEGA_BEACONS.length = 0;
-  const towers: [number, number, number][] = [];
-  for (let i = 0, x = 40; x < TILE - 160; i++) {
-    const w = 90 + rnd(201, i) * 120;
-    const th = 500 + rnd(203, i) * 520;
-    towers.push([x, w, th]);
-    x += w + 120 + rnd(205, i) * 260;
-  }
-  towers.forEach(([x, w, th], i) => {
-    if (!lights) {
-      const top = tower(p, x, w, th, h, '#2C1E58', 207 + i);
-      // The lower part lit by the city's glow from below.
-      p.rect(x, h - 220, w, 224, { fill: '#4A2A72', stroke: null, r: 0, opacity: 0.8 });
-      MEGA_BEACONS.push([x + w / 2, top - 6]);
-    }
-    // Light strips running up the corners, and a band of light every so many floors.
-    const c = NEON[i % 2 ? 1 : 0];
-    const lw = lights ? 7 : 3;
-    p.line([[x + 6, h], [x + 6, h - th + 30]], { width: lw, color: c, raw: true, opacity: lights ? 0.9 : 0.75, wobble: 0 });
-    p.line([[x + w - 6, h], [x + w - 6, h - th + 30]], { width: lw, color: c, raw: true, opacity: lights ? 0.9 : 0.75, wobble: 0 });
-    for (let y = h - 120; y > h - th + 60; y -= 140 + rnd(209, i) * 80) p.line([[x + 6, y], [x + w - 6, y]], { width: lights ? 5 : 2, color: c, raw: true, opacity: 0.6, wobble: 0 });
-    // A curved billboard wrapped round the tower, as on Night City's megabuildings.
-    if (i % 3 === 1) {
-      const by = h - th * 0.55;
-      const bc = NEON[(i * 2) % NEON.length];
-      if (lights) p.rect(x - 14, by - 6, w + 28, 74, { fill: bc, stroke: null, r: 30, opacity: 0.7 });
-      else {
-        p.rect(x - 10, by, w + 20, 62, { fill: mix(bc, '#0A0818', 0.5), stroke: null, r: 26 });
-        p.rect(x - 10, by, w + 20, 18, { fill: mix(bc, '#FFFFFF', 0.2), stroke: null, r: 9, opacity: 0.6 });
-        for (let gx = x + 6; gx < x + w - 10; gx += 22) p.rect(gx, by + 24, 14, 26, { fill: bc, stroke: null, r: 2, opacity: 0.8 });
-      }
-    }
-    // A few rows of lit windows.
-    if (!lights) {
-      for (let y = h - th + 80; y < h - 40; y += 26) {
-        for (let wx = x + 14; wx < x + w - 14; wx += 16) {
-          if (rnd(211 + i, wx * 3 + y) < 0.12) p.rect(wx, y, 8, 10, { fill: rnd(213, wx + y) < 0.5 ? '#9FE8FF' : '#FFC6F0', stroke: null, r: 1, opacity: 0.7 });
-        }
-      }
-    }
-  });
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: lights ? 9 : 0.8 };
+  return futureSkylineArt(lights, MEGA_BEACONS);
 }
 
 export const BILLBOARDS: { x: number; y: number; w: number; h: number }[] = [];
@@ -113,6 +70,7 @@ export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
   const floor = far ? 22 : 30;
   if (!far && !lights) BILLBOARDS.length = 0;
   const roofs: Pt[] = [];
+  const blocks: [number, number, number][] = [];
   let x = 0;
   let i = 0;
   while (x < TILE - 40) {
@@ -150,6 +108,7 @@ export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
       roof = top - floor * 4;
     }
     roofs.push([x + w / 2, roof]);
+    blocks.push([x, w, top]);
     // Storeys: a ledge, and a band of windows of one kind for the whole building.
     const style = Math.floor(rnd(seed + 4, i) * 3);
     for (let s = 0, y = h - floor; y > top + 4; s++, y -= floor) {
@@ -223,6 +182,21 @@ export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
         for (const [, y] of pts) p.line([[fx - 4, y], [fx + 34, y]], { width: 2, color: '#3A2E4A', raw: true, wobble: 0 });
       }
     }
+    // Rooftop gear from the future: a saucer pod on a stalk, or a ring of light hovering over the roof.
+    const fut = rnd(seed + 50, i);
+    if (fut < 0.22) {
+      const rx = x + w / 2;
+      const c = NEON[Math.floor(rnd(seed + 51, i) * NEON.length)];
+      if (!lights) {
+        p.rect(rx - 4, roof - 70, 8, 70, { fill: shade(roof), stroke: null, r: 2 });
+        p.ellipse(rx, roof - 76, 42, 12, { fill: shade(roof - 80), stroke: null });
+        p.ellipse(rx, roof - 86, 20, 12, { fill: shade(roof - 90), stroke: null });
+      }
+      for (let k = -3; k <= 3; k++) p.ellipse(rx + k * 12, roof - 74, lights ? 4 : 2.4, lights ? 4 : 2.4, { fill: k % 2 ? c : '#FFC86B', stroke: null, opacity: lights ? 0.8 : 1 });
+    } else if (fut < 0.36) {
+      const c = NEON[Math.floor(rnd(seed + 52, i) * NEON.length)];
+      p.ellipse(x + w / 2, roof - 34, w * 0.42, 9, { stroke: c, width: lights ? 7 : 3 });
+    }
     // Rooftop clutter.
     if (!lights) {
       const rx = x + w * (0.2 + rnd(seed + 15, i) * 0.5);
@@ -275,6 +249,19 @@ export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
     }
     x += w + (far ? 2 : 4) + rnd(seed + 5, i) * (far ? 10 : 16);
     i++;
+  }
+  // Sky-bridges: glass tubes from one tower to the next, lit along their length.
+  for (let k = 0; k < blocks.length - 1; k++) {
+    const [ax, aw, at] = blocks[k];
+    const [bx, , bt] = blocks[k + 1];
+    if (rnd(seed + 60, k) < 0.55) continue;
+    const y = Math.max(at, bt) + 40 + rnd(seed + 61, k) * 80;
+    if (y > h - 120) continue;
+    const x0 = ax + aw - 6;
+    const x1 = bx + 6;
+    if (x1 - x0 < 6) continue;
+    if (!lights) p.rect(x0, y, x1 - x0, 16, { fill: far ? '#2A2650' : '#1E1A40', stroke: null, r: 7 });
+    for (let lx = x0 + 6; lx < x1 - 4; lx += 10) p.ellipse(lx, y + 8, lights ? 3.4 : 2, lights ? 3.4 : 2, { fill: '#FFC86B', stroke: null, opacity: lights ? 0.6 : 1 });
   }
   // Cables sagging from one roof to the next, a few with lanterns strung on them.
   if (!far) {

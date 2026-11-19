@@ -7,6 +7,7 @@ import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFa
 import { SWITCH, TUNNEL } from './tunnel';
 import { FROST_TREES } from './trees';
 import { HOUSE, STREET_TOP, houseArt, streetArt } from './townhouses';
+import { blimpArt, hoverCarArt, synthSunArt } from './futurecity';
 import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
 import { cloudBankArt as printCloudArt } from './oldstreet';
 import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
@@ -708,6 +709,9 @@ const TOWN: Biome = {
     // The street's own buildings, drawn in the night palette already, and the plaza behind the road.
     ...SHOPS.map((s, i) => houseArt(i, { wall: s.wall, neon: s.colour, awning: s.awning })),
     streetArt(),
+    synthSunArt(),
+    blimpArt(),
+    hoverCarArt(),
   ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_town', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
@@ -721,6 +725,26 @@ const TOWN: Biome = {
       tiles(scene, key, bottom, sf, depth, o.reach, offset);
       for (const g of tiles(scene, `${key}_glow`, bottom, sf, depth + 0.05, o.reach, offset)) g.setBlendMode(Phaser.BlendModes.ADD).setAlpha(bloom);
     };
+    // A synthwave sun, striped, sitting low behind the skyline - the city prints' favourite sky.
+    scene.add.image(960, o.horizon - 430, 'halo').setScrollFactor(0.02, 1).setDepth(-47.6).setTint(0xff8a6a).setDisplaySize(1100, 700).setAlpha(0.25).setBlendMode(Phaser.BlendModes.ADD);
+    scene.add.image(960, o.horizon - 470, 'bd_n_sun').setScrollFactor(0.02, 1).setDepth(-47.5).setScale(1.15).setAlpha(0.92);
+    // Searchlights sweeping up from among the towers.
+    if (!scene.textures.exists('beam')) {
+      const t = scene.textures.createCanvas('beam', 120, 900)!;
+      const g = t.context.createLinearGradient(0, 900, 0, 0);
+      g.addColorStop(0, 'rgba(255,255,255,0.55)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      t.context.fillStyle = g;
+      t.context.beginPath();
+      t.context.moveTo(54, 900);
+      t.context.lineTo(66, 900);
+      t.context.lineTo(120, 0);
+      t.context.lineTo(0, 0);
+      t.context.closePath();
+      t.context.fill();
+      t.refresh();
+    }
+    const beams = [300, 1250, 2150].map((bx, k) => scene.add.image(bx, o.horizon - 120, 'beam').setOrigin(0.5, 1).setScrollFactor(0.05, 1).setDepth(-44.6).setTint([0x5ed6c2, 0xffd27a, 0xff8aa0][k]).setAlpha(0.32).setBlendMode(Phaser.BlendModes.ADD));
     // Megatowers on the horizon, with red beacons blinking on their spires.
     layer('bd_n_mega', o.horizon - 180, 0.05, -44, 0, 0.7);
     const beacons: Phaser.GameObjects.Image[] = [];
@@ -737,11 +761,16 @@ const TOWN: Biome = {
     }
     // Flying cars crossing between the towers, their lights trailing.
     const flyers = [0, 1, 2, 3].map((k) => {
-      const body = scene.add.rectangle(0, 0, 34, 10, 0x0a0712).setScrollFactor(0).setDepth(-40.5);
+      const body = scene.add.image(0, 0, 'bd_n_car').setScrollFactor(0).setDepth(-40.5).setScale(0.55).setFlipX(k % 2 === 0);
       const lamp = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.4).setDisplaySize(26, 16).setTint(k % 2 ? 0xf3e3cc : 0xffb23f).setBlendMode(Phaser.BlendModes.ADD);
       const trail = scene.add.image(0, 0, 'halo').setScrollFactor(0).setDepth(-40.45).setDisplaySize(160, 8).setTint(k % 2 ? 0x5ed6c2 : 0xff6a6a).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
       return { body, lamp, trail, y: 160 + k * 90, speed: (0.05 + k * 0.02) * (k % 2 ? 1 : -1), off: k * 700 };
     });
+    // An airship drifting over the city, an ad scrolling on its flank and a light blinking under it.
+    const blimp = scene.add.image(0, o.horizon - 640, 'bd_n_blimp').setScrollFactor(0.08, 1).setDepth(-40.8).setScale(0.9);
+    const ads = ['MOVING DAY?', 'NOODLES 24/7', 'SKY TAXI', 'BOX CO.', 'NEON HOTEL'];
+    const ad = scene.add.text(0, 0, ads[0], { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '30px', color: '#5ED6C2', letterSpacing: 2 }).setOrigin(0.5).setScrollFactor(0.08, 1).setDepth(-40.7).setShadow(0, 0, '#5ED6C2', 10, true, true);
+    const blimpLight = scene.add.image(0, 0, 'halo').setScrollFactor(0.08, 1).setDepth(-40.7).setDisplaySize(40, 40).setTint(0xff5a5a).setBlendMode(Phaser.BlendModes.ADD);
     layer('bd_n_mid', o.horizon - 20, 0.25, -38, -500);
     // Holographic billboards on the big mid buildings: glowing panels whose slogans change with a glitch.
     const words = ['NOODLE BAR', 'MOVE FAST', 'SLEEP: OPTIONAL', 'ROPES 2 FOR 1', 'BOX CO.', 'NEON HOTEL', 'TRUCKS R US', 'PIE?'];
@@ -820,6 +849,15 @@ const TOWN: Biome = {
         for (const c of clouds) c.x += dt * 6;
         glow.setAlpha(0.36 + Math.sin(time / 1700) * 0.05);
         beacons.forEach((b, i) => b.setAlpha((time / 900 + i * 0.37) % 1 < 0.25 ? 1 : 0.15));
+        beams.forEach((bm, k) => bm.setRotation(Math.sin(time / (2600 + k * 700) + k * 2) * 0.45).setAlpha(0.24 + Math.sin(time / 900 + k) * 0.06));
+        // The airship, crossing slowly; its ad changes every few seconds.
+        const bx = scrollX * 0.08 + 2400 - ((time * 0.018) % 3200);
+        const by = o.horizon - 640 + Math.sin(time / 2200) * 10;
+        blimp.setPosition(bx, by);
+        ad.setPosition(bx - 10, by - 10);
+        blimpLight.setPosition(bx - 10, by + 80).setAlpha(Math.floor(time / 600) % 2 ? 0.9 : 0.1);
+        const adNow = ads[Math.floor(time / 4000) % ads.length];
+        if (ad.text !== adNow) ad.setText(adNow);
         // The fish: across the sky and round again, its body rippling, now and then glitching.
         fish.x = scrollX * 0.07 + 2200 - ((time * 0.03) % 3000);
         fish.y = o.horizon - 560 + Math.sin(time / 1800) * 24;
