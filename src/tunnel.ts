@@ -44,24 +44,32 @@ interface Dress {
   head: [string, string];
 }
 
+/** Each place's cliff in the poster's inks: Old Street's brick-red earth, the valley's rose and wine, the
+ * pass's violet, the town's dusk plum, the coast's sandstone. The concrete is bone everywhere. */
 const DRESS: Record<BiomeKey, Dress> = {
-  meadow: { rock: ['#B9B4C6', '#8E8AA2', '#62607A'], trees: [P.oak, P.oakDeep, P.oak], turf: '#6FA97C', head: ['#D8D2C4', '#A8A094'] },
-  autumn: { rock: ['#D2A88E', '#A47C6A', '#6E4E4C'], trees: [P.red, P.gold, P.rust], turf: '#C29A4E', head: ['#D8CCBA', '#A89A88'] },
-  snow: { rock: ['#A6B4CE', '#74829E', '#4A5672'], trees: 'pines', turf: '#F4F8FF', snow: true, head: ['#C9CED8', '#8E96A8'] },
-  town: { rock: ['#A4A8B6', '#7A7E8E', '#525666'], trees: 'none', turf: '#7E8496', head: ['#C4C8D2', '#8E92A0'] },
-  coast: { rock: ['#E8C69C', '#C29A72', '#8E6A52'], trees: [P.sea, P.sea, P.oakDeep], turf: '#9CB86A', head: ['#E4DCCC', '#B4AA98'] },
+  meadow: { rock: ['#D0785A', '#A8452E', '#5A1A2E'], trees: [P.oak, P.oakDeep, P.oak], turf: '#7E8A44', head: ['#F3E3CC', '#D9C3A6'] },
+  autumn: { rock: ['#C0708A', '#7A2440', '#3A0F22'], trees: [P.red, P.gold, P.rust], turf: '#D9803A', head: ['#F3E3CC', '#D9C3A6'] },
+  snow: { rock: ['#A49AC4', '#5E5288', '#2E2448'], trees: 'pines', turf: '#F3E3CC', snow: true, head: ['#F3E3CC', '#C8BCCC'] },
+  town: { rock: ['#7A6A8E', '#4A3A5E', '#24183A'], trees: 'none', turf: '#5A4A6A', head: ['#E8DCD4', '#A8989E'] },
+  coast: { rock: ['#F2C98A', '#D9965A', '#A8603E'], trees: [P.sea, P.sea, P.oakDeep], turf: '#A3A653', head: ['#F3E3CC', '#D9C3A6'] },
 };
+const POSTER_INK = '#0A0712';
+const POSTER_EMBER = '#FF6A30';
+const POSTER_BONE = '#F3E3CC';
+const POSTER_GOLD = '#FFB23F';
+/** Where each tunnel comes out, stencilled on its walls. */
+const PLACES: Record<BiomeKey, string> = { meadow: 'OLD STREET', autumn: 'MAPLE VALLEY', snow: 'FROSTPEAK PASS', town: 'NEON TOWN', coast: 'COAST ROAD' };
 
 export const mouthKey = (biome: BiomeKey) => `tunnel_mouth_${biome}`;
 
 /** A pine, in three tiers, with snow on each if it is snowing. */
 function pine(p: ReturnType<typeof pen>, x: number, y: number, s: number, snow: boolean) {
-  p.rect(x - 5 * s, y - 20 * s, 10 * s, 24 * s, { fill: '#4A3438', width: 2.5, r: 2 });
+  p.rect(x - 5 * s, y - 20 * s, 10 * s, 24 * s, { fill: '#3A0F22', width: 2.5, r: 2 });
   for (let t = 0; t < 3; t++) {
     const ty = y - 14 * s - t * 36 * s;
     const tw = (46 - t * 11) * s;
-    p.shape([[x, ty - 60 * s], [x + tw, ty], [x - tw, ty]], { fill: snow ? '#24405A' : '#2E6A56', raw: true, width: 3, shade: [{ pts: [[x, ty - 70 * s], [x + tw + 4, ty - 70 * s], [x + tw + 4, ty + 4], [x, ty + 4]], color: snow ? '#183048' : '#1F4A40' }] });
-    if (snow) p.shape([[x, ty - 60 * s], [x + tw * 0.55, ty - 28 * s], [x + tw * 0.2, ty - 32 * s], [x - tw * 0.55, ty - 26 * s]], { fill: '#F4F8FF', raw: true, width: 2.4 });
+    p.shape([[x, ty - 60 * s], [x + tw, ty], [x - tw, ty]], { fill: '#2A4636', raw: true, width: 3, shade: [{ pts: [[x, ty - 70 * s], [x + tw + 4, ty - 70 * s], [x + tw + 4, ty + 4], [x, ty + 4]], color: '#1A2E24' }] });
+    if (snow) p.shape([[x, ty - 60 * s], [x + tw * 0.55, ty - 28 * s], [x + tw * 0.2, ty - 32 * s], [x - tw * 0.55, ty - 26 * s]], { fill: POSTER_BONE, raw: true, width: 2.4 });
   }
 }
 
@@ -135,11 +143,14 @@ export function tunnelMouthArt(biome: BiomeKey): Art {
         const k = r() + (nearTop ? 0.35 : 0) - (cy / h) * 0.3;
         const fill = k > 0.8 ? lit : k < 0.25 ? dark : mid;
         if (fill === mid && r() < 0.5) continue;
-        p.shape(tri, { fill, raw: true, width: 2, wobble: 0.2, stroke: dark });
+        // Planes in shade are printed as a halftone of the dark ink over the middle tone, as on the poster.
+        if (fill === dark) p.shape(tri, { fill: mid, raw: true, width: 2, wobble: 0.2, stroke: dark, shade: [{ pts: tri, color: dark }] });
+        else p.shape(tri, { fill, raw: true, width: 2, wobble: 0.2, stroke: dark });
       }
     }
   }
   // The skyline edge, drawn again over the facets so it stays crisp.
+  p.line(ledges.slice(0, -1).map(([x, y]): Pt => [x + 4, y + 7]), { width: 3, color: POSTER_EMBER, raw: true, wobble: 0.3, opacity: 0.85 });
   p.line(ledges.slice(0, -1), { width: 5, raw: true, wobble: 0.3 });
   // Turf (or snow) on each ledge, and things growing on it.
   for (let i = 1; i < ledges.length - 2; i += 2) {
@@ -160,25 +171,26 @@ export function tunnelMouthArt(biome: BiomeKey): Art {
       else if (d.trees !== 'none') {
         const pal = d.trees[Math.floor(r() * d.trees.length)];
         if (r() < 0.5) {
-          p.rect(x - 6, y - 70, 12, 76, { fill: '#5A3E3A', width: 3, r: 3 });
+          p.rect(x - 6, y - 70, 12, 76, { fill: '#3A0F22', width: 3, r: 3 });
           clump(p, x - 28, y - 86, 44, 36, pal, r);
           clump(p, x + 28, y - 80, 42, 34, pal, r);
           clump(p, x, y - 118, 50, 40, pal, r);
         } else clump(p, x, y - 16, 40 + r() * 16, 28 + r() * 8, pal, r);
       } else if (r() < 0.6) {
         // In town: a lamp post or a fence on each terrace.
-        p.rect(x - 3, y - 110, 6, 112, { fill: '#3A3E4A', stroke: null, r: 2 });
-        p.rect(x - 14, y - 116, 28, 8, { fill: '#E8E2B0', width: 2, r: 3 });
+        p.rect(x - 3, y - 110, 6, 112, { fill: POSTER_INK, stroke: null, r: 2 });
+        p.rect(x - 14, y - 116, 28, 8, { fill: POSTER_GOLD, width: 2, r: 3 });
       }
     }
   }
   // Snow lying on the ledges and along the skyline.
-  if (d.snow) for (let i = 1; i < ledges.length - 2; i++) p.line([ledges[i], ledges[i + 1]], { width: 10, color: '#F4F8FF', raw: true });
+  if (d.snow) for (let i = 1; i < ledges.length - 2; i++) p.line([ledges[i], ledges[i + 1]], { width: 10, color: POSTER_BONE, raw: true });
 
   // The guard rail along the road up to the portal.
   const railY = road - 46;
-  p.line([[200, railY], [portal - 760, railY]], { width: 7, color: '#C9CED8', raw: true, wobble: 0 });
-  for (let x = 220; x < portal - 760; x += 70) p.rect(x - 4, railY - 4, 8, 50, { fill: '#8E96A8', width: 2.4, r: 1 });
+  for (let x = 220; x < portal - 760; x += 70) p.rect(x - 4, railY - 4, 8, 50, { fill: POSTER_INK, width: 2.4, r: 1 });
+  p.rect(200, railY - 8, portal - 960, 14, { fill: POSTER_BONE, width: 3.5, r: 2 });
+  for (let x = 214; x < portal - 780; x += 48) p.shape([[x, railY - 6], [x + 20, railY - 6], [x + 12, railY + 4], [x - 8, railY + 4]], { fill: POSTER_EMBER, raw: true, stroke: null });
 
   // The cutting: the road runs into the hill between concrete retaining walls. This is the far one,
   // rising as the hill does, with panel joints and weep holes.
@@ -190,9 +202,11 @@ export function tunnelMouthArt(biome: BiomeKey): Art {
   p.line(wallPts, { width: 8, color: headShade, raw: true, wobble: 0 });
   for (let x = portal - 680; x < w; x += 120) {
     p.line([[x, wallTop(x) + 6], [x, road]], { width: 2, color: headShade, raw: true });
-    if (wallTop(x) < road - 120) p.ellipse(x + 60, road - 70, 6, 6, { fill: '#2A2A34', stroke: null });
+    if (wallTop(x) < road - 120) p.ellipse(x + 60, road - 70, 6, 6, { fill: POSTER_INK, stroke: null });
   }
-  if (d.snow) p.line(wallPts.map(([x, y]): Pt => [x, y - 4]), { width: 10, color: '#F4F8FF', raw: true });
+  // A red band along the top of the cutting's wall, the poster's accent.
+  p.line(wallPts.map(([x, y]): Pt => [x, y + 16]), { width: 8, color: '#E3263A', raw: true, wobble: 0 });
+  if (d.snow) p.line(wallPts.map(([x, y]): Pt => [x, y - 4]), { width: 10, color: POSTER_BONE, raw: true });
   return { key, svg: p.svg(w, h), w, h };
 }
 
@@ -212,7 +226,7 @@ function portalInProfile(scene: Phaser.Scene, x: number, dir: 1 | -1, groundY: (
     const v = pts.map(([px, py]) => new Phaser.Math.Vector2(px, py));
     g.fillStyle(fill, 1);
     g.fillPoints(v, true);
-    g.lineStyle(4, 0x2a2140, 1);
+    g.lineStyle(4, 0x0a0712, 1);
     g.strokePoints(v, true);
   };
   // The headwall's thickness, from the hood up into the hill.
@@ -245,9 +259,14 @@ function portalInProfile(scene: Phaser.Scene, x: number, dir: 1 | -1, groundY: (
     ],
     shade,
   );
-  // Panel joints along the hood.
+  // Panel joints along the hood, and ember-and-ink chevrons along its lower edge, warning of the height.
   g.lineStyle(2, shade, 1);
   for (const k of [0.33, 0.66]) g.lineBetween(X(-HOOD * k), cy - 34 - (1 - k) * 86 + 8, X(-HOOD * k), cy + 14);
+  for (let k = 0, dx = 0; dx < HOOD - 6; dx += 22, k++) {
+    g.fillStyle(k % 2 ? 0x0a0712 : 0xff6a30, 1);
+    const y0 = cy + 10 + ((HOOD - dx) / HOOD) * -2;
+    g.fillPoints([new Phaser.Math.Vector2(X(-dx), y0 + 13), new Phaser.Math.Vector2(X(-dx - 11), y0 + 13), new Phaser.Math.Vector2(X(-dx - 22), y0 + 25), new Phaser.Math.Vector2(X(-dx - 11), y0 + 25)], true);
+  }
   // Snow on the hood, and ice hanging off its edge.
   if (d.snow) {
     poly(
@@ -257,11 +276,11 @@ function portalInProfile(scene: Phaser.Scene, x: number, dir: 1 | -1, groundY: (
         [X(-HOOD - 6), cy - 26],
         [X(0), cy - 108],
       ],
-      0xf4f8ff,
+      0xf3e3cc,
     );
     for (let k = 0; k < 7; k++) {
       const ix = X(-HOOD + 10 + k * 26);
-      g.fillStyle(0xe8f4ff, 1);
+      g.fillStyle(0xf3e3cc, 1);
       g.fillTriangle(ix - 5, cy + 24, ix + 5, cy + 24, ix, cy + 44 + ((k * 37) % 20));
     }
   }
@@ -269,20 +288,20 @@ function portalInProfile(scene: Phaser.Scene, x: number, dir: 1 | -1, groundY: (
   // The tunnel's name, lettered along the hood's side.
   const slope = Math.atan2(86, HOOD) * -dir;
   scene.add
-    .text(X(-HOOD / 2 + 6), cy - 36, name, { fontFamily: 'Karla', fontSize: '15px', fontStyle: 'bold', color: '#3A3448' })
+    .text(X(-HOOD / 2 + 6), cy - 38, name, { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '18px', color: POSTER_INK, letterSpacing: 1 })
     .setOrigin(0.5)
     .setRotation(slope)
     .setDepth(depth + 0.02);
   // Before the portal: a traffic light (green: in you go) and a height-limit sign, behind the road.
   const px = X(-HOOD - 160);
   const py = groundY(px);
-  scene.add.rectangle(px, py, 10, 300, 0x3a3e4a).setOrigin(0.5, 1).setDepth(-5.2).setStrokeStyle(2, 0x2a2140);
-  scene.add.rectangle(px, py - 300, 40, 104, 0x1e1a24).setOrigin(0.5, 0).setDepth(-5.2).setStrokeStyle(3, 0x2a2140);
-  [0x5a2020, 0x5a4a20, 0x3aff8a].forEach((c, k) => scene.add.circle(px, py - 282 + k * 32, 11, c).setDepth(-5.19));
+  scene.add.rectangle(px, py, 12, 300, 0xf3e3cc).setOrigin(0.5, 1).setDepth(-5.2).setStrokeStyle(3, 0x0a0712);
+  scene.add.rectangle(px, py - 300, 44, 108, 0x0a0712).setOrigin(0.5, 0).setDepth(-5.2).setStrokeStyle(3, 0x0a0712);
+  [0x3a0f22, 0x4a2a10, 0x3aff8a].forEach((c, k) => scene.add.circle(px, py - 282 + k * 32, 11, c).setDepth(-5.19));
   scene.add.image(px, py - 218, 'halo').setDepth(-5.18).setDisplaySize(90, 90).setTint(0x3aff8a).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
-  scene.add.circle(px + dir * -70, py - 200, 30, 0xffffff).setDepth(-5.2).setStrokeStyle(8, 0xd83a3a);
-  scene.add.text(px + dir * -70, py - 200, '3.8m', { fontFamily: 'Karla', fontSize: '17px', fontStyle: 'bold', color: '#1a1620' }).setOrigin(0.5).setDepth(-5.19);
-  scene.add.rectangle(px + dir * -70, py, 6, 170, 0x3a3e4a).setOrigin(0.5, 1).setDepth(-5.21);
+  scene.add.circle(px + dir * -70, py - 200, 30, 0xf3e3cc).setDepth(-5.2).setStrokeStyle(8, 0xe3263a);
+  scene.add.text(px + dir * -70, py - 200, '3.8m', { fontFamily: '"Space Mono", monospace', fontSize: '16px', fontStyle: 'bold', color: POSTER_INK }).setOrigin(0.5).setDepth(-5.19);
+  scene.add.rectangle(px + dir * -70, py, 6, 170, 0x0a0712).setOrigin(0.5, 1).setDepth(-5.21);
 }
 
 export interface Tunnel {
@@ -319,40 +338,47 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
   const ceiling = (x: number) => groundY(x) - BORE;
   const g = scene.add.graphics().setDepth(wallDepth);
   // The back wall: dark concrete above, a band of pale tiles below with a coloured stripe, a kerb at the foot.
-  g.fillStyle(0x3a302e, 1);
+  g.fillStyle(0x3a1428, 1);
   g.fillPoints([...line((x) => ceiling(x) - 40), ...line((x) => groundY(x) + 6).reverse()], true);
   const tileTop = (x: number) => groundY(x) - 200;
-  g.fillStyle(0xd8c8a8, 1);
+  g.fillStyle(0xf3e3cc, 1);
   g.fillPoints([...line(tileTop), ...line((x) => groundY(x) - 34).reverse()], true);
-  g.lineStyle(1.5, 0xb8a888, 1);
+  g.lineStyle(1.5, 0xd9c3a6, 1);
   for (let k = 1; k < 6; k++) {
     g.beginPath();
     line((x) => tileTop(x) + k * 28).forEach((v, i) => (i ? g.lineTo(v.x, v.y) : g.moveTo(v.x, v.y)));
     g.strokePath();
   }
   for (let x = a + 20; x < b; x += 36) g.lineBetween(x, tileTop(x), x, groundY(x) - 34);
-  const stripe = from === 'town' || to === 'town' ? 0x2e6ad8 : 0x2e8a6a;
-  g.fillStyle(stripe, 1);
+  g.fillStyle(0xe3263a, 1);
   g.fillPoints([...line((x) => tileTop(x) - 16), ...line(tileTop).reverse()], true);
-  g.fillStyle(0x6a6060, 1);
+  g.fillStyle(0xffb23f, 1);
+  g.fillPoints([...line((x) => tileTop(x) + 2), ...line((x) => tileTop(x) + 6).reverse()], true);
+  g.fillStyle(0x5a1a3a, 1);
   g.fillPoints([...line((x) => groundY(x) - 34), ...line((x) => groundY(x) + 6).reverse()], true);
   // Panel joints in the upper wall, and a cable tray.
-  g.lineStyle(2, 0x2a2224, 1);
+  g.lineStyle(2, 0x1e0a18, 1);
   for (let x = a + 100; x < b; x += 200) g.lineBetween(x, ceiling(x) - 40, x, tileTop(x) - 16);
-  g.lineStyle(5, 0x1e1818, 1);
+  g.lineStyle(5, 0x0a0712, 1);
   g.beginPath();
   line((x) => ceiling(x) + 30).forEach((v, i) => (i ? g.lineTo(v.x, v.y) : g.moveTo(v.x, v.y)));
   g.strokePath();
-  // Exit doors with green signs, and amber reflectors along the kerb.
-  for (let x = a + 600; x < b - 300; x += 1000) {
-    scene.add.rectangle(x, groundY(x) - 34, 64, 120, 0x2e4a3a).setOrigin(0.5, 1).setDepth(wallDepth + 0.05).setStrokeStyle(3, 0x141018);
-    scene.add.rectangle(x, groundY(x) - 172, 74, 26, 0x2fbf6a).setDepth(wallDepth + 0.05).setStrokeStyle(2, 0x141018);
-    scene.add.text(x, groundY(x) - 172, 'EXIT', { fontFamily: 'Karla', fontSize: '17px', fontStyle: 'bold', color: '#FFFFFF' }).setOrigin(0.5).setDepth(wallDepth + 0.06);
-    scene.add.image(x, groundY(x) - 172, 'halo').setDepth(58.6).setDisplaySize(150, 70).setTint(0x2fbf6a).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD);
+  // The way out, stencilled big on the tiles in the poster's type: where this tunnel comes out, and how far.
+  for (let x = a + 300; x < b - 200; x += 900) {
+    if (Math.abs(x - SWITCH) < 160) continue;
+    const left = Math.round(Math.max(0, b - x) / 100) / 10;
+    scene.add.text(x, tileTop(x) + 62, `${PLACES[to]}  ${left.toFixed(1)} KM →`, { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '44px', color: '#E3263A', letterSpacing: 3 }).setOrigin(0.5).setDepth(wallDepth + 0.05).setAlpha(0.88);
+  }
+  // Exit doors under ember signs, and gold reflectors along the kerb.
+  for (let x = a + 750; x < b - 300; x += 900) {
+    scene.add.rectangle(x, groundY(x) - 34, 64, 120, 0x2a4636).setOrigin(0.5, 1).setDepth(wallDepth + 0.05).setStrokeStyle(3, 0x0a0712);
+    scene.add.rectangle(x, groundY(x) - 172, 78, 28, 0xff6a30).setDepth(wallDepth + 0.05).setStrokeStyle(3, 0x0a0712);
+    scene.add.text(x, groundY(x) - 172, 'EXIT', { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '18px', color: POSTER_BONE, letterSpacing: 2 }).setOrigin(0.5).setDepth(wallDepth + 0.06);
+    scene.add.image(x, groundY(x) - 172, 'halo').setDepth(58.6).setDisplaySize(150, 70).setTint(0xff6a30).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD);
   }
   for (let x = a + 40; x < b; x += 100) {
-    scene.add.circle(x, groundY(x) - 20, 4, 0xffb030).setDepth(wallDepth + 0.05);
-    scene.add.image(x, groundY(x) - 20, 'halo').setDepth(58.6).setDisplaySize(24, 24).setTint(0xffb030).setAlpha(0.8).setBlendMode(Phaser.BlendModes.ADD);
+    scene.add.circle(x, groundY(x) - 20, 4, 0xffb23f).setDepth(wallDepth + 0.05);
+    scene.add.image(x, groundY(x) - 20, 'halo').setDepth(58.6).setDisplaySize(24, 24).setTint(0xffb23f).setAlpha(0.8).setBlendMode(Phaser.BlendModes.ADD);
   }
 
   // The frame: the ceiling across the top of the screen and the floor along the bottom, near-black, in
@@ -387,16 +413,15 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
     frame.fillPoints([...edge, new Phaser.Math.Vector2(x + dir * 2, -1400), new Phaser.Math.Vector2(x + dir * 2, cy)], true);
     frame.lineStyle(14, Phaser.Display.Color.HexStringToColor(DRESS[biome].turf).color, 1);
     frame.strokePoints(edge, false);
-    frame.lineStyle(4, 0x2a2140, 1);
+    frame.lineStyle(4, 0x0a0712, 1);
     frame.strokePoints(edge.map((v) => new Phaser.Math.Vector2(v.x - dir * 7, v.y)), false);
   }
-  frame.fillStyle(0x15111a, 1);
   // The floor sits in front of the near grass strip too.
   const floor = scene.add.graphics().setDepth(61);
-  floor.fillStyle(0x15111a, 1);
+  floor.fillStyle(0x0a0712, 1);
   floor.fillPoints([...line((x) => groundY(x) + 34), new Phaser.Math.Vector2(b, H + 600), new Phaser.Math.Vector2(a, H + 600)], true);
   // Faint panel lines in the ceiling, so it reads as concrete overhead rather than a black bar.
-  frame.lineStyle(2, 0x221c28, 1);
+  frame.lineStyle(2, 0x2a1424, 1);
   for (let k = 1; k < 8; k++) {
     frame.beginPath();
     line((x) => ceiling(x) - k * 70).forEach((v, i) => (i ? frame.lineTo(v.x, v.y) : frame.moveTo(v.x, v.y)));
@@ -410,23 +435,23 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
   ] as const) {
     portalInProfile(scene, x, dir, groundY, DRESS[biome], NAMES[biome] ?? 'TUNNEL', frameDepth + 0.05);
     // The floor's edge under the headwall.
-    floor.fillStyle(0x15111a, 1);
+    floor.fillStyle(0x0a0712, 1);
     floor.fillRect(Math.min(x, x + dir * COLLAR), groundY(x) + 34, COLLAR, H + 600);
   }
-  frame.lineStyle(4, 0x3a3240, 1);
+  frame.lineStyle(4, 0xff6a30, 0.7);
   frame.beginPath();
   line(ceiling).forEach((v, i) => (i ? frame.lineTo(v.x, v.y) : frame.moveTo(v.x, v.y)));
   frame.strokePath();
   // The kerb's edge along the floor, catching the lamplight.
-  floor.lineStyle(3, 0x8a6a3a, 1);
+  floor.lineStyle(3, 0xff6a30, 0.75);
   floor.beginPath();
   line((x) => groundY(x) + 34).forEach((v, i) => (i ? floor.lineTo(v.x, v.y) : floor.moveTo(v.x, v.y)));
   floor.strokePath();
   // Lane signals hanging from the ceiling: a green arrow pointing down at the lane.
   for (let x = a + 900; x < b - 300; x += 1200) {
-    frame.fillStyle(0x0e0b12, 1);
+    frame.fillStyle(0x0a0712, 1);
     frame.fillRect(x - 3, ceiling(x) - 2, 6, 30);
-    frame.fillStyle(0x221c28, 1);
+    frame.fillStyle(0x3a0f22, 1);
     frame.fillRoundedRect(x - 26, ceiling(x) + 26, 52, 44, 6);
     scene.add.triangle(x, ceiling(x) + 40, -12, -8, 12, -8, 0, 10, 0x3aff8a).setDepth(frameDepth + 0.01);
     scene.add.image(x, ceiling(x) + 44, 'halo').setDepth(frameDepth + 0.02).setDisplaySize(90, 70).setTint(0x3aff8a).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
@@ -434,20 +459,22 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
   // Jet fans hanging from the ceiling.
   for (let x = a + 500; x < b - 300; x += 1200) {
     for (const dx of [-70, 70]) {
-      frame.fillStyle(0x15111a, 1);
+      frame.fillStyle(0x0a0712, 1);
       frame.fillRect(x + dx - 6, ceiling(x) - 2, 12, 26);
-      frame.fillStyle(0x2a2430, 1);
+      frame.fillStyle(0x5a1a3a, 1);
       frame.fillRoundedRect(x + dx - 56, ceiling(x) + 22, 112, 44, 16);
-      frame.lineStyle(3, 0x0e0b12, 1);
+      frame.fillStyle(0xe3263a, 1);
+      frame.fillRect(x + dx - 40, ceiling(x) + 40, 80, 6);
+      frame.lineStyle(3, 0x0a0712, 1);
       frame.strokeRoundedRect(x + dx - 56, ceiling(x) + 22, 112, 44, 16);
     }
   }
   // Lamps along the ceiling: a lit strip, a hot glow, a soft pool of light on the wall, and a wide pool
   // over the road that lights the truck as it passes underneath.
-  const warm = from === 'town' || to === 'town' ? 0xd8ecff : 0xffb24a;
+  const warm = 0xffb23f;
   const glows: Phaser.GameObjects.Image[] = [];
   for (let x = a + 120; x < b - 60; x += 260) {
-    frame.fillStyle(0x0e0b12, 1);
+    frame.fillStyle(0x0a0712, 1);
     frame.fillRect(x - 40, ceiling(x) - 2, 80, 12);
     scene.add.rectangle(x, ceiling(x) + 10, 64, 5, warm).setDepth(frameDepth + 0.01);
     scene.add.image(x, ceiling(x) + BORE * 0.45, 'halo').setDepth(wallDepth + 0.04).setDisplaySize(300, BORE * 1.1).setTint(warm).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD);
@@ -455,7 +482,7 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
     glows.push(scene.add.image(x, groundY(x) - 120, 'halo').setDepth(58.6).setDisplaySize(380, 280).setTint(warm).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD));
   }
   // The amber cast over everything under the frame (the truck too), stronger the further in you are.
-  const amber = scene.add.rectangle(0, 0, W, H, warm === 0xffb24a ? 0xd89a5a : 0x9ab0d8, 1).setOrigin(0).setScrollFactor(0).setDepth(58.5).setBlendMode(Phaser.BlendModes.MULTIPLY).setAlpha(0);
+  const amber = scene.add.rectangle(0, 0, W, H, 0xe8946a, 1).setOrigin(0).setScrollFactor(0).setDepth(58.5).setBlendMode(Phaser.BlendModes.MULTIPLY).setAlpha(0);
   const inside = (mid: number) => {
     const e = Math.min(mid - a, b - mid);
     return Math.max(0, Math.min(1, (e + 300) / 700));
