@@ -419,15 +419,18 @@ export const ITEMS: ItemSpec[] = [
   {
     key: 'cat', name: 'Biscuit the cat', w: m(0.56), h: m(0.56), density: 0.0008, friction: 0.8, hearts: 3, pet: true,
     /**
-     * A big, deadpan ginger cat sitting like a sack of flour: a wide flat head with fur tufts at the cheeks,
-     * huge half-lidded eyes giving you the side-eye, a tiny nose, and a tail flicking out behind.
+     * The cat from the title: black, rim-lit in ember along its top edges as if the sun were behind it,
+     * plum inside its tall ears, amber almond eyes with slit pupils. It sits like a sack of flour, wide flat
+     * head, tufted cheeks, and gives you the side-eye; its tail flicks out behind.
      */
     draw(p, x, y, w, h, mood = 'calm') {
-      const GINGER = '#F09A35';
-      const DEEP = '#D27A22';
-      const STRIPE = '#B8621A';
-      const CREAMY = '#FFF0D8';
-      const EYE = '#D8E35A';
+      const GINGER = '#1A1226';
+      const DEEP = '#0A0712';
+      const STRIPE = '#2E2038';
+      const CREAMY = '#2A1C36';
+      const EYE = '#FFB23F';
+      const RIM = '#FF9A5A';
+      const LINE = '#C9A0B8';
       const cx = x + w * 0.5;
       const headY = y + h * 0.34;
       const panic = mood === 'panic';
@@ -444,8 +447,9 @@ export const ITEMS: ItemSpec[] = [
       const cheeks = (a: number) => Math.max(0, Math.abs(Math.cos(a)) - 0.55) * (Math.sin(a) > -0.2 ? 2.4 : 0.6);
       // Tail, flicking up behind the body.
       const tail: Pt[] = [[x + w * 0.78, y + h * 0.9], [x + w - 4, y + h * 0.8], [x + w - 2, y + h * 0.56], [x + w - 10, y + h * 0.46]];
-      p.line(tail, { width: 15, color: mix(GINGER, C.ink, 0.74) });
+      p.line(tail, { width: 15, color: DEEP });
       p.line(tail, { width: 10, color: GINGER });
+      p.line(tail.slice(1).map(([tx, ty]) => [tx + 3, ty - 2] as Pt), { width: 2.4, color: RIM });
       p.line([[x + w - 3, y + h * 0.62], [x + w - 13, y + h * 0.6]], { width: 3, color: STRIPE, raw: true });
       p.line([[x + w - 2, y + h * 0.72], [x + w - 12, y + h * 0.74]], { width: 3, color: STRIPE, raw: true });
       // Body: a sack, wider at the bottom, the fur bristling all over when it panics.
@@ -455,12 +459,13 @@ export const ITEMS: ItemSpec[] = [
       p.shape(body, { fill: GINGER, width: 4, raw: panic, shade: [{ pts: [[x, y + h * 0.84], [x + w, y + h * 0.8], [x + w, y + h], [x, y + h]], color: DEEP }] });
       for (const sx of [0.14, 0.24, 0.76, 0.86]) p.line([[x + w * sx, y + h * 0.66], [x + w * (sx + (sx < 0.5 ? 0.05 : -0.05)), y + h * 0.78]], { width: 2.6, color: STRIPE, opacity: 0.85 });
       // Chest bib, with a lick of fur.
-      p.shape([[cx - w * 0.15, y + h * 0.58], [cx, y + h * 0.95], [cx + w * 0.15, y + h * 0.58]], { fill: CREAMY, stroke: null });
+      p.shape([[cx - w * 0.1, y + h * 0.6], [cx, y + h * 0.8], [cx + w * 0.1, y + h * 0.6]], { fill: CREAMY, stroke: null });
+      p.line([[x + w * 0.8, y + h * 0.52], [x + w - 8, y + h * 0.78]], { width: 2.6, color: RIM, raw: true, opacity: 0.9 });
       // Little white front paws, side by side, very proper.
       for (const px of [cx - 8, cx + 8]) {
         p.ellipse(px, y + h - 6, 7.5, 5.5, { fill: CREAMY, width: 2.8 });
-        p.line([[px - 2, y + h - 9], [px - 2, y + h - 4]], { width: 1.4, raw: true, color: '#C9A88A' });
-        p.line([[px + 2, y + h - 9], [px + 2, y + h - 4]], { width: 1.4, raw: true, color: '#C9A88A' });
+        p.line([[px - 2, y + h - 9], [px - 2, y + h - 4]], { width: 1.4, raw: true, color: LINE });
+        p.line([[px + 2, y + h - 9], [px + 2, y + h - 4]], { width: 1.4, raw: true, color: LINE });
       }
       // Ears: small, set wide on the big flat head; flat back when it is cross or scared.
       // Ears say it first: flat back when cross or scared, out sideways when worried or dizzy, droopy when
@@ -469,15 +474,22 @@ export const ITEMS: ItemSpec[] = [
       const sideways = mood === 'worried' || mood === 'dizzy';
       for (const s of [-1, 1]) {
         const ex = cx + s * w * 0.25;
-        const tip: Pt = flat ? [ex + s * 18, y + h * 0.16] : sideways ? [ex + s * 22, headY - h * 0.16] : mood === 'sleepy' ? [ex + s * 12, y + h * 0.08] : mood === 'happy' ? [ex + s * 2, y - 3] : [ex + s * 4, y + 1];
+        const tip: Pt = flat ? [ex + s * 18, y + h * 0.16] : sideways ? [ex + s * 22, headY - h * 0.16] : mood === 'sleepy' ? [ex + s * 12, y + h * 0.08] : mood === 'happy' ? [ex + s * 4, y - 8] : [ex + s * 6, y - 5];
         p.shape([[ex - s * 11, headY - h * 0.2], tip, [ex + s * 12, headY - h * 0.08]], { fill: GINGER, raw: true, width: 3.6 });
-        p.shape([[ex - s * 5, headY - h * 0.18], [tip[0] - s * 2, tip[1] + 6], [ex + s * 7, headY - h * 0.1]], { fill: '#F29AA2', raw: true, stroke: null });
+        p.shape([[ex - s * 5, headY - h * 0.18], [tip[0] - s * 2, tip[1] + 6], [ex + s * 7, headY - h * 0.1]], { fill: '#3A1A2E', raw: true, stroke: null });
+        p.line([[ex + s * 12, headY - h * 0.08], [tip[0], tip[1] + 2]], { width: 2.4, color: RIM, raw: true });
       }
       // Head: wide and flat, with tufts at the cheeks.
       const hrx = w * 0.4;
       const hry = h * 0.26;
-      p.shape(fluffy(cx, headY, hrx, hry, panic ? () => 1.6 : cheeks), { fill: GINGER, width: 4, raw: true, shade: [{ pts: [[cx - w, headY + hry * 0.4], [cx + w, headY + hry * 0.3], [cx + w, headY + h], [cx - w, headY + h]], color: '#E28A2C' }] });
-      // Tabby M on the forehead.
+      p.shape(fluffy(cx, headY, hrx, hry, panic ? () => 1.6 : cheeks), { fill: GINGER, width: 4, raw: true, shade: [{ pts: [[cx - w, headY + hry * 0.4], [cx + w, headY + hry * 0.3], [cx + w, headY + h], [cx - w, headY + h]], color: '#3A2A4A' }] });
+      const crown: Pt[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const a = Math.PI * 1.3 + (i / 12) * Math.PI * 0.62;
+        crown.push([cx + Math.cos(a) * hrx * 0.97, headY + Math.sin(a) * hry * 0.97]);
+      }
+      p.line(crown, { width: 2.4, color: RIM, raw: true, opacity: 0.9 });
+      // A faint tabby M on the forehead, only where the light catches it.
       p.line([[cx - 9, headY - hry * 0.45], [cx - 5, headY - hry * 0.78], [cx, headY - hry * 0.5], [cx + 5, headY - hry * 0.78], [cx + 9, headY - hry * 0.45]], { width: 2.4, color: STRIPE, raw: true });
       for (const sd of [-1, 1]) p.line([[cx + sd * hrx * 0.98, headY + 2], [cx + sd * hrx * 0.72, headY + 1]], { width: 2.4, color: STRIPE, raw: true });
       // Muzzle.
@@ -489,13 +501,13 @@ export const ITEMS: ItemSpec[] = [
         const ex = cx + s * w * 0.16;
         if (mood === 'happy') {
           // Delighted: eyes shut in happy arcs.
-          p.line([[ex - 7, eyeY + 3], [ex, eyeY - 4], [ex + 7, eyeY + 3]], { width: 3.4 });
+          p.line([[ex - 7, eyeY + 3], [ex, eyeY - 4], [ex + 7, eyeY + 3]], { width: 3.4, color: EYE });
           continue;
         }
         if (mood === 'sleepy') {
           // Dozing: lids down, with lashes.
-          p.line([[ex - 7, eyeY], [ex, eyeY + 4], [ex + 7, eyeY]], { width: 3.2 });
-          for (const lx of [-4, 0, 4]) p.line([[ex + lx, eyeY + 3], [ex + lx * 1.3, eyeY + 6]], { width: 1.6, raw: true });
+          p.line([[ex - 7, eyeY], [ex, eyeY + 4], [ex + 7, eyeY]], { width: 3.2, color: LINE });
+          for (const lx of [-4, 0, 4]) p.line([[ex + lx, eyeY + 3], [ex + lx * 1.3, eyeY + 6]], { width: 1.6, raw: true, color: LINE });
           continue;
         }
         if (mood === 'dizzy') {
@@ -503,15 +515,20 @@ export const ITEMS: ItemSpec[] = [
           spiral(p, ex, eyeY, er * 0.85);
           continue;
         }
-        p.ellipse(ex, eyeY, er, er, { fill: panic ? '#FFFFFF' : EYE, width: 2.6 });
+        const almond: Pt[] = [[ex - er - 2, eyeY + 1], [ex - er * 0.5, eyeY - er * 0.9], [ex + er * 0.5, eyeY - er * 0.95], [ex + er + 2, eyeY - 1 - s], [ex + er * 0.5, eyeY + er * 0.9], [ex - er * 0.5, eyeY + er * 0.95]];
+        if (panic) p.ellipse(ex, eyeY, er, er, { fill: '#FFFFFF', width: 2.6 });
+        else {
+          p.shape(almond, { fill: EYE, width: 2.6, stroke: DEEP });
+          p.ellipse(ex, eyeY, er * 0.5, er * 0.5, { fill: '#FFE08A', stroke: null, opacity: 0.85 });
+        }
         if (panic) {
           p.dot(ex + s * 1, eyeY, 2.2);
           continue;
         }
         // Pupils looking sideways at you: the side-eye.
         const look = mood === 'worried' ? 0 : 3.6;
-        p.ellipse(ex + look, eyeY + 1, mood === 'worried' ? 4.2 : 2.6, mood === 'worried' ? 5 : 5.8, { fill: C.ink, stroke: null });
-        p.dot(ex + look - 1.4, eyeY - 2.4, 1.3, '#FFFFFF');
+        p.ellipse(ex + look * 0.6, eyeY, mood === 'worried' ? 3.4 : 1.8, er * 0.85, { fill: C.ink, stroke: null });
+        p.dot(ex + look * 0.6 - 2.6, eyeY - 3, 1.4, '#FFFFFF');
         // Heavy lids: half shut when bored, lower and slanted when cross, high when worried.
         const lid = mood === 'grumpy' ? 0.15 : mood === 'worried' ? -0.55 : -0.05;
         const tilt = mood === 'grumpy' ? s * 3 : mood === 'worried' ? -s * 3 : 0;
@@ -526,13 +543,13 @@ export const ITEMS: ItemSpec[] = [
         // A yowl, fangs and all.
         p.ellipse(cx, ny + 10, 6, 8, { fill: C.terracottaDark, width: 2.4 });
         for (const fx of [-3, 3]) p.shape([[cx + fx - 1.6, ny + 4], [cx + fx + 1.6, ny + 4], [cx + fx, ny + 8]], { fill: '#FFFFFF', raw: true, stroke: null });
-      } else if (mood === 'happy') p.line([[cx - 6, ny + 5], [cx - 3, ny + 7], [cx, ny + 4], [cx + 3, ny + 7], [cx + 6, ny + 5]], { width: 2.2 });
-      else if (mood === 'worried') p.line([[cx - 5, ny + 8], [cx - 2, ny + 6], [cx + 1, ny + 8], [cx + 4, ny + 6]], { width: 2 });
-      else if (mood === 'grumpy') p.line([[cx - 5, ny + 8], [cx, ny + 5], [cx + 5, ny + 8]], { width: 2.4 });
+      } else if (mood === 'happy') p.line([[cx - 6, ny + 5], [cx - 3, ny + 7], [cx, ny + 4], [cx + 3, ny + 7], [cx + 6, ny + 5]], { width: 2.2, color: LINE });
+      else if (mood === 'worried') p.line([[cx - 5, ny + 8], [cx - 2, ny + 6], [cx + 1, ny + 8], [cx + 4, ny + 6]], { width: 2, color: LINE });
+      else if (mood === 'grumpy') p.line([[cx - 5, ny + 8], [cx, ny + 5], [cx + 5, ny + 8]], { width: 2.4, color: LINE });
       else if (mood === 'dizzy') {
-        p.line([[cx - 4, ny + 6], [cx + 4, ny + 6]], { width: 2, raw: true });
+        p.line([[cx - 4, ny + 6], [cx + 4, ny + 6]], { width: 2, raw: true, color: LINE });
         p.ellipse(cx + 2, ny + 9, 3, 4, { fill: '#F27A8A', width: 1.8 });
-      } else p.line([[cx - 4, ny + 6], [cx + 4, ny + 6.5]], { width: 2, raw: true });
+      } else p.line([[cx - 4, ny + 6], [cx + 4, ny + 6.5]], { width: 2, raw: true, color: LINE });
       // Extras that sell the mood: blush and a heart, a bead of sweat, an angry vein, a snot bubble and
       // a z, a ring of stars.
       if (mood === 'happy') {

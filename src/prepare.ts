@@ -8,6 +8,7 @@ import { tunnelMouthArt } from './tunnel';
 import { mix } from './ink';
 import { grassStripArt } from './backdrop';
 import { LEGS } from './legs';
+import { finaleArts } from './finale';
 import { H, WORLD_START, groundAt } from './terrain';
 
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
@@ -41,6 +42,8 @@ function legArts(n: number): art.Art[] {
   }
   if (leg.biome !== 'meadow') out.push(recolor(grassStripArt(), grassKey(n), biome.grass));
   out.push(...biome.arts());
+  // The last leg ends in the avenue home.
+  if (!leg.stop) out.push(...finaleArts());
   // The last biome's pictures too, for the stretch where this leg blends out of it.
   if (n > 1) {
     const before = LEGS[n - 2].biome;
@@ -53,6 +56,11 @@ function legArts(n: number): art.Art[] {
 }
 
 const loading = new Map<number, Promise<void>>();
+
+/** Whether a leg's pictures are still in memory: they are let go once another leg starts. */
+export function legReady(textures: Phaser.Textures.TextureManager, n: number): boolean {
+  return loading.has(n) && textures.exists(groundKey(n, 0));
+}
 
 /** Draws everything a leg needs, once. Later calls return the same promise, so it is safe to call early. */
 export function prepareLeg(textures: Phaser.Textures.TextureManager, n: number): Promise<void> {
@@ -77,7 +85,15 @@ export function unloadLegsExcept(textures: Phaser.Textures.TextureManager, keep:
     places.add(LEGS[n - 1].biome);
     if (n > 1) places.add(LEGS[n - 2].biome);
   }
+  // Some pictures are shared between places (the birds, say): never drop one a kept place still uses.
+  const needed = new Set<string>();
+  for (const b of places) {
+    for (const a of BIOMES[b as keyof typeof BIOMES].arts()) needed.add(a.key);
+    needed.add(tunnelMouthArt(b as keyof typeof BIOMES).key);
+  }
+  for (const n of keep) if (n >= 1 && n <= LEGS.length) needed.add(grassKey(n));
   const drop = (k: string) => {
+    if (needed.has(k)) return;
     for (const key of [k, `${k}#0`, `${k}#1`, `${k}#2`]) if (textures.exists(key)) textures.remove(key);
   };
   for (const n of [...loading.keys()]) {

@@ -17,8 +17,9 @@ import type { BiomeKey } from './legs';
 
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from './prepare';
-import { CHUNK, CHUNK_TOP, groundKey, grassKey, prepareLeg, unloadLegsExcept } from './prepare';
+import { CHUNK, CHUNK_TOP, groundKey, grassKey, legReady, prepareLeg, unloadLegsExcept } from './prepare';
 import { applyBiomeFX } from './postfx';
+import { buildFinale } from './finale';
 import { chip, hudText, uiText, INK_BG } from './ui';
 import { Prompter } from './prompts';
 import { PosterList, posterSheet, openControls, ensurePosterTextures, DISPLAY as POSTER_FONT, MONO as POSTER_MONO, BONE_CSS, EMBER_CSS, INK_CSS } from './poster';
@@ -225,6 +226,12 @@ export class PlayScene extends Phaser.Scene {
   private gantry?: { banner: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text };
   private lastSaveMoment = -9999;
   private walls?: Body[];
+  /** True while this leg's pictures are being drawn again; the scene restarts once they are. */
+  private waiting = false;
+  /** The last stretch home, run every frame on the final leg. */
+  private finale?: (time: number, camMid: number, celebrating: boolean) => void;
+  /** Whose colour grade the camera wears: the last place until the tunnel, then this one. */
+  private fxPlace: BiomeKey = 'meadow';
   private pauseList?: PosterList;
   private closeControls?: () => void;
   private lostFoundList?: PosterList;
@@ -273,6 +280,14 @@ export class PlayScene extends Phaser.Scene {
 
   create(data?: { intro?: boolean; leg?: number; trip?: Trip }) {
     this.leg = LEGS[Math.min(LEGS.length, Math.max(1, data?.leg ?? 1)) - 1];
+    // Starting again ("Shift again", a new game) after later legs ran: this leg's pictures were let go
+    // to save memory. Draw them again first, then come back, rather than drive on a road with no picture.
+    this.waiting = !legReady(this.textures, this.leg.n);
+    if (this.waiting) {
+      this.cameras.main.setBackgroundColor('#0A0712');
+      void prepareLeg(this.textures, this.leg.n).then(() => this.scene.restart(data));
+      return;
+    }
     setRoad(this.leg.features, this.leg.finish);
     this.trip = data?.trip ?? { leg: 1, cargo: [], lost: [], broken: [], parking: [], time: 0 };
     this.phase = data?.intro && this.leg.n === 1 ? 'intro' : 'pack';
@@ -1143,8 +1158,13 @@ export class PlayScene extends Phaser.Scene {
     if (before && tunnel) this.worlds.push(this.buildWorld(before, [-1000, TUNNEL.from - 300], true));
     this.worlds.push(this.buildWorld(this.leg.biome, tunnel ? [TUNNEL.to + 300, FINISH] : [-1000, FINISH], false));
     this.world = this.worlds[this.worlds.length - 1].built;
+    // The way home: the last leg ends in golden hour, an avenue, arches and fireworks.
+    this.finale = this.leg.stop ? undefined : buildFinale(this, { finish: FINISH, groundY, far: this.worlds[this.worlds.length - 1].layers[0], font: POSTER_FONT });
     this.tunnel = before && tunnel ? buildTunnel(this, before, this.leg.biome, groundY) : undefined;
-    applyBiomeFX(this.cameras.main, this.leg.biome);
+    // The last place keeps its own light until the swap inside the tunnel, so leaving a checkpoint does
+    // not suddenly re-light the scenery you are still driving through.
+    this.fxPlace = tunnel && before ? before : this.leg.biome;
+    applyBiomeFX(this.cameras.main, this.fxPlace);
     const tun = (x: number) => inTunnel(x, tunnel);
     if (meadow) {
       const sun = this.add.image(1180, 400, 'sun').setScrollFactor(0.04).setDepth(-45);
@@ -2614,6 +2634,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    if (this.waiting) return;
     if (this.paused) return;
     this.prompts.update();
     this.packWalls();
@@ -2760,6 +2781,11 @@ export class PlayScene extends Phaser.Scene {
     // The last place's scenery until the middle of the tunnel, where the rock hides the whole screen; this
     // place's after it. One swap, out of sight: no fading.
     const k = this.worlds.length > 1 ? blendAt(cam.scrollX + W / 2) : 1;
+    const place = k === 1 ? this.leg.biome : LEGS[this.leg.n - 2].biome;
+    if (place !== this.fxPlace) {
+      this.fxPlace = place;
+      applyBiomeFX(cam, place);
+    }
     for (const wd of this.worlds) {
       const on = wd.prev ? k === 0 : k === 1;
       // Weather (the top band) stays outside: no leaves or snow blowing through the tunnel.
@@ -2768,6 +2794,7 @@ export class PlayScene extends Phaser.Scene {
       if (on) wd.built.update(time, delta, cam.scrollX);
     }
     this.tunnel?.update(time, cam.scrollX);
+    this.finale?.(time, cam.scrollX + W / 2, this.phase === 'arrived' || this.phase === 'done');
     for (const a of this.stopAnims) a(time, delta);
     for (const g of this.grassBands) for (const s of g.strips) s.setVisible(g.prev ? k === 0 : this.grassBands.length > 1 ? k === 1 : true);
     this.chimneySmoke();
