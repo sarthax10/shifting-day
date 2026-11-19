@@ -21,7 +21,7 @@ Stack it well, tie it down, drive it gently, and catch whatever bounces off befo
 
 <p align="center">
   <img src="docs/readme/old-street.jpg" alt="Old Street: the leaning, patched-up old house with the furniture piled in front of it and the truck waiting" width="49%">
-  <img src="docs/readme/home.jpg" alt="Coast Road: the whitewashed, blue-domed seaside manor at the end of the trip" width="49%">
+  <img src="docs/readme/home-stretch.jpg" alt="The home stretch: golden hour on the coast avenue, under a WELCOME HOME arch" width="49%">
 </p>
 <p align="center"><sub>FROM THIS &nbsp;·&nbsp; TO THIS</sub></p>
 
@@ -37,10 +37,12 @@ Stack it well, tie it down, drive it gently, and catch whatever bounces off befo
 
 **Deliver.** Park between the cones at each stop. Whatever fell off waits in the stop's Lost & Found, and you buy it back with the bubble wrap you collect on the road.
 
+**Beat the clock.** A run clock sits under the score, and your best run is kept. At the end of the road the score card tallies what made it home.
+
 The game teaches itself as you go: when something new comes up, a key-cap prompt appears right next to it and goes away once you've done it.
 
 <p align="center">
-  <img src="docs/readme/drive.jpg" alt="Driving out of the fuel stop in Maple Valley, with a HOLD D TO DRIVE prompt over the truck" width="100%">
+  <img src="docs/readme/maple-valley.jpg" alt="Maple Valley: the truck under red and gold maples by the waterfall" width="100%">
 </p>
 
 <br>
@@ -77,12 +79,20 @@ The same table is in the game, under **Controls** on the title screen and in the
 |---|---|---|---|
 | **1** | Old Street | the afternoon you leave | Corner Fuel |
 | **2** | Maple Valley | a misty autumn morning | Maple Mill Fuel & Pie |
-| **3** | Frostpeak Pass | blue hour on the high pass | Summit Lodge |
-| **4** | Neon Town | a rainy night in town | Starlite Diner |
-| **5** | Coast Road | a bright morning by the sea | **home** |
+| **3** | Frostpeak Pass | the violet hour under a red aurora | Summit Lodge |
+| **4** | Neon Town | a rainy night in the city of tomorrow | Starlite Diner |
+| **5** | Coast Road | a bright morning, golden hour home | **home** |
 
 <p align="center">
-  <img src="docs/readme/summit-lodge.jpg" alt="Leaving Summit Lodge under the northern lights" width="100%">
+  <img src="docs/readme/maple-gate.jpg" alt="The Maple Valley toll gate, a timber lodge with a carved roof" width="49%">
+  <img src="docs/readme/frostpeak.jpg" alt="Frostpeak Pass: snow spruces and a violet sky over the high road" width="49%">
+</p>
+<p align="center">
+  <img src="docs/readme/neon-town.jpg" alt="Neon Town: a synth sun, hover-cars and a blimp over the skyline" width="49%">
+  <img src="docs/readme/coast-road.jpg" alt="Coast Road: the marine drive, palms and a balustrade over the bay" width="49%">
+</p>
+<p align="center">
+  <img src="docs/readme/scorecard.jpg" alt="The score card: HOME SWEET HOME, a ticket tallying the delivery, the run time and a DELIVERED stamp" width="100%">
 </p>
 
 <br>
@@ -108,22 +118,21 @@ builds a static copy into `dist/` with relative paths, so it runs from any folde
 
 Every picture in the game is drawn in code, not painted or imported.
 
-| | |
+The source is grouped by what it does:
+
+| Folder | What's in it |
 |---|---|
-| [`src/ink.ts`](src/ink.ts) | Wobbly, hand-inked shapes as SVG: the pen everything in the world is drawn with |
-| [`src/art.ts`](src/art.ts) | Every picture (the truck, both houses, the household things) and the list of what you're moving |
-| [`src/logo.ts`](src/logo.ts) | The hand-cut wordmark and the screen-printed pieces of the title |
-| [`src/title.ts`](src/title.ts) | The title screen, built as a printed poster |
-| [`src/poster.ts`](src/poster.ts) | The same printed look for the pause menu, Controls and Lost & Found |
-| [`src/prompts.ts`](src/prompts.ts) | In-world key-cap prompts, and the controls table they share with the Controls screen |
-| [`src/game.ts`](src/game.ts) | The game: packing, driving, the gates, parking and the score |
-| [`src/crossbow.ts`](src/crossbow.ts) | The anchor crossbow: aiming, the cable, climbing and catching |
-| [`src/drivetrain.ts`](src/drivetrain.ts) | The engine and the gearbox |
-| [`src/terrain.ts`](src/terrain.ts) | The road: its bumps, holes, hills and cliffs |
+| [`src/scenes/`](src/scenes) | The title screen and the game itself: packing, driving, gates, parking and the score |
+| [`src/world/`](src/world) | The road and its five legs: terrain, biomes, tunnels, the finale, and the loader that draws each leg's art in the background |
+| [`src/art/`](src/art) | Every picture, drawn as SVG with the wobbly ink pen in [`ink.ts`](src/art/ink.ts): the truck, the houses, trees, toll gates, skylines and the sea |
+| [`src/ui/`](src/ui) | The printed poster screens (pause, Controls, Lost & Found), key-cap prompts, the dashboard and the score card |
+| [`src/systems/`](src/systems) | The engine and gearbox, the anchor crossbow, sound, weather and the colour grade |
+| [`src/dev/`](src/dev) | `?debug` and QA helpers |
+| [`itch/`](itch) | The itch.io page: cover, banner, screenshots, description and custom CSS |
 
 **Type:** [Anton](https://fonts.google.com/specimen/Anton) for anything you read as a word, [Space Mono](https://fonts.google.com/specimen/Space+Mono) for small labels and numbers.
 
-**Inks:** the five on the title screen's proof bar.
+**Inks:** ink, oxblood, red, ember and bone from the title screen's proof bar, with gold for highlights.
 
 <p align="center">
   <img src="docs/readme/palette.svg" alt="The palette: ink #0A0712, oxblood #3A0F22, red #E3263A, ember #FF6A30, bone #F3E3CC" width="100%">
@@ -137,4 +146,4 @@ Built with [Phaser 4](https://phaser.io) and its Matter physics, TypeScript and 
   <img src="docs/readme/logo.png" alt="Shifting Day" width="280">
 </p>
 
-<p align="center"><sub>Made with help from Claude (Anthropic).</sub></p>
+<p align="center"><sub>Made by <b>sarthax10</b>, with help from Claude (Anthropic).</sub></p>

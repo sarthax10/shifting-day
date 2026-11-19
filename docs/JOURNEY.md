@@ -8,9 +8,9 @@ handbrake on, and the trip is saved there. Your cargo carries over from leg to l
 |---|---|---|---|---|
 | 1 Old Street (tutorial) | Meadow farmland, windmills | Sunny afternoon | Learn gears, handbrake, toll gates | Corner Fuel |
 | 2 Maple Valley | Autumn forest, waterfall, stone bridge, river | Misty morning, light shafts, falling leaves | Rolling climbs, a long descent | Maple Mill Fuel & Pie |
-| 3 Frostpeak Pass | Snowy peaks, snow-capped pines, frozen lake, cabin | Blue hour, falling snow, aurora | Icy road: brakes are weaker, steep hill starts | Summit Lodge |
-| 4 Neon Town | Skyline, rooftops, neon shops, cinema | Rainy night, puddles, lightning | Stop-and-go at rail crossings, speed bumps, wet brakes | Starlite Diner |
-| 5 Coast Road | Turquoise sea, white cliffs, lighthouse, dunes, beach huts | Bright morning, gulls, sea glitter | Rolling cliffs, a final climb, park at the new house | The new house |
+| 3 Frostpeak Pass | Snowy peaks, spruces and snow ghosts, frozen lake, cabin | Violet hour, falling snow, a red aurora | Icy road: brakes are weaker, steep hill starts | Summit Lodge |
+| 4 Neon Town | A city of tomorrow: towers, a synth sun, hover-cars, a blimp, futuristic houses | Rainy night, puddles, searchlights | Stop-and-go at rail crossings, speed bumps, wet brakes | Starlite Diner |
+| 5 Coast Road | A marine drive: balustrade, palms, lamps, huts, a bay, dolphins | Bright morning into golden hour, gulls, sea glitter | Rolling cliffs, then the home stretch under the arches | The new house |
 
 The trip takes two days. You leave in the afternoon, cross the valley in the morning mist, top the pass
 at dusk under the aurora, drive through town in the night rain, and reach the sea in the morning.

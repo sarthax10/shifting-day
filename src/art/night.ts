@@ -1,0 +1,642 @@
+import type { Art } from './art';
+import { mix, type Pt } from './ink';
+import { TILE, plainPen, rnd, wave } from './backdrop';
+import { futureSkylineArt } from './futurecity';
+
+/**
+ * The two night biomes' scenery.
+ *
+ * Neon Town, a rainy night: a futuristic skyline (see futurecity.ts), a dense mid-city of lit windows,
+ * vertical neon signs and sky-bridges, and an elevated railway; over each lit layer, a blurred copy of only
+ * its lights is added on top, so neon and windows bloom. The biome prints them all in its night palette.
+ *
+ * Frostpeak Pass, at the violet hour under a red aurora: jagged peaks with moonlit bone faces and violet
+ * shadow in halftone; mixed woods of the pass's trees in miniature; lavender-shaded snowdrifts; and a
+ * frozen lake holding the sky's violet and rose, with warm cabin windows.
+ */
+
+// ===================================================================================== Neon Town
+
+/** The town's neon: coral, mint, gold, rose and warm white - a few warm and cool lights on an indigo night. */
+const NEON = ['#FF6A6A', '#5ED6C2', '#FFB23F', '#FF8AA0', '#F3E3CC', '#FF8A4A', '#FFD27A'];
+
+/**
+ * The megatowers on the horizon: few, very tall and slender, hazed purple with the glow beneath them.
+ * With `lights`, draws only their light strips and beacons (for the bloom layer).
+ */
+export const MEGA_BEACONS: Pt[] = [];
+export function megaArt(lights: boolean): Art {
+  return futureSkylineArt(lights, MEGA_BEACONS);
+}
+
+export const BILLBOARDS: { x: number; y: number; w: number; h: number }[] = [];
+
+/**
+ * A city of blocks, built the way cyberpunk cities are painted:
+ * - storeys are modules (a ledge and a band of windows), stacked to any height, with setbacks, an
+ *   overhanging upper block, or a slanted crown, so the skyline is varied but believable;
+ * - the light comes from the street, so each building is warm and dull at its foot, fading to cold
+ *   indigo as it rises; the materials stay drab and the colour comes from windows and neon;
+ * - clutter: AC units under windows, balconies, fire escapes, pipes down the walls, water tanks, dishes
+ *   and aerials on the roofs, cables sagging from one building to the next;
+ * - neon signs with weight: blade signs on brackets, boxes of glyphs, and shop signs, each spilling
+ *   coloured light onto the wall around it (in the bloom layer).
+ * With `lights`, draws only what glows, for the bloom layer added on top.
+ */
+export function cityArt(which: 'far' | 'mid', lights: boolean): Art {
+  const key = `bd_n_${which}${lights ? '_glow' : ''}`;
+  const far = which === 'far';
+  const h = far ? 640 : 640;
+  const p = plainPen(key);
+  const seed = far ? 301 : 331;
+  const tall = far ? 440 : 420;
+  // Street-lit at the foot, cold at the top. Far buildings are hazier and flatter.
+  const foot = far ? '#3A2452' : '#3A1E34';
+  const crown = far ? '#1E1544' : '#0E0A24';
+  const floor = far ? 22 : 30;
+  if (!far && !lights) BILLBOARDS.length = 0;
+  const roofs: Pt[] = [];
+  const blocks: [number, number, number][] = [];
+  let x = 0;
+  let i = 0;
+  while (x < TILE - 40) {
+    const w = Math.min(TILE - 20 - x, (far ? 80 : 110) + rnd(seed, i) * (far ? 120 : 170));
+    const storeys = Math.max(4, Math.round((tall * (0.35 + rnd(seed + 1, i) * 0.65)) / floor));
+    const bh = storeys * floor;
+    const top = h - bh;
+    const kind = Math.floor(rnd(seed + 2, i) * 4);
+    const shade = (y: number) => mix(foot, crown, Math.min(1, Math.max(0, (h - y) / tall)));
+    // The body, in bands that cool as they rise.
+    const body = (bx: number, by: number, bw: number, bb: number) => {
+      if (lights) return;
+      for (let y = bb; y > by; y -= floor * 2) {
+        const y0 = Math.max(by, y - floor * 2);
+        p.rect(bx, y0, bw, y - y0 + 1, { fill: shade(y0), stroke: null, r: 0 });
+      }
+    };
+    body(x, top, w, h + 4);
+    let roof = top;
+    if (kind === 1) {
+      // Setbacks: two narrower blocks on top.
+      body(x + w * 0.15, top - floor * 3, w * 0.7, top);
+      body(x + w * 0.3, top - floor * 5, w * 0.4, top - floor * 3);
+      roof = top - floor * 5;
+    } else if (kind === 2 && !far) {
+      // An upper block overhanging to one side, its underside lit warm from the street.
+      const side = rnd(seed + 3, i) < 0.5 ? -1 : 1;
+      const ox = x + (side < 0 ? -26 : 0);
+      body(ox, top - floor * 4, w + 26, top);
+      if (!lights) p.rect(ox, top - 4, w + 26, 6, { fill: '#5A3046', stroke: null, r: 0 });
+      roof = top - floor * 4;
+    } else if (kind === 3) {
+      // A slanted crown.
+      if (!lights) p.shape([[x, top + 1], [x, top - floor * 2], [x + w, top - floor * 4], [x + w, top + 1]], { fill: shade(top - floor * 3), stroke: null, raw: true, wobble: 0 });
+      roof = top - floor * 4;
+    }
+    roofs.push([x + w / 2, roof]);
+    blocks.push([x, w, top]);
+    // Storeys: a ledge, and a band of windows of one kind for the whole building.
+    const style = Math.floor(rnd(seed + 4, i) * 3);
+    for (let s = 0, y = h - floor; y > top + 4; s++, y -= floor) {
+      if (!lights) p.line([[x, y + floor - 2], [x + w, y + floor - 2]], { width: 2, color: mix(shade(y), '#000000', 0.35), raw: true, wobble: 0 });
+      if (s === 0 && !far) continue; // the street level is the shop signs' and the dark's
+      const lit = (k: number) => rnd(seed + 5 + s, i * 31 + k) < (far ? 0.18 : 0.32);
+      const colour = (k: number) => {
+        const r = rnd(seed + 9 + s, i * 17 + k);
+        return r < 0.45 ? '#FFC67A' : r < 0.65 ? '#9FE8FF' : r < 0.8 ? '#FF9AE8' : '#E8E4FF';
+      };
+      if (style === 0) {
+        // Ribbon windows: one long strip per floor, lit in stretches.
+        for (let k = 0, wx = x + 8; wx < x + w - 12; k++, wx += 36) {
+          const ww = Math.min(32, x + w - 10 - wx);
+          if (lit(k)) p.rect(wx - (lights ? 3 : 0), y + 8 - (lights ? 3 : 0), ww + (lights ? 6 : 0), floor - 16 + (lights ? 6 : 0), { fill: colour(k), stroke: null, r: 1, opacity: lights ? 0.5 : 0.9 });
+          else if (!lights) p.rect(wx, y + 8, ww, floor - 16, { fill: '#0A0818', stroke: null, r: 1, opacity: 0.7 });
+        }
+      } else {
+        // Separate windows; with style 2, apartments: a balcony rail and an AC box under some.
+        const step = far ? 14 : 22;
+        for (let k = 0, wx = x + 8; wx < x + w - 14; k++, wx += step) {
+          const ww = far ? 7 : 12;
+          const wh = floor - (far ? 10 : 14);
+          if (lit(k)) p.rect(wx - (lights ? 3 : 0), y + 6 - (lights ? 3 : 0), ww + (lights ? 6 : 0), wh + (lights ? 6 : 0), { fill: colour(k), stroke: null, r: 1, opacity: lights ? 0.5 : 0.9 });
+          else if (!lights) p.rect(wx, y + 6, ww, wh, { fill: '#0A0818', stroke: null, r: 1, opacity: 0.6 });
+          if (!lights && !far && style === 2 && k % 3 === 1 && rnd(seed + 12, i * 7 + k + s) < 0.5) {
+            p.rect(wx - 2, y + floor - 10, 16, 8, { fill: '#2A2236', stroke: null, r: 1 });
+            p.ellipse(wx + 6, y + floor - 6, 2.5, 2.5, { fill: '#14101E', stroke: null });
+          }
+        }
+        if (!lights && !far && style === 2) p.line([[x + 4, y + floor - 4], [x + w - 4, y + floor - 4]], { width: 2, color: '#4A3A5E', raw: true, wobble: 0 });
+      }
+    }
+    if (!far) {
+      if (!lights && style === 2) {
+        for (let s = 1, y = h - floor * 2; y > top + floor; s++, y -= floor) {
+          if (rnd(seed + 40, i * 13 + s) < 0.3) {
+            const px = x + 14 + rnd(seed + 41, i * 13 + s) * (w - 40);
+            p.rect(px, y + floor - 14, 14, 10, { fill: '#8A4A3A', stroke: null, r: 2 });
+            p.ellipse(px + 7, y + floor - 18, 11, 8, { fill: '#3E8A4E', stroke: null, wobble: 0.8 });
+          }
+        }
+      }
+      if (!lights && rnd(seed + 42, i) < 0.3) {
+        for (let k = 0; k < 4; k++) {
+          const vx = x + 8 + k * (w / 4);
+          const len = 40 + rnd(seed + 43, i * 5 + k) * 120;
+          p.line([[vx, top], [vx + 4, top + len * 0.5], [vx - 2, top + len]], { width: 4, color: '#3E6A3E', raw: true, opacity: 0.9, wobble: 0.6 });
+        }
+      }
+      if (rnd(seed + 44, i) < 0.18) {
+        const gx = x + w / 2;
+        const gy = top + 60;
+        if (lights) p.ellipse(gx, gy, 34, 34, { fill: '#3AFF8A', stroke: null, opacity: 0.6 });
+        else {
+          p.rect(gx - 22, gy - 22, 44, 44, { fill: '#0A1810', stroke: null, r: 4 });
+          p.rect(gx - 6, gy - 16, 12, 32, { fill: '#3AFF8A', stroke: null, r: 2 });
+          p.rect(gx - 16, gy - 6, 32, 12, { fill: '#3AFF8A', stroke: null, r: 2 });
+        }
+      }
+    }
+    if (!lights && !far) {
+      // A pipe down one side, and on some, a fire escape zigzagging up.
+      const px = rnd(seed + 13, i) < 0.5 ? x + 4 : x + w - 6;
+      p.line([[px, top + 10], [px, h]], { width: 3, color: '#2A2034', raw: true, wobble: 0 });
+      if (rnd(seed + 14, i) < 0.35) {
+        const fx = x + w * 0.62;
+        const pts: Pt[] = [];
+        for (let y = h - floor, k = 0; y > top + floor; y -= floor, k++) pts.push([fx + (k % 2 ? 30 : 0), y]);
+        p.line(pts, { width: 2, color: '#3A2E4A', raw: true, wobble: 0 });
+        for (const [, y] of pts) p.line([[fx - 4, y], [fx + 34, y]], { width: 2, color: '#3A2E4A', raw: true, wobble: 0 });
+      }
+    }
+    // Rooftop gear from the future: a saucer pod on a stalk, or a ring of light hovering over the roof.
+    const fut = rnd(seed + 50, i);
+    if (fut < 0.22) {
+      const rx = x + w / 2;
+      const c = NEON[Math.floor(rnd(seed + 51, i) * NEON.length)];
+      if (!lights) {
+        p.rect(rx - 4, roof - 70, 8, 70, { fill: shade(roof), stroke: null, r: 2 });
+        p.ellipse(rx, roof - 76, 42, 12, { fill: shade(roof - 80), stroke: null });
+        p.ellipse(rx, roof - 86, 20, 12, { fill: shade(roof - 90), stroke: null });
+      }
+      for (let k = -3; k <= 3; k++) p.ellipse(rx + k * 12, roof - 74, lights ? 4 : 2.4, lights ? 4 : 2.4, { fill: k % 2 ? c : '#FFC86B', stroke: null, opacity: lights ? 0.8 : 1 });
+    } else if (fut < 0.36) {
+      const c = NEON[Math.floor(rnd(seed + 52, i) * NEON.length)];
+      p.ellipse(x + w / 2, roof - 34, w * 0.42, 9, { stroke: c, width: lights ? 7 : 3 });
+    }
+    // Rooftop clutter.
+    if (!lights) {
+      const rx = x + w * (0.2 + rnd(seed + 15, i) * 0.5);
+      const kc = rnd(seed + 16, i);
+      const c = shade(roof);
+      if (kc < 0.3) {
+        p.rect(rx - 18, roof - 40, 36, 28, { fill: c, stroke: null, r: 6 });
+        for (const lx of [rx - 14, rx + 12]) p.line([[lx, roof - 12], [lx, roof]], { width: 3, color: c, raw: true, wobble: 0 });
+      } else if (kc < 0.5) {
+        p.ellipse(rx, roof - 16, 16, 8, { fill: c, stroke: null });
+        p.line([[rx, roof - 10], [rx + 4, roof]], { width: 3, color: c, raw: true, wobble: 0 });
+      } else if (kc < 0.75) {
+        p.line([[rx, roof], [rx, roof - (far ? 60 : 90)]], { width: 3, color: c, raw: true, wobble: 0 });
+        p.line([[rx - 10, roof - 50], [rx + 10, roof - 50]], { width: 2, color: c, raw: true, wobble: 0 });
+      } else p.rect(rx - 24, roof - 14, 48, 14, { fill: c, stroke: null, r: 2 });
+      if (!far && kind !== 3 && rnd(seed + 17, i) < 0.3 && w > 150 && bh > 220) BILLBOARDS.push({ x: x + 14, y: roof - 120, w: w - 28, h: 96 });
+    }
+    // Neon: a blade sign on brackets standing off the wall, and a shop sign over the street.
+    if (!far && rnd(seed + 18, i) < 0.55) {
+      const c = NEON[Math.floor(rnd(seed + 19, i) * NEON.length)];
+      const sx = rnd(seed + 20, i) < 0.5 ? x + 10 : x + w - 40;
+      const sy = top + 30 + rnd(seed + 21, i) * Math.max(10, bh - 300);
+      const sh = 120 + rnd(seed + 22, i) * 100;
+      if (lights) {
+        p.rect(sx - 30, sy - 20, 90, sh + 40, { fill: c, stroke: null, r: 20, opacity: 0.25 });
+        p.rect(sx - 4, sy - 4, 38, sh + 8, { fill: c, stroke: null, r: 6, opacity: 0.85 });
+      } else {
+        for (const by of [sy + 10, sy + sh - 14]) p.line([[sx + 15, by], [sx + (sx < x + w / 2 ? -8 : 38), by]], { width: 3, color: '#2A2034', raw: true, wobble: 0 });
+        p.rect(sx, sy, 30, sh, { fill: '#0A0818', stroke: null, r: 5 });
+        p.line([[sx + 3, sy + 3], [sx + 27, sy + 3], [sx + 27, sy + sh - 3], [sx + 3, sy + sh - 3], [sx + 3, sy + 3]], { width: 3, color: c, raw: true, wobble: 0 });
+        for (let gy = sy + 14, k = 0; gy < sy + sh - 16; gy += 24, k++) {
+          const g = Math.floor(rnd(seed + 23, i * 9 + k) * 3);
+          if (g === 0) p.line([[sx + 8, gy], [sx + 22, gy], [sx + 22, gy + 10], [sx + 8, gy + 10]], { width: 3, color: c, raw: true, wobble: 0 });
+          else if (g === 1) p.line([[sx + 15, gy - 2], [sx + 15, gy + 12], [sx + 8, gy + 6], [sx + 22, gy + 6]], { width: 3, color: c, raw: true, wobble: 0 });
+          else p.ellipse(sx + 15, gy + 5, 6, 6, { fill: c, stroke: null });
+        }
+      }
+    }
+    if (!far && rnd(seed + 24, i) < 0.6) {
+      const c = NEON[Math.floor(rnd(seed + 25, i) * NEON.length)];
+      const sy = h - floor + 4;
+      if (lights) {
+        p.rect(x - 10, sy - 30, w + 20, 70, { fill: c, stroke: null, r: 20, opacity: 0.22 });
+        p.rect(x + 8, sy - 4, w - 16, 20, { fill: c, stroke: null, r: 6, opacity: 0.8 });
+      } else {
+        p.rect(x + 10, sy, w - 20, 14, { fill: mix(c, '#0A0818', 0.25), stroke: null, r: 4 });
+        // Shop windows at street level, warm.
+        p.rect(x + 14, sy + 16, w * 0.5, floor - 18, { fill: '#5A3A30', stroke: null, r: 1 });
+      }
+    }
+    x += w + (far ? 2 : 4) + rnd(seed + 5, i) * (far ? 10 : 16);
+    i++;
+  }
+  // Sky-bridges: glass tubes from one tower to the next, lit along their length.
+  for (let k = 0; k < blocks.length - 1; k++) {
+    const [ax, aw, at] = blocks[k];
+    const [bx, , bt] = blocks[k + 1];
+    if (rnd(seed + 60, k) < 0.55) continue;
+    const y = Math.max(at, bt) + 40 + rnd(seed + 61, k) * 80;
+    if (y > h - 120) continue;
+    const x0 = ax + aw - 6;
+    const x1 = bx + 6;
+    if (x1 - x0 < 6) continue;
+    if (!lights) p.rect(x0, y, x1 - x0, 16, { fill: far ? '#2A2650' : '#1E1A40', stroke: null, r: 7 });
+    for (let lx = x0 + 6; lx < x1 - 4; lx += 10) p.ellipse(lx, y + 8, lights ? 3.4 : 2, lights ? 3.4 : 2, { fill: '#FFC86B', stroke: null, opacity: lights ? 0.6 : 1 });
+  }
+  // Cables sagging from one roof to the next, a few with lanterns strung on them.
+  if (!far) {
+    for (let k = 0; k < roofs.length - 1; k++) {
+      if (rnd(seed + 26, k) < 0.4) continue;
+      const [ax, ay] = roofs[k];
+      const [bx, by] = roofs[k + 1];
+      const y0 = Math.max(ay, by) + 40 + rnd(seed + 27, k) * 120;
+      const sag = 30 + rnd(seed + 28, k) * 40;
+      const pts: Pt[] = [];
+      for (let t = 0; t <= 1.0001; t += 0.1) pts.push([ax + (bx - ax) * t, y0 + Math.sin(t * Math.PI) * sag]);
+      if (!lights) p.line(pts, { width: 2, color: '#0A0818', raw: true, wobble: 0 });
+      if (!lights && rnd(seed + 30, k) < 0.5) {
+        const clothes = ['#E8D8C8', '#C85A5A', '#5A8AC8', '#E8C05A', '#8AB878', '#B88AC8'];
+        for (const [n, [lx, ly]] of pts.slice(1, -1).entries()) {
+          if (n % 2) continue;
+          const c = clothes[Math.floor(rnd(seed + 31, k * 11 + n) * clothes.length)];
+          if (rnd(seed + 32, k * 11 + n) < 0.5) p.shape([[lx - 10, ly], [lx + 10, ly], [lx + 12, ly + 6], [lx + 7, ly + 6], [lx + 7, ly + 24], [lx - 7, ly + 24], [lx - 7, ly + 6], [lx - 12, ly + 6]], { fill: c, stroke: null, raw: true, wobble: 0 });
+          else p.rect(lx - 8, ly, 16, 26, { fill: c, stroke: null, r: 1 });
+        }
+      } else if (rnd(seed + 29, k) < 0.4) {
+        for (const [lx, ly] of pts.slice(2, -2).filter((_, n) => n % 2 === 0)) {
+          if (lights) p.ellipse(lx, ly + 8, 9, 9, { fill: '#FF6A5A', stroke: null, opacity: 0.8 });
+          else p.ellipse(lx, ly + 8, 5, 6, { fill: '#FF6A5A', stroke: null });
+        }
+      }
+    }
+  }
+  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: lights ? (far ? 8 : 6) : far ? 0.8 : 0 };
+}
+
+/** The elevated railway: a girder on pillars, with a line of lamps along its side. */
+export function railArt(): Art {
+  const key = 'bd_n_rail';
+  const h = 520;
+  const p = plainPen(key);
+  const deck = 200;
+  for (let x = 120; x < TILE; x += 400) {
+    p.shape([[x - 22, h], [x - 16, deck + 40], [x + 16, deck + 40], [x + 22, h]], { fill: '#1A1432', stroke: null, raw: true, wobble: 0 });
+    p.shape([[x - 60, deck + 40], [x + 60, deck + 40], [x + 20, deck + 80], [x - 20, deck + 80]], { fill: '#1A1432', stroke: null, raw: true, wobble: 0 });
+  }
+  p.rect(0, deck, TILE, 44, { fill: '#221A40', stroke: null, r: 0 });
+  p.rect(0, deck - 10, TILE, 10, { fill: '#2E2452', stroke: null, r: 0 });
+  for (let x = 0; x < TILE; x += 40) p.line([[x, deck + 4], [x + 20, deck + 40]], { width: 2, color: '#16102C', raw: true, wobble: 0 });
+  for (let x = 30; x < TILE; x += 120) p.rect(x, deck + 18, 10, 6, { fill: '#FF6AD8', stroke: null, r: 2 });
+  return { key, svg: p.svg(TILE, h), w: TILE, h };
+}
+
+/** The deck's height in the rail picture (the train runs on it). */
+export const RAIL_DECK = 200;
+
+/** A commuter train: dark carriages with a lit window strip and a neon stripe. */
+export function trainArt(): Art {
+  const key = 'bd_n_train';
+  const w = 1500;
+  const h = 90;
+  const p = plainPen(key);
+  for (let c = 0; c < 4; c++) {
+    const x = c * 375;
+    p.rect(x + 4, 6, 366, 78, { fill: '#2A2448', stroke: null, r: c === 0 ? 30 : 8 });
+    p.rect(x + 20, 22, 330, 24, { fill: '#BFF4FF', stroke: null, r: 4 });
+    for (let k = 0; k < 9; k++) p.rect(x + 54 + k * 34, 22, 4, 24, { fill: '#2A2448', stroke: null, r: 0 });
+    p.rect(x + 8, 58, 358, 6, { fill: '#FF3FD0', stroke: null, r: 2 });
+  }
+  return { key, svg: p.svg(w, h), w, h };
+}
+
+// ===================================================================================== Frostpeak Pass
+
+/**
+ * Jagged peaks under the moon (which is to the right), printed: each mountain split by its ridge into a
+ * moonlit face in bone and a face in violet shadow screened with halftone dots, plum rock where the snow
+ * cannot hold. `far` makes a paler range, sinking into the dusk.
+ */
+export function frostPeaksArt(far: boolean): Art {
+  const key = far ? 'bd_s_peaks_far' : 'bd_s_peaks';
+  const h = 760;
+  const p = plainPen(key);
+  const seed = far ? 401 : 431;
+  const lit = far ? '#B49CC4' : '#EDE0E4';
+  const shade = far ? '#6E5296' : '#4A3478';
+  const deep = far ? '#4A3470' : '#24183A';
+  const rock = far ? '#5A3A6E' : '#3A1A3E';
+  const mts: [number, number, number][] = [];
+  for (let i = 0, x = 0; x < TILE; i++) {
+    const w = (far ? 380 : 460) + rnd(seed, i) * 380;
+    const ht = (far ? 300 : 360) + rnd(seed + 1, i) * (far ? 260 : 340);
+    mts.push([x + w / 2, w, ht]);
+    x += w * (0.45 + rnd(seed + 2, i) * 0.25);
+  }
+  // Lower peaks first, so the tall ones stand in front of nothing and behind nothing awkwardly.
+  mts.sort((a, b) => a[2] - b[2]).reverse();
+  for (const [cx0, w, ht] of mts) {
+    for (const shift of [-TILE, 0, TILE]) {
+      const cx = cx0 + shift;
+      if (cx + w / 2 < 0 || cx - w / 2 > TILE) continue;
+      const base = h;
+      const sx = cx + (rnd(seed + 3, cx0) - 0.5) * w * 0.2;
+      const sy = base - ht;
+      // The outline: jagged shoulders down each side.
+      const left: Pt[] = [];
+      const right: Pt[] = [];
+      for (let k = 1; k <= 5; k++) {
+        const t = k / 6;
+        const jag = (rnd(seed + 4, cx0 + k) - 0.5) * 40;
+        left.push([sx - (sx - (cx - w / 2)) * t + jag * 0.5, sy + ht * t + (k % 2 ? -18 : 12)]);
+        right.push([sx + (cx + w / 2 - sx) * t + jag * 0.5, sy + ht * t + (k % 2 ? 14 : -16)]);
+      }
+      const outline: Pt[] = [[cx - w / 2, base], ...left.reverse(), [sx, sy], ...right, [cx + w / 2, base]];
+      p.shape(outline, { fill: shade, stroke: null, raw: true, wobble: 0.2, shade: [{ pts: outline, color: deep }] });
+      // The lit face: from the summit, the ridge comes down and to the right; everything right of it faces
+      // the moon.
+      const ridge: Pt[] = [[sx, sy]];
+      for (let k = 1; k <= 4; k++) ridge.push([sx + w * 0.06 * k + (rnd(seed + 5, cx0 + k) - 0.5) * 30, sy + ht * 0.22 * k]);
+      p.shape([...ridge, [cx + w / 2, base], ...right.slice().reverse()], { fill: lit, stroke: null, raw: true, wobble: 0.2 });
+      // The moon catching the ridge line, a thin bone rim.
+      p.line(ridge, { width: far ? 2 : 3, color: '#FFF6EA', raw: true, opacity: 0.75, wobble: 0 });
+      // Gullies on the lit face, and rock on the shadow face low down.
+      for (let k = 0; k < 4; k++) {
+        const gx = sx + w * (0.1 + k * 0.08);
+        const gy = sy + ht * (0.25 + k * 0.1);
+        p.shape([[gx, gy], [gx + 14, gy + ht * 0.25], [gx + 4, gy + ht * 0.28]], { fill: mix(lit, shade, 0.45), stroke: null, raw: true, wobble: 0.3 });
+      }
+      for (let k = 0; k < 3; k++) {
+        const rx = cx - w * (0.12 + k * 0.1);
+        const ry = sy + ht * (0.45 + k * 0.12);
+        p.shape([[rx, ry], [rx + 26, ry + 40], [rx - 10, ry + 70]], { fill: rock, stroke: null, raw: true, wobble: 0.3, opacity: 0.8 });
+      }
+    }
+  }
+  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: far ? 1.4 : 0.3 };
+}
+
+/**
+ * The woods on the pass, in miniature, as one printed band: the same kinds of tree that stand by the road -
+ * drooping spruces with snow along their boughs, narrow spires, snow ghosts buried in rime, bare birches and
+ * berried rowans - over a dark mass of trunks and shadow, with snow drifted at their feet. Far away they are
+ * flat and hazed toward the sky; nearer, they carry more snow and more detail. No outlines: far layers are
+ * printed flat, shaded with halftone, as on the poster.
+ */
+export function frostForestArt(key: string, h: number, colour: string, rim: string, seed: number, size: number, snow: string): Art {
+  const p = plainPen(key);
+  const near = size >= 1;
+  const hill = wave(seed, [60, 26, 12]);
+  const at = (x: number) => h - 200 - hill(x);
+  const lit = near ? '#F3E3CC' : mix('#F3E3CC', '#8E78B4', 0.4);
+  const shade = near ? '#9A84C0' : mix('#9A84C0', colour, 0.35);
+  const deep = mix(colour, '#0A0712', 0.45);
+  const bare = mix(colour, '#3A1A26', 0.5);
+  // Which tree stands where: mostly spruce, with spires between, the odd ghost, and bare trees in clearings.
+  type Kind = 'spruce' | 'spire' | 'ghost' | 'birch' | 'rowan';
+  const trees: [number, number, Kind][] = [];
+  for (let i = 0, x = 0; x < TILE; i++) {
+    const roll = rnd(seed + 7, i);
+    const kind: Kind = roll < 0.48 ? 'spruce' : roll < 0.7 ? 'spire' : roll < 0.8 ? 'ghost' : roll < 0.91 ? 'birch' : 'rowan';
+    const tall = rnd(seed + 1, i) < 0.12 ? 1.5 : 0.7 + rnd(seed + 2, i) * 0.55;
+    const th = 80 * size * tall * (kind === 'spire' ? 1.25 : kind === 'ghost' ? 0.8 : kind === 'rowan' ? 0.75 : 1);
+    trees.push([x, th, kind]);
+    x += (near ? 26 : 19) * size + rnd(seed + 3, i) * 20 * size;
+  }
+  // The dark under the trees, so they read as one wood.
+  const under: Pt[] = [];
+  for (let x = 0; x <= TILE; x += 16) under.push([x, at(x) - 26 * size]);
+  p.shape([...under, [TILE, h], [0, h]], { fill: deep, stroke: null, raw: true, wobble: 0.2 });
+
+  const spruce = (x: number, base: number, th: number) => {
+    p.line([[x, base], [x + 2, base - th]], { width: Math.max(2, th * 0.03), color: bare, raw: true });
+    const n = near ? 7 : 5;
+    for (let i = 0; i < n; i++) {
+      const k = i / (n - 1);
+      const y = base - th + 6 + k * th * 0.8;
+      const len = th * (0.07 + k * 0.27);
+      const droop = th * (0.05 + k * 0.06);
+      for (const s of [-1, 1]) {
+        const tip: Pt = [x + s * len, y + droop];
+        const bough: Pt[] = [[x, y - 3], [x + s * len * 0.55, y + droop * 0.25], tip, [x + s * len * 0.7, y + droop + th * 0.035], [x + s * len * 0.35, y + droop * 0.6 + th * 0.05], [x, y + th * 0.08]];
+        p.shape(bough, { fill: colour, stroke: null, raw: true, wobble: 0.2, shade: s > 0 && near ? [{ pts: bough, color: deep }] : [] });
+        // Snow along the top of the bough, lit on the moon's side.
+        const t2 = Math.max(2.4, th * 0.03);
+        p.shape([[x, y - 4], [x + s * len * 0.55, y + droop * 0.2 - t2], [tip[0] - s * 2, tip[1] - t2 * 0.6], [x + s * len * 0.5, y + droop * 0.3 + t2 * 0.4], [x, y + t2 * 0.6]], { fill: s > 0 ? lit : shade, stroke: null, raw: true, wobble: 0.2 });
+      }
+    }
+    p.shape([[x - th * 0.04, base - th + 10], [x + 2, base - th - 6], [x + th * 0.04, base - th + 10]], { fill: lit, stroke: null, raw: true });
+  };
+  const spire = (x: number, base: number, th: number) => {
+    const half = th * 0.12;
+    const body: Pt[] = [[x, base - th]];
+    for (let i = 1; i <= 8; i++) body.push([x + half * (i / 8) + (i % 2 ? 2 : -1), base - th + (i / 8) * th * 0.92]);
+    for (let i = 8; i >= 1; i--) body.push([x - half * (i / 8) - (i % 2 ? 2 : -1), base - th + (i / 8) * th * 0.92]);
+    p.shape(body, { fill: colour, stroke: null, raw: true, wobble: 0.2, shade: near ? [{ pts: [[x, base - th - 4], [x + half + 6, base - th - 4], [x + half + 6, base], [x, base]], color: deep }] : [] });
+    for (let i = 2; i <= 8; i += 2) {
+      const y = base - th + (i / 8) * th * 0.92;
+      const wd = half * (i / 8);
+      p.ellipse(x - wd, y - 2, 2.4 + i * 0.4, 1.8 + i * 0.15, { fill: lit, stroke: null });
+      p.ellipse(x + wd, y - 2, 2.4 + i * 0.4, 1.8 + i * 0.15, { fill: shade, stroke: null });
+    }
+  };
+  const ghost = (x: number, base: number, th: number) => {
+    const half = th * 0.24;
+    const body: Pt[] = [[x + 3, base - th]];
+    for (let i = 1; i <= 6; i++) body.push([x + half * Math.pow(i / 6, 0.7) + (i % 2 ? 4 : 0), base - th + (i / 6) * th]);
+    for (let i = 6; i >= 1; i--) body.push([x - half * Math.pow(i / 6, 0.7) - (i % 2 ? 0 : 4), base - th + (i / 6) * th]);
+    p.shape(body, { fill: lit, stroke: null, wobble: 0.4, shade: [{ pts: [[x + 2, base - th - 4], [x + half + 8, base - th - 4], [x + half + 8, base + 4], [x + 2, base + 4]], color: shade }] });
+    for (let i = 0; i < 3; i++) p.dot(x + (rnd(seed + 11, x + i) - 0.5) * half, base - th * (0.25 + i * 0.22), Math.max(1.6, th * 0.025), colour);
+  };
+  const branches = (x: number, base: number, th: number, berries: boolean) => {
+    const wd = Math.max(1.4, th * 0.022);
+    const crownY = base - th * (berries ? 0.55 : 0.4);
+    const tops: Pt[] = [];
+    for (const a of berries ? [-2.2, -1.8, -1.45, -1.1, -0.8] : [-2.0, -1.6, -1.25]) {
+      const len = th * (berries ? 0.38 : 0.5);
+      const tip: Pt = [x + Math.cos(a) * len, crownY + Math.sin(a) * len];
+      p.line([[x, crownY], tip], { width: wd, color: bare, raw: true });
+      p.line([[x, crownY - wd], [tip[0], tip[1] - wd]], { width: wd * 0.8, color: lit, raw: true, opacity: 0.85 });
+      tops.push(tip);
+    }
+    if (berries) {
+      p.line([[x, base], [x, crownY]], { width: wd * 2.2, color: bare, raw: true });
+      for (const [tx, ty] of tops) {
+        p.dot(tx, ty + 2, Math.max(1.8, th * 0.03), near ? '#E3263A' : mix('#E3263A', colour, 0.35));
+        p.dot(tx + 3, ty + 4, Math.max(1.6, th * 0.026), near ? '#E3263A' : mix('#E3263A', colour, 0.35));
+      }
+    } else {
+      p.line([[x, base], [x - 1, base - th]], { width: wd * 2, color: near ? '#F3E3CC' : lit, raw: true });
+      for (let y = base - th * 0.9; y < base - 6; y += th * 0.14) p.line([[x - wd, y], [x + wd * 0.6, y]], { width: wd * 0.8, color: '#0A0712', raw: true, opacity: near ? 0.8 : 0.4 });
+    }
+  };
+  // Bare trees and ghosts first (they stand among the others), then the evergreens in front.
+  const draw = (only: Kind[]) => {
+    for (const [x, th, kind] of trees) {
+      if (!only.includes(kind)) continue;
+      for (const sx of [0, x < 80 ? TILE : x > TILE - 80 ? -TILE : 0].filter((v, n) => n === 0 || v !== 0)) {
+        const tx = x + sx;
+        const base = at(x) + 6;
+        if (kind === 'spruce') spruce(tx, base, th);
+        else if (kind === 'spire') spire(tx, base, th);
+        else if (kind === 'ghost') ghost(tx, base, th);
+        else branches(tx, base, th, kind === 'rowan');
+      }
+    }
+  };
+  draw(['birch', 'rowan']);
+  draw(['ghost']);
+  draw(['spire', 'spruce']);
+  // The moon catching the tallest crowns.
+  for (const [x, th, kind] of trees) if (th > 95 * size && kind !== 'birch' && kind !== 'rowan') p.line([[x + 3, at(x) - th + 8], [x + th * 0.16, at(x) - th * 0.45]], { width: 1.6, color: rim, raw: true, opacity: 0.7, wobble: 0 });
+  // Snow drifted along the wood's edge, shaded in halftone, with a lit crest.
+  const edge: Pt[] = [];
+  for (let x = 0; x <= TILE; x += 16) edge.push([x, at(x) + 4 + Math.sin(x / 70) * 6]);
+  p.shape([...edge, [TILE, h], [0, h]], { fill: snow, stroke: null, raw: true, wobble: 0.3, shade: [{ pts: [...edge.map(([x, y]): Pt => [x, y + 30]), [TILE, h], [0, h]], color: '#8E78B4' }] });
+  p.line(edge, { width: 2.5, color: '#FFF6EA', raw: true, opacity: 0.8, wobble: 0 });
+  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: near ? 0.2 : 0.8 };
+}
+
+/**
+ * Snowdrifts and the frozen lake on the valley floor: the ice dark, reflecting the night sky, with long
+ * pale streaks; drifts in front with lavender shadows and moonlit crests; and a few cabins with warm windows.
+ */
+export const LAKE_CABINS = [420, 1300, 2050];
+export function frostLakeArt(): Art {
+  const key = 'bd_s_lake';
+  const h = 380;
+  const p = plainPen(key);
+  // Far shore snow.
+  p.shape([[0, 118], [TILE, 118], [TILE, 200], [0, 200]], { fill: '#D6C6DA', stroke: null, raw: true, wobble: 0.3 });
+  // The ice, dark near its far edge where it reflects the night, paler towards us.
+  p.shape([[0, 168], [TILE, 168], [TILE, 294], [0, 294]], { fill: '#2E1E4A', stroke: null, raw: true, wobble: 0.3 });
+  p.shape([[0, 218], [TILE, 218], [TILE, 294], [0, 294]], { fill: '#5A3A70', stroke: null, raw: true, wobble: 0.3, opacity: 0.8, shade: [{ pts: [[0, 250], [TILE, 250], [TILE, 294], [0, 294]], color: '#24183A' }] });
+  for (let i = 0; i < 46; i++) {
+    const x = rnd(91, i) * TILE;
+    const y = 186 + rnd(93, i) * 96;
+    p.line([[x, y], [x + 40 + rnd(95, i) * 140, y + 1]], { width: 2, color: i % 3 ? '#B8A0D0' : '#E8869A', raw: true, opacity: 0.6, wobble: 0 });
+  }
+  // Cabins on the far shore, lit.
+  for (const cx of LAKE_CABINS) {
+    p.rect(cx - 34, 92, 68, 40, { fill: '#5A1A2E', stroke: null, r: 2 });
+    p.shape([[cx - 44, 96], [cx, 62], [cx + 44, 96]], { fill: '#F3E3CC', stroke: null, raw: true });
+    p.rect(cx - 20, 104, 14, 12, { fill: '#FFC86B', stroke: null, r: 1 });
+    p.rect(cx + 6, 104, 14, 12, { fill: '#FFB23F', stroke: null, r: 1 });
+    p.rect(cx + 14, 54, 10, 22, { fill: '#3A0F22', stroke: null, r: 1 });
+    // Their light, reflected in the ice.
+    p.line([[cx - 13, 178], [cx - 13, 230]], { width: 6, color: '#FFB23F', raw: true, opacity: 0.4, wobble: 0.3 });
+    p.line([[cx + 13, 178], [cx + 13, 226]], { width: 6, color: '#FFB23F', raw: true, opacity: 0.35, wobble: 0.3 });
+  }
+  // Drifts in front: rolling, a lavender shadow on the side away from the moon, a lit crest.
+  const drift = wave(97, [26, 14, 8]);
+  const dTop = (x: number) => 300 - drift(x);
+  const pts: Pt[] = [];
+  for (let x = 0; x <= TILE; x += 12) pts.push([x, dTop(x)]);
+  p.shape([...pts, [TILE, h], [0, h]], { fill: '#E6D8E0', stroke: null, raw: true, wobble: 0.2 });
+  for (let x = 0; x < TILE; x += 12) {
+    const a = dTop(x);
+    const b = dTop(x + 12);
+    if (b > a) p.shape([[x, a], [x + 12, b], [x + 12, b + 40], [x, a + 40]], { fill: '#E6D8E0', stroke: null, raw: true, wobble: 0, shade: [{ pts: [[x, a], [x + 12, b], [x + 12, b + 40], [x, a + 40]], color: '#7A62A8' }] });
+  }
+  p.line(pts, { width: 3, color: '#FFF6EA', raw: true, opacity: 0.9, wobble: 0 });
+  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: 0.3 };
+}
+
+/**
+ * Neon Town's near strip, in place of grass: a wet kerb and gutter close to the camera, with puddles
+ * holding long, wavering reflections of the neon.
+ */
+export function wetStreetArt(): Art {
+  const key = 'town_wet';
+  const w = 1200;
+  const h = 190;
+  const p = plainPen(key);
+  p.rect(-10, h - 70, w + 20, 90, { fill: '#0C0818', stroke: null, r: 0 });
+  p.rect(-10, h - 78, w + 20, 10, { fill: '#2A2448', stroke: null, r: 0 });
+  p.line([[-10, h - 78], [w + 10, h - 78]], { width: 2, color: '#6A5AA0', raw: true, wobble: 0 });
+  for (let i = 0; i < 7; i++) {
+    const cx = 80 + i * 170 + rnd(501, i) * 60;
+    const rw = 50 + rnd(503, i) * 50;
+    p.ellipse(cx, h - 34, rw, 14, { fill: '#18122E', stroke: null, wobble: 0.6 });
+    for (let k = 0; k < 4; k++) {
+      const c = NEON[Math.floor(rnd(505 + k, i) * NEON.length)];
+      const sx = cx - rw * 0.6 + k * rw * 0.4;
+      p.line([[sx, h - 44], [sx + 2, h - 24]], { width: 5, color: c, raw: true, opacity: 0.55, wobble: 0.6 });
+    }
+  }
+  // A drain grate or two.
+  for (const gx of [300, 900]) for (let k = 0; k < 5; k++) p.line([[gx + k * 8, h - 64], [gx + k * 8, h - 52]], { width: 3, color: '#3A3458', raw: true, wobble: 0 });
+  return { key, svg: p.svg(w, h), w, h };
+}
+
+/** The moon over the pass, printed: a bone disc breaking up into halftone dots at its rim. */
+export function frostMoonArt(): Art {
+  const s = 300;
+  const c = s / 2;
+  let dots = '';
+  const step = 10;
+  for (let y = 0; y < s; y += step) {
+    for (let x = (y / step) % 2 ? step / 2 : 0; x < s; x += step) {
+      const d = Math.hypot(x - c, y - c) / (c - 4);
+      if (d < 0.6 || d > 1) continue;
+      const k = 1 - (d - 0.6) / 0.4;
+      dots += `<circle cx="${x}" cy="${y}" r="${(step * 0.52 * Math.sqrt(k)).toFixed(2)}" fill="#F3E3CC"/>`;
+    }
+  }
+  const craters = [[-30, -20, 18], [26, 10, 12], [-6, 34, 9], [34, -32, 7]].map(([dx, dy, r]) => `<circle cx="${c + dx}" cy="${c + dy}" r="${r}" fill="#D6C2CC"/>`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"><circle cx="${c}" cy="${c}" r="${(c - 4) * 0.61}" fill="#FFF6EA"/>${craters}${dots}</svg>`;
+  return { key: 'bd_s_moon', svg, w: s, h: s };
+}
+
+/** Frostpeak's near strip, in place of grass: pillowy drifts close to the camera, blue in the hollows, sparkling. */
+export function snowNearArt(): Art {
+  const key = 'snow_near';
+  const w = 1200;
+  const h = 190;
+  const p = plainPen(key);
+  const top = (x: number) => h - 70 - Math.sin((x / w) * Math.PI * 6) * 14 - Math.sin((x / w) * Math.PI * 14 + 1) * 6;
+  const pts: Pt[] = [];
+  for (let x = 0; x <= w; x += 10) pts.push([x, top(x)]);
+  p.shape([...pts, [w, h], [0, h]], { fill: '#C8B6D6', stroke: null, raw: true, wobble: 0 });
+  p.shape([...pts.map(([x, y]): Pt => [x, y + 4]), [w, h], [0, h]], { fill: '#EDE2E6', stroke: null, raw: true, wobble: 0, opacity: 0.95, shade: [{ pts: [...pts.map(([x, y]): Pt => [x, y + 70]), [w, h], [0, h]], color: '#9A84C0' }] });
+  for (let x = 0; x < w; x += 10) {
+    const a = top(x);
+    const b = top(x + 10);
+    if (b > a) p.shape([[x, a + 4], [x + 10, b + 4], [x + 10, b + 50], [x, a + 50]], { fill: '#8E78B4', stroke: null, raw: true, wobble: 0, opacity: 0.4 });
+  }
+  p.line(pts, { width: 3, color: '#FFF6EA', raw: true, wobble: 0 });
+  for (let i = 0; i < 70; i++) p.ellipse(rnd(601, i) * w, top(rnd(601, i) * w) + 8 + rnd(603, i) * 60, 1.6, 1.6, { fill: '#FFF6EA', stroke: null });
+  return { key, svg: p.svg(w, h), w, h };
+}
+
+/** A giant hologram fish for the sky over Neon Town: glowing outlines and scales, nothing solid. */
+export function holoFishArt(): Art {
+  const key = 'holo_fish';
+  const w = 520;
+  const h = 260;
+  const p = plainPen(key);
+  const c = '#7FF6FF';
+  // Body, fins and tail as outlines.
+  const body: Pt[] = [];
+  for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.2) body.push([250 + Math.cos(a) * 170, 130 + Math.sin(a) * 70 * (Math.cos(a) > 0 ? 0.9 : 1)]);
+  p.line(body, { width: 5, color: c, raw: true, wobble: 0 });
+  p.line([[82, 130], [20, 60], [44, 130], [20, 200], [82, 130]], { width: 5, color: c, raw: true, wobble: 0 });
+  p.line([[230, 62], [280, 20], [320, 70]], { width: 4, color: c, raw: true, wobble: 0 });
+  p.line([[240, 196], [270, 236], [300, 192]], { width: 4, color: c, raw: true, wobble: 0 });
+  p.ellipse(370, 112, 10, 10, { fill: c, stroke: null });
+  // Scales: rows of little arcs; and scan lines across the whole thing.
+  for (let row = 0; row < 4; row++) {
+    for (let k = 0; k < 7; k++) {
+      const sx = 150 + k * 28 + (row % 2) * 14;
+      const sy = 92 + row * 22;
+      p.line([[sx - 10, sy], [sx, sy + 8], [sx + 10, sy]], { width: 2.5, color: c, raw: true, opacity: 0.7, wobble: 0 });
+    }
+  }
+  for (let y = 70; y < 200; y += 8) p.line([[90, y], [420, y]], { width: 1, color: c, raw: true, opacity: 0.18, wobble: 0 });
+  return { key, svg: p.svg(w, h), w, h, blur: 1 };
+}

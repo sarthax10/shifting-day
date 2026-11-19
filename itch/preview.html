@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shifting Day · itch page preview</title>
+<!-- A local stand-in for the itch.io game page, laid out with itch's own class names, to check theme.css. -->
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  #user_tools { margin: 0; padding: 8px 14px; list-style: none; display: flex; gap: 8px; background: #000; }
+  #user_tools li { font: 12px sans-serif; color: #ccc; border: 1px solid #444; padding: 4px 8px; border-radius: 3px; }
+  .wrapper { padding: 1px 0; min-height: 100vh; }
+  .view_game_page { width: 960px; max-width: calc(100% - 40px); margin: 0 auto; box-sizing: border-box; }
+  .header img { width: 100%; }
+  .embed_wrapper { padding: 30px 30px 10px; }
+  .game_frame { position: relative; aspect-ratio: 16 / 9; background: url(cover.png) center / cover; display: grid; place-items: center; }
+  .game_frame .button { padding: 14px 30px; cursor: pointer; }
+  .columns { display: flex; gap: 30px; padding: 20px 30px 40px; }
+  .left_col { flex: 1; min-width: 0; }
+  .right_col { width: 260px; flex: none; padding-top: 40px; }
+  .screenshot_list img { width: 100%; }
+  .buy_row { display: flex; gap: 16px; align-items: center; margin: 24px 0; }
+  .button { display: inline-block; padding: 10px 20px; text-decoration: none; }
+  .game_info_panel_widget table { width: 100%; margin-top: 10px; }
+  .game_info_panel_widget td { padding: 4px 0; }
+  @media (max-width: 760px) { .columns { flex-direction: column; } .right_col { width: auto; } }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<ul id="user_tools"><li>View all by sarthax10</li><li>Follow sarthax10</li><li>Add to collection</li></ul>
+<div class="main wrapper game_page_wrapper">
+  <div class="view_game_page page_widget base_widget">
+    <div class="header"><img src="banner.jpg" alt="Shifting Day"></div>
+    <div class="embed_wrapper">
+      <div class="game_frame"><button class="button load_iframe_btn">Run game</button></div>
+    </div>
+    <div class="columns">
+      <div class="left_col column">
+        <div class="formatted_description user_formatted" id="description"></div>
+        <div class="buy_row"><a class="button" href="#">Play in your browser</a><a class="button outline" href="#">Source</a></div>
+        <div class="more_information_toggle"><a class="toggle_info_btn" href="#">More information ↓</a></div>
+        <div class="game_info_panel_widget base_widget">
+          <table>
+            <tr><td>Status</td><td>Released</td></tr>
+            <tr><td>Platforms</td><td>HTML5</td></tr>
+            <tr><td>Author</td><td>sarthax10</td></tr>
+            <tr><td>Genre</td><td>Simulation, physics</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="right_col column">
+        <div class="screenshot_list" id="shots"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  // Load the real description, pointing its GitHub image links at the local copies.
+  fetch('description.html').then((r) => r.text()).then((html) => {
+    document.getElementById('description').innerHTML = html.replaceAll(
+      'https://raw.githubusercontent.com/sarthax10/shifting-day/master/docs/readme/', '../docs/readme/');
+  });
+  const shots = ['01-title', '03-maple-gate', '05-frostpeak', '07-coast-road', '08-home-stretch', '09-scorecard'];
+  document.getElementById('shots').innerHTML = shots
+    .map((s) => `<a href="screenshots/${s}.jpg"><img src="screenshots/${s}.jpg" alt=""></a>`).join('');
+</script>
+</body>
+</html>

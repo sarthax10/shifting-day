@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5210 --strictPort --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 5211 --host 127.0.0.1",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fontsource/anton": "^5.3.0",

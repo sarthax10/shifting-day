@@ -3,17 +3,17 @@ import '@fontsource/anton/400.css';
 import '@fontsource/space-mono/400.css';
 import '@fontsource/space-mono/700.css';
 import Phaser from 'phaser';
-import * as art from './art';
-import { tollArts } from './tolls';
-import { C } from './ink';
-import { PlayScene } from './game';
-import { prepareLeg } from './prepare';
-import { LEGS } from './legs';
-import { makeCursors } from './cursors';
-import { TitleScene, titleArts } from './title';
+import * as art from './art/art';
+import { tollArts } from './art/tolls';
+import { C } from './art/ink';
+import { PlayScene } from './scenes/play';
+import { prepareLeg } from './world/prepare';
+import { LEGS } from './world/legs';
+import { makeCursors } from './art/cursors';
+import { TitleScene, titleArts } from './scenes/title';
 // Old Street, redrawn by hand in the poster identity.
-import * as os from './oldstreet';
-import { audio } from './audio';
+import * as os from './art/oldstreet';
+import { audio } from './systems/audio';
 
 // Browsers keep sound off until the player does something; the first click or key turns it on.
 // M mutes and unmutes everywhere.
@@ -21,8 +21,8 @@ for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev
 window.addEventListener('keydown', (e) => {
   if (e.key === 'm' || e.key === 'M') audio.toggleMute();
 });
-import { H, W } from './terrain';
-import { runQA } from './qa';
+import { H, W } from './world/terrain';
+import { runQA } from './dev/qa';
 
 /** Soft pictures that ink cannot draw: the sky, shadows, darker corners and paper grain. */
 function softTextures(textures: Phaser.Textures.TextureManager) {

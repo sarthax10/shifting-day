@@ -1,0 +1,343 @@
+/*
+ * Shifting Day: itch.io page theme.
+ * Paste into Edit theme → CSS. It styles itch's own page classes and plain elements only,
+ * because itch strips classes and inline styles from the description.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+:root {
+  --ink: #0a0712;
+  --oxblood: #3a0f22;
+  --red: #e3263a;
+  --ember: #ff6a30;
+  --bone: #f3e3cc;
+  --gold: #ffb23f;
+  --display: 'Anton', Impact, sans-serif;
+  --mono: 'Space Mono', ui-monospace, monospace;
+}
+
+::selection { background: var(--red); color: var(--bone); }
+
+/* The wall behind the page: oxblood, printed with a halftone fade toward the bottom. */
+.wrapper.game_page_wrapper,
+body {
+  background-color: var(--ink);
+}
+.wrapper.game_page_wrapper {
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(227, 38, 58, 0.22) 1.2px, transparent 1.6px),
+    linear-gradient(180deg, var(--oxblood) 0%, var(--ink) 70%);
+  background-size: 9px 9px, 100% 100%;
+  background-attachment: fixed;
+}
+
+/* The page itself is a printed sheet: ink, with a hard red offset like a misregistered print. */
+.view_game_page {
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--mono);
+  box-shadow: 14px 14px 0 var(--red), 14px 14px 0 3px var(--ink);
+  border: 3px solid var(--bone);
+  margin-top: 28px;
+  margin-bottom: 60px;
+}
+
+/* The banner sits flush on the sheet. */
+.header { border-bottom: 3px solid var(--bone); }
+.header img { display: block; }
+.header h1,
+.game_title {
+  font-family: var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--bone);
+  text-shadow: 4px 4px 0 var(--red);
+}
+
+/* The game frame: a screen set into the poster. */
+.game_frame,
+.embed_wrapper .game_frame {
+  border: 3px solid var(--bone);
+  box-shadow: 0 0 0 6px var(--ink), 10px 10px 0 6px var(--ember);
+  background-color: var(--ink);
+}
+.game_frame .load_iframe_btn,
+.game_frame .button {
+  font-size: 22px;
+}
+
+/* ------------------------------------------------------------ the description */
+
+.formatted_description {
+  counter-reset: section;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--bone);
+}
+
+.formatted_description h1 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(42px, 7vw, 76px);
+  line-height: 0.95;
+  text-transform: uppercase;
+  color: var(--bone);
+  text-shadow: 5px 5px 0 var(--red);
+  margin: 0.4em 0 0.6em;
+  letter-spacing: 0.01em;
+}
+
+/* Numbered section heads, like the title screen's menu: a gold numeral, then the word. */
+.formatted_description h2 {
+  counter-increment: section;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--bone);
+  margin: 1.6em 0 0.5em;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.formatted_description h2::before {
+  content: counter(section, decimal-leading-zero);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  color: var(--ink);
+  background: var(--gold);
+  padding: 4px 8px 3px;
+  transform: translateY(-6px);
+}
+.formatted_description h2::after {
+  content: '';
+  flex: 1;
+  height: 3px;
+  background: var(--ember);
+  transform: translateY(-10px);
+}
+
+.formatted_description h3 {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.formatted_description p { margin: 0 0 1em; }
+
+/* Bold words are stamped: a red block behind bone type. */
+.formatted_description strong {
+  background: var(--red);
+  color: var(--bone);
+  padding: 1px 6px;
+  font-weight: 700;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.formatted_description em { color: var(--gold); font-style: normal; font-weight: 700; }
+
+.formatted_description a {
+  color: var(--ember);
+  text-decoration: none;
+  border-bottom: 2px solid currentColor;
+}
+.formatted_description a:hover { color: var(--gold); }
+
+/* The divider is the road's kerb: ember and ink chevrons. */
+.formatted_description hr {
+  border: 0;
+  height: 12px;
+  margin: 2.4em 0;
+  background: repeating-linear-gradient(-45deg, var(--ember) 0 12px, var(--ink) 12px 24px);
+  border-top: 3px solid var(--bone);
+  border-bottom: 3px solid var(--bone);
+}
+
+/* Screenshots are prints pinned to the sheet, each tilted a little differently. */
+.formatted_description img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.6em auto;
+  border: 3px solid var(--bone);
+  box-shadow: 9px 9px 0 var(--red);
+  transform: rotate(-0.8deg);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.formatted_description p:nth-of-type(even) img { transform: rotate(0.7deg); box-shadow: -9px 9px 0 var(--ember); }
+.formatted_description img:hover { transform: rotate(0) scale(1.01); }
+
+/* Tables are a printed timetable. */
+.formatted_description table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0 1.6em;
+  font-size: 14px;
+  border: 3px solid var(--bone);
+}
+.formatted_description th {
+  background: var(--red);
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 8px 12px;
+}
+.formatted_description td {
+  padding: 9px 12px;
+  border-top: 1px dashed rgba(243, 227, 204, 0.3);
+}
+.formatted_description td:first-child {
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--gold);
+  letter-spacing: 0.03em;
+}
+.formatted_description tr:nth-child(even) td { background: rgba(58, 15, 34, 0.55); }
+
+/* Keys are bone key-caps. */
+.formatted_description code {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  background: var(--bone);
+  padding: 2px 8px 1px;
+  margin: 1px 0;
+  border-radius: 3px;
+  box-shadow: 0 3px 0 var(--ember);
+}
+
+/* The credit is a ticket stub: bone card, ink type, a perforated edge. */
+.formatted_description blockquote {
+  position: relative;
+  margin: 1.4em 0 0.6em;
+  padding: 22px 26px 18px 30px;
+  background: var(--bone);
+  color: var(--ink);
+  border: 0;
+  border-left: 8px dotted var(--ink);
+  transform: rotate(-0.6deg);
+  box-shadow: 10px 10px 0 var(--red);
+}
+.formatted_description blockquote p { margin: 0; }
+.formatted_description blockquote strong {
+  display: inline-block;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: none;
+  color: var(--ink);
+  text-shadow: 3px 3px 0 var(--red);
+  padding: 0 0 8px;
+}
+.formatted_description blockquote a { color: var(--red); }
+
+/* ------------------------------------------------------------ buttons and panels */
+
+.view_game_page .button,
+.view_game_page button.button {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--red);
+  color: var(--bone);
+  border: 3px solid var(--bone);
+  border-radius: 0;
+  text-shadow: none;
+  box-shadow: 5px 5px 0 var(--ink), 5px 5px 0 3px var(--bone);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.view_game_page .button:hover {
+  background: var(--ember);
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--ink), 7px 7px 0 3px var(--bone);
+}
+.view_game_page .button:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--ink), 1px 1px 0 3px var(--bone);
+}
+.view_game_page .button.outline {
+  background: transparent;
+  color: var(--bone);
+}
+
+/* Screenshot column: the same pinned prints, smaller. */
+.screenshot_list a,
+.screenshot_list img {
+  display: block;
+}
+.screenshot_list img {
+  border: 3px solid var(--bone);
+  box-shadow: 6px 6px 0 var(--red);
+  margin-bottom: 18px;
+  transition: transform 0.2s ease;
+}
+.screenshot_list a:nth-child(odd) img { transform: rotate(-1deg); }
+.screenshot_list a:nth-child(even) img { transform: rotate(1deg); box-shadow: 6px 6px 0 var(--ember); }
+.screenshot_list a:hover img { transform: rotate(0) scale(1.03); }
+
+/* "More information" panel and the download list. */
+.more_information_toggle .toggle_info_btn {
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.game_info_panel_widget {
+  font-family: var(--mono);
+  font-size: 13px;
+  border-top: 3px solid var(--bone);
+}
+.game_info_panel_widget td:first-child {
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+.upload_list_widget .upload {
+  border: 2px dashed rgba(243, 227, 204, 0.4);
+  padding: 10px 14px;
+}
+.upload_list_widget .upload .name { font-family: var(--display); font-size: 18px; letter-spacing: 0.03em; }
+
+/* Comments. */
+.game_comments_widget h2 {
+  font-family: var(--display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 30px;
+  color: var(--bone);
+  text-shadow: 3px 3px 0 var(--red);
+}
+.community_post .post_body { font-family: var(--mono); font-size: 14px; }
+.community_post .post_header a { color: var(--ember); }
+
+@media (max-width: 700px) {
+  .view_game_page { box-shadow: 7px 7px 0 var(--red); margin-top: 12px; }
+  .formatted_description h2 { font-size: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .formatted_description img,
+  .screenshot_list img,
+  .view_game_page .button { transition: none; }
+}
