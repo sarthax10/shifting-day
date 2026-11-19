@@ -65,6 +65,18 @@ body {
  * Run game: a strip of torn ember tape, like START THE DRIVE on the title screen. The tape's ragged
  * edge is a clip-path, so its red offset print is a drop-shadow on the placeholder that holds it.
  */
+/* The launch screen: a sunset poster behind the button in place of the cover. */
+.view_game_page .game_frame {
+  background: var(--ink) url('https://raw.githubusercontent.com/sarthax10/shifting-day/master/itch/launch.jpg') center / cover no-repeat !important;
+}
+.game_frame .iframe_placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+}
+.game_frame .iframe_placeholder > img { display: none; }
 .game_frame .iframe_placeholder {
   filter:
     drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink))
