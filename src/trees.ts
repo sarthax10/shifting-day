@@ -736,23 +736,21 @@ function snowRowan(key: string, seed: number): Art {
 /** The trees of the pass, by key, for its roadside. */
 export const FROST_TREES = ['snowpine', 'snowpine', 'snowghost', 'snowspire', 'snowbirch', 'snowrowan', 'snowspire'];
 
-/** Every new tree, under the keys the game and the biomes use. */
-export function treeArts(): Art[] {
-  return [
-    oak('tree2_oak', P.oak, 3),
-    oak('tree2_oak2', P.oakDeep, 7),
-    poplar('tree2_poplar', P.oak, 11),
-    pine('tree2_pine', P.pine, false, 17),
-    maple('maple_0', P.red, 19),
-    maple('maple_1', P.gold, 23),
-    maple('maple_2', P.rust, 31),
-    birch('birch'),
-    snowSpruce('snowpine', 37),
-    snowGhost('snowghost', 41),
-    snowSpire('snowspire', 43),
-    snowBirch('snowbirch', 47),
-    snowRowan('snowrowan', 53),
-    seaPine('seapine'),
-  ];
-}
+/** Every roadside tree, under the keys the game and the biomes use, one job each. */
+export const TREE_ART_JOBS: (() => Art)[] = [
+  () => oak('tree2_oak', P.oak, 3),
+  () => oak('tree2_oak2', P.oakDeep, 7),
+  () => poplar('tree2_poplar', P.oak, 11),
+  () => pine('tree2_pine', P.pine, false, 17),
+  () => maple('maple_0', P.red, 19),
+  () => maple('maple_1', P.gold, 23),
+  () => maple('maple_2', P.rust, 31),
+  () => birch('birch'),
+  () => snowSpruce('snowpine', 37),
+  () => snowGhost('snowghost', 41),
+  () => snowSpire('snowspire', 43),
+  () => snowBirch('snowbirch', 47),
+  () => snowRowan('snowrowan', 53),
+  () => seaPine('seapine'),
+];
 export const MEADOW_TREES = ['tree2_oak', 'tree2_poplar', 'tree2_oak2', 'tree2_pine'];

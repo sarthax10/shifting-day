@@ -36,8 +36,10 @@ const BONE_N = 0xf3e3cc;
 /** Where the truck's wheels meet the road. */
 const ROAD = 990;
 const LEFT = 118;
-const TRUCK_K = 0.8;
-const TRUCK_X = 1030;
+const TRUCK_K = 0.92;
+const TRUCK_X = 1090;
+/** The skyline strips behind the truck tile every this many pixels. */
+const ROUTE_W = 2400;
 const TRUCK_Y = ROAD - (TRUCK.wheels[0].y + TRUCK.wheelR) * TRUCK_K;
 /** The wordmark's centre and size on screen, and the sun behind it. */
 const LOGO_Y = 372;
@@ -77,6 +79,8 @@ export class TitleScene extends Phaser.Scene {
   private tapeImg!: Phaser.GameObjects.Image;
   private stickCool = 0;
   private dustClock = 0;
+  private route: Phaser.GameObjects.TileSprite[] = [];
+  private shadow!: Phaser.GameObjects.Ellipse;
   private leaving = false;
   private ready = false;
   private list?: PosterList;
@@ -110,6 +114,7 @@ export class TitleScene extends Phaser.Scene {
     }
     this.makeTextures();
     this.buildSheet();
+    this.buildStage();
     this.buildTruck();
     this.buildWordmark();
     this.buildMenu();
@@ -186,6 +191,27 @@ export class TitleScene extends Phaser.Scene {
       const img = this.add.rectangle(Math.random() * W, H - Math.random() * 600, s, s, Math.random() < 0.7 ? EMBER : BONE_N, 0.8).setDepth(40).setAngle(45);
       this.embers.push({ img, vx: -6 - Math.random() * 24, vy: -16 - Math.random() * 30, t: Math.random() * 10 });
     }
+  }
+
+  // ------------------------------------------------------------------ stage
+
+  /**
+   * The road the truck is on: the whole trip as a printed skyline along the horizon (the old house, a
+   * windmill, maples, the mountains, Neon Town's towers, the lighthouse, the palace's dome), in two layers
+   * that slide past at different speeds, an ember kerb, and roadside posts whipping by.
+   */
+  private buildStage() {
+    if (!this.textures.exists('t_route_far')) {
+      this.addCanvas('t_route_far', routeFar());
+      this.addCanvas('t_route_near', routeNear());
+    }
+    this.route = [
+      this.add.tileSprite(0, ROAD, W, 300, 't_route_far').setOrigin(0, 1).setDepth(-56).setAlpha(0),
+      this.add.tileSprite(0, ROAD, W, 200, 't_route_near').setOrigin(0, 1).setDepth(-53).setAlpha(0),
+    ];
+    this.tweens.add({ targets: this.route, alpha: 1, duration: 1200, delay: 600 });
+    this.add.rectangle(0, ROAD - 8, W, 8, EMBER, 0.9).setOrigin(0).setDepth(-49);
+    this.shadow = this.add.ellipse(-800, ROAD + 10, 760, 30, INK_N, 0.55).setDepth(-41);
   }
 
   // ------------------------------------------------------------------ truck
@@ -549,6 +575,9 @@ export class TitleScene extends Phaser.Scene {
     const bump = Math.sin(time / 1300) > 0.97 ? -4 : 0;
     if (!this.leaving) this.truck.y = TRUCK_Y + Math.sin(time / 80) * 1.5 + bump;
     for (const w of this.wheels) w.rotation += delta * 0.012 * this.speed;
+    this.route[0].tilePositionX += 60 * this.speed * dt;
+    this.route[1].tilePositionX += 190 * this.speed * dt;
+    this.shadow.x = this.truck.x + 40 * TRUCK_K;
     this.cat.y = -161 + Math.sin(time / 80 - 1.2) * 2.2 + (Math.sin(time / 1300 - 0.15) > 0.97 ? -8 : 0);
     this.cat.rotation = Math.sin(time / 520) * 0.025;
 
@@ -575,6 +604,17 @@ export class TitleScene extends Phaser.Scene {
     g.fillStyle(BONE_N, 0.5);
     const dashOff = (time * 0.7 * this.speed) % 240;
     for (let x = -dashOff; x < W + 240; x += 240) g.fillRect(x, ROAD + 34, 120, 6);
+    // Ink chevrons along the ember kerb, and roadside posts with red reflectors, both racing by.
+    const kerbOff = (time * 0.7 * this.speed) % 48;
+    g.fillStyle(INK_N, 0.85);
+    for (let x = -kerbOff; x < W + 48; x += 48) g.fillTriangle(x, ROAD - 8, x + 18, ROAD - 8, x + 9, ROAD);
+    const postOff = (time * 0.9 * this.speed) % 520;
+    for (let x = -postOff; x < W + 520; x += 520) {
+      g.fillStyle(INK_N, 1).fillRect(x - 2, ROAD - 72, 16, 66);
+      g.fillStyle(BONE_N, 1).fillRect(x, ROAD - 70, 12, 62);
+      g.fillStyle(RED, 1).fillRect(x, ROAD - 70, 12, 14);
+      g.fillStyle(0xffb23f, 1).fillCircle(x + 6, ROAD - 40, 3.5);
+    }
 
     for (const e of this.embers) {
       e.t += dt;
@@ -594,4 +634,127 @@ export class TitleScene extends Phaser.Scene {
 
     this.grain.setPosition(-Math.random() * 60, -Math.random() * 60);
   }
+}
+
+/** The trip's far skyline, as one oxblood print: hills, mountains, a windmill, Neon Town's needles, a dome. */
+function routeFar(): HTMLCanvasElement {
+  const [c, ctx] = mk(ROUTE_W, 300);
+  const hill = (x: number) => 230 - Math.sin((x / ROUTE_W) * Math.PI * 6) * 26 - Math.sin((x / ROUTE_W) * Math.PI * 14 + 1) * 10;
+  ctx.fillStyle = '#5A1A3A';
+  ctx.beginPath();
+  ctx.moveTo(0, 300);
+  for (let x = 0; x <= ROUTE_W; x += 20) ctx.lineTo(x, hill(x));
+  ctx.lineTo(ROUTE_W, 300);
+  ctx.fill();
+  // The low sun catching the hills' crest.
+  ctx.strokeStyle = 'rgba(255, 106, 48, 0.8)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let x = 0; x <= ROUTE_W; x += 20) (x ? ctx.lineTo(x, hill(x) + 2) : ctx.moveTo(x, hill(x) + 2));
+  ctx.stroke();
+  for (const [mx, mh, mw] of [[520, 170, 260], [700, 220, 300], [880, 150, 240]] as const) {
+    ctx.fillStyle = '#5A1A3A';
+    ctx.beginPath();
+    ctx.moveTo(mx - mw / 2, 240);
+    ctx.lineTo(mx, 240 - mh);
+    ctx.lineTo(mx + mw / 2, 240);
+    ctx.fill();
+    ctx.fillStyle = '#F3E3CC';
+    ctx.beginPath();
+    ctx.moveTo(mx - mw * 0.12, 240 - mh * 0.76);
+    ctx.lineTo(mx, 240 - mh);
+    ctx.lineTo(mx + mw * 0.12, 240 - mh * 0.76);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#5A1A3A';
+  ctx.fillRect(196, 150, 26, 80);
+  ctx.save();
+  ctx.translate(209, 150);
+  for (let k = 0; k < 4; k++) {
+    ctx.rotate(Math.PI / 2);
+    ctx.fillRect(-4, -70, 8, 70);
+  }
+  ctx.restore();
+  for (const [tx, th, tw] of [[1300, 220, 34], [1360, 270, 26], [1420, 200, 40], [1500, 250, 30], [1560, 180, 46]] as const) {
+    ctx.fillRect(tx, 240 - th, tw, th);
+    ctx.fillRect(tx + tw / 2 - 2, 240 - th - 50, 4, 50);
+  }
+  ctx.beginPath();
+  ctx.ellipse(1373, 40, 56, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(2040, 190, 60, Math.PI, 0);
+  ctx.fill();
+  ctx.fillRect(1960, 190, 160, 50);
+  ctx.fillRect(2036, 100, 8, 34);
+  ctx.fillStyle = 'rgba(255, 178, 63, 0.55)';
+  for (let i = 0; i < 40; i++) ctx.fillRect(1300 + ((i * 53) % 290), 80 + ((i * 37) % 150), 5, 7);
+  return c;
+}
+
+/** The near skyline, in ink: the old house, maples and firs, street lamps, the lighthouse and palms. */
+function routeNear(): HTMLCanvasElement {
+  const [c, ctx] = mk(ROUTE_W, 200);
+  const INK_DEEP = '#2A0B1E';
+  ctx.fillStyle = INK_DEEP;
+  ctx.beginPath();
+  ctx.moveTo(0, 200);
+  for (let x = 0; x <= ROUTE_W; x += 16) ctx.lineTo(x, 168 - Math.abs(Math.sin(x / 37)) * 12);
+  ctx.lineTo(ROUTE_W, 200);
+  ctx.fill();
+  ctx.fillRect(120, 110, 120, 70);
+  ctx.beginPath();
+  ctx.moveTo(108, 112);
+  ctx.lineTo(180, 60);
+  ctx.lineTo(252, 112);
+  ctx.fill();
+  ctx.fillRect(210, 64, 16, 30);
+  ctx.fillStyle = 'rgba(255, 178, 63, 0.7)';
+  ctx.fillRect(140, 128, 18, 16);
+  ctx.fillRect(196, 128, 18, 16);
+  ctx.fillStyle = INK_DEEP;
+  for (const [x, r] of [[420, 46], [500, 38], [760, 50], [1040, 42]] as const) {
+    ctx.fillRect(x - 4, 168 - r, 8, r);
+    ctx.beginPath();
+    ctx.arc(x, 168 - r * 1.6, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (const x of [600, 880, 940]) {
+    ctx.beginPath();
+    ctx.moveTo(x - 30, 170);
+    ctx.lineTo(x, 60);
+    ctx.lineTo(x + 30, 170);
+    ctx.fill();
+  }
+  for (const x of [1220, 1420, 1620]) {
+    ctx.fillRect(x, 70, 6, 100);
+    ctx.fillRect(x - 14, 66, 34, 8);
+    ctx.fillStyle = 'rgba(255, 200, 107, 0.9)';
+    ctx.fillRect(x - 10, 74, 26, 5);
+    ctx.fillStyle = INK_DEEP;
+  }
+  ctx.beginPath();
+  ctx.moveTo(1830, 170);
+  ctx.lineTo(1842, 50);
+  ctx.lineTo(1866, 50);
+  ctx.lineTo(1878, 170);
+  ctx.fill();
+  ctx.fillRect(1836, 36, 36, 16);
+  ctx.fillStyle = 'rgba(255, 233, 168, 0.9)';
+  ctx.fillRect(1842, 38, 24, 10);
+  ctx.fillStyle = INK_DEEP;
+  ctx.strokeStyle = INK_DEEP;
+  ctx.lineWidth = 9;
+  for (const x of [1980, 2100, 2260]) {
+    ctx.beginPath();
+    ctx.moveTo(x, 170);
+    ctx.quadraticCurveTo(x + 10, 110, x + 4, 60);
+    ctx.stroke();
+    for (let k = 0; k < 6; k++) {
+      ctx.beginPath();
+      ctx.ellipse(x + 4 + Math.cos(k) * 22, 58 + Math.sin(k * 2) * 6, 30, 7, k - 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  return c;
 }

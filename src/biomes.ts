@@ -24,6 +24,9 @@ export interface Built {
   update(time: number, delta: number, scrollX: number): void;
 }
 
+/** Draws one picture, or a small set of them, when it is run. */
+export type ArtJob = () => Art | Art[];
+
 export interface Biome {
   key: BiomeKey;
   /** Sky gradient stops, top to bottom. */
@@ -36,8 +39,8 @@ export interface Biome {
   grip: number;
   /** Street lamps lit along the road. */
   lamps: boolean;
-  /** Pictures this biome needs, loaded before its leg starts. */
-  arts(): Art[];
+  /** Pictures this biome needs, as jobs that each draw one picture (or a few), run a slice at a time. */
+  arts(): ArtJob[];
   /** Lays the sky, the scenery behind the road, the weather and the roadside. */
   build(scene: Phaser.Scene, o: { reach: number; horizon: number; groundY: (x: number) => number; finish: number; busy?: number[]; range?: [number, number] }): Built;
 }
@@ -305,17 +308,17 @@ const AUTUMN: Biome = {
   grip: 1,
   lamps: false,
   arts: () => [
-    valleySunArt(),
-    valleyFarArt(),
-    valleyRidgeArt(),
-    valleyArt(),
-    valleyGlintArt(),
-    mapleLeafArt(),
-    ...[0, 1, 2].map((n) => recolor(printCloudArt(n), `bd_cloud_dawn_${n}`, { '#FFF1DE': '#FBE2BC', '#FFC29E': '#E8967E' })),
-    fallsSetArt(),
-    gorgeArt(),
-    fallsFrontArt(),
-    fallWaterArt(),
+    () => valleySunArt(),
+    () => valleyFarArt(),
+    () => valleyRidgeArt(),
+    () => valleyArt(),
+    () => valleyGlintArt(),
+    () => mapleLeafArt(),
+    () => [0, 1, 2].map((n) => recolor(printCloudArt(n), `bd_cloud_dawn_${n}`, { '#FFF1DE': '#FBE2BC', '#FFC29E': '#E8967E' })),
+    () => fallsSetArt(),
+    () => gorgeArt(),
+    () => fallsFrontArt(),
+    () => fallWaterArt(),
   ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_autumn', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
@@ -576,14 +579,14 @@ const SNOW: Biome = {
   grip: 0.55,
   lamps: true,
   arts: () => [
-    frostPeaksArt(true),
-    frostPeaksArt(false),
-    frostForestArt('bd_s_pines_far', 520, '#3A2A5E', '#C8B0D8', 61, 0.8, '#B8A4CC'),
-    frostForestArt('bd_s_pines', 560, '#1A2E24', '#E8D2DC', 67, 1.25, '#DCCEDC'),
-    frostMoonArt(),
-    frostLakeArt(),
-    snowNearArt(),
-    snowPoleArt(),
+    () => frostPeaksArt(true),
+    () => frostPeaksArt(false),
+    () => frostForestArt('bd_s_pines_far', 520, '#3A2A5E', '#C8B0D8', 61, 0.8, '#B8A4CC'),
+    () => frostForestArt('bd_s_pines', 560, '#1A2E24', '#E8D2DC', 67, 1.25, '#DCCEDC'),
+    () => frostMoonArt(),
+    () => frostLakeArt(),
+    () => snowNearArt(),
+    () => snowPoleArt(),
   ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_snow', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
@@ -702,16 +705,16 @@ const TOWN: Biome = {
   // Every picture of the town printed in one night palette: indigo and teal-navy buildings, warm amber
   // windows, and a few neon accents in coral, mint and gold.
   arts: () => [
-    ...[megaArt(false), megaArt(true)].map((a) => posterize(a, ['#8A78B8', 0.5])),
-    ...[cityArt('far', false), cityArt('far', true)].map((a) => posterize(a, ['#5E5498', 0.32])),
-    ...[cityArt('mid', false), cityArt('mid', true)].map((a) => posterize(a, ['#3A3A70', 0.12])),
-    ...[railArt(), trainArt(), wetStreetArt(), holoFishArt()].map((a) => posterize(a)),
+    () => [megaArt(false), megaArt(true)].map((a) => posterize(a, ['#8A78B8', 0.5])),
+    () => [cityArt('far', false), cityArt('far', true)].map((a) => posterize(a, ['#5E5498', 0.32])),
+    () => [cityArt('mid', false), cityArt('mid', true)].map((a) => posterize(a, ['#3A3A70', 0.12])),
+    () => [railArt(), trainArt(), wetStreetArt(), holoFishArt()].map((a) => posterize(a)),
     // The street's own buildings, drawn in the night palette already, and the plaza behind the road.
-    ...SHOPS.map((s, i) => houseArt(i, { wall: s.wall, neon: s.colour, awning: s.awning })),
-    streetArt(),
-    synthSunArt(),
-    blimpArt(),
-    hoverCarArt(),
+    () => SHOPS.map((s, i) => houseArt(i, { wall: s.wall, neon: s.colour, awning: s.awning })),
+    () => streetArt(),
+    () => synthSunArt(),
+    () => blimpArt(),
+    () => hoverCarArt(),
   ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_town', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
@@ -952,23 +955,23 @@ const COAST: Biome = {
   grip: 1,
   lamps: false,
   arts: () => [
-    ...[0, 1, 2].map((n) => recolor(printCloudArt(n), `bd_cloud_white_${n}`, { '#FFF1DE': '#FFFAF0', '#FFC29E': '#E2F0EA', '#FF6A30': '#A8D4CC' })),
-    ...birdArts().map((a) => recolor(a, a.key.replace('bd_bird', 'bd_gull'), { '#3B2F55': '#F4F6FA', '#0A0712': '#F4F6FA' })),
-    coastSunArt(),
-    seaArt(),
-    headlandsArt(),
-    bayArt(),
-    wavesArt(),
-    coveArt(),
-    surfArt(),
-    palmArt(),
-    promLampArt(),
-    dolphinArt(),
-    sailArt(),
-    beachHutArt(0),
-    beachHutArt(1),
-    beachHutArt(2),
-    beachHutArt(3),
+    () => [0, 1, 2].map((n) => recolor(printCloudArt(n), `bd_cloud_white_${n}`, { '#FFF1DE': '#FFFAF0', '#FFC29E': '#E2F0EA', '#FF6A30': '#A8D4CC' })),
+    () => birdArts().map((a) => recolor(a, a.key.replace('bd_bird', 'bd_gull'), { '#3B2F55': '#F4F6FA', '#0A0712': '#F4F6FA' })),
+    () => coastSunArt(),
+    () => seaArt(),
+    () => headlandsArt(),
+    () => bayArt(),
+    () => wavesArt(),
+    () => coveArt(),
+    () => surfArt(),
+    () => palmArt(),
+    () => promLampArt(),
+    () => dolphinArt(),
+    () => sailArt(),
+    () => beachHutArt(0),
+    () => beachHutArt(1),
+    () => beachHutArt(2),
+    () => beachHutArt(3),
   ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_coast', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);

@@ -437,9 +437,8 @@ function millWaterArt(): Art {
   return { key, svg: p.svg(w, h), w, h };
 }
 
-export function stopBuildingArts(): Art[] {
-  return [cornerArt(), millArt(), millWheelArt(), millWaterArt(), lodgeArt(), dinerArt()];
-}
+/** Every checkpoint building and its moving parts, one job each. */
+export const STOP_ART_JOBS: (() => Art)[] = [cornerArt, millArt, millWheelArt, millWaterArt, lodgeArt, dinerArt];
 
 /**
  * Places a stop with its building standing on the ground at x, writes its name, lights its windows

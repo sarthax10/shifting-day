@@ -112,7 +112,8 @@ export function tunnelMouthArt(biome: BiomeKey): Art {
   };
   // The body of the cliff, then broken into facets: a jittered grid of triangles, each shaded as a plane
   // turned towards or away from the light (from the upper left), the way stylised rock is painted.
-  p.shape([...ledges, [w, h], [0, h]], { fill: mid, raw: true, width: 4.5, wobble: 0.3 });
+  // One halftone screen over the cliff's lower half, as on the poster (one clip, not one per facet).
+  p.shape([...ledges, [w, h], [0, h]], { fill: mid, raw: true, width: 4.5, wobble: 0.3, shade: [{ pts: [[0, h * 0.45], [w, h * 0.3], [w, h], [0, h]], color: dark }] });
   const gx = 120;
   const gy = 130;
   const cols = Math.ceil(w / gx) + 1;
@@ -143,9 +144,8 @@ export function tunnelMouthArt(biome: BiomeKey): Art {
         const k = r() + (nearTop ? 0.35 : 0) - (cy / h) * 0.3;
         const fill = k > 0.8 ? lit : k < 0.25 ? dark : mid;
         if (fill === mid && r() < 0.5) continue;
-        // Planes in shade are printed as a halftone of the dark ink over the middle tone, as on the poster.
-        if (fill === dark) p.shape(tri, { fill: mid, raw: true, width: 2, wobble: 0.2, stroke: dark, shade: [{ pts: tri, color: dark }] });
-        else p.shape(tri, { fill, raw: true, width: 2, wobble: 0.2, stroke: dark });
+        // Facets are printed flat, without their own outlines: hundreds of ink strokes made the picture slow to load.
+        p.shape(tri, { fill, raw: true, wobble: 0.2, stroke: null });
       }
     }
   }

@@ -36,6 +36,9 @@ export const C = {
 
 export type Pt = [number, number];
 
+/** Pictures larger than this (in pixels) are drawn without the per-picture grain filter. */
+const GRAIN_MAX_AREA = 420_000;
+
 export interface ShapeOpts {
   fill?: string;
   stroke?: string | null;
@@ -125,7 +128,23 @@ function pathNoise(seed: number, perim: number, wavelength: number) {
   return (u: number) => 0.7 * Math.sin(2 * Math.PI * k1 * u + p1) + 0.3 * Math.sin(2 * Math.PI * k2 * u + p2);
 }
 
-function toPath(pts: number[][], closed: boolean): string {
+/** Drops points closer than about a pixel to the last one kept: invisible at this scale, and it keeps big pictures' SVG small. */
+function thin(pts: number[][], min = 1.3): number[][] {
+  if (pts.length < 8) return pts;
+  const out = [pts[0]];
+  const m2 = min * min;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [lx, ly] = out[out.length - 1];
+    const dx = pts[i][0] - lx;
+    const dy = pts[i][1] - ly;
+    if (dx * dx + dy * dy >= m2) out.push(pts[i]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out.length >= 3 ? out : pts;
+}
+
+function toPath(raw: number[][], closed: boolean): string {
+  const pts = thin(raw);
   if (pts.length < 2) return '';
   const f = (n: number) => n.toFixed(1);
   const mid = (a: number[], b: number[]) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -323,6 +342,10 @@ export class Pen {
     // Fine grain, kept inside the drawing's own shapes, multiplied gently over the colours.
     const seed = hash(this.asset) % 97;
     const grain = `<filter id="grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="${seed}" result="n"/><feColorMatrix in="n" type="saturate" values="0" result="g"/><feComponentTransfer in="g" result="soft"><feFuncR type="linear" slope="0.3" intercept="0.78"/><feFuncG type="linear" slope="0.3" intercept="0.78"/><feFuncB type="linear" slope="0.3" intercept="0.8"/><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer><feBlend in="SourceGraphic" in2="soft" mode="multiply" result="m"/><feComposite in="m" in2="SourceGraphic" operator="in"/></filter>`;
+    // The grain filter is computed pixel by pixel when the picture is rasterised, on the main thread, so it is
+    // kept to small pictures (furniture, the truck, signs). Big scenery gets its grain from the screen-wide
+    // paper texture laid over the game instead.
+    if (w * h > GRAIN_MAX_AREA) return `${head}<defs>${grads}${screens}</defs>${this.parts.join('')}</svg>`;
     return `${head}<defs>${grads}${screens}${grain}</defs><g filter="url(#grain)">${this.parts.join('')}</g></svg>`;
   }
 }

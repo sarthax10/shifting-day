@@ -17,9 +17,10 @@ import type { BiomeKey } from './legs';
 
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from './prepare';
-import { CHUNK, CHUNK_TOP, groundKey, grassKey, legReady, prepareLeg, unloadLegsExcept } from './prepare';
+import { CHUNK, CHUNK_TOP, groundKey, grassKey, holdLoadingWhile, legReady, prepareLeg, unloadLegsExcept } from './prepare';
 import { applyBiomeFX } from './postfx';
 import { buildFinale } from './finale';
+import { showScorecard } from './scorecard';
 import { chip, hudText, uiText, INK_BG } from './ui';
 import { Prompter } from './prompts';
 import { PosterList, posterSheet, openControls, ensurePosterTextures, DISPLAY as POSTER_FONT, MONO as POSTER_MONO, BONE_CSS, EMBER_CSS, INK_CSS } from './poster';
@@ -260,6 +261,8 @@ export class PlayScene extends Phaser.Scene {
   private walls?: Body[];
   /** True while this leg's pictures are being drawn again; the scene restarts once they are. */
   private waiting = false;
+  /** Whether the next leg has started loading in the background. */
+  private prefetched = false;
   /** The last stretch home, run every frame on the final leg. */
   private finale?: (time: number, camMid: number, celebrating: boolean) => void;
   /** Whose colour grade the camera wears: the last place until the tunnel, then this one. */
@@ -316,11 +319,15 @@ export class PlayScene extends Phaser.Scene {
     // to save memory. Draw them again first, then come back, rather than drive on a road with no picture.
     this.waiting = !legReady(this.textures, this.leg.n);
     if (this.waiting) {
+      this.phase = 'pack';
       this.cameras.main.setBackgroundColor('#0A0712');
       void prepareLeg(this.textures, this.leg.n).then(() => this.scene.restart(data));
       return;
     }
     setRoad(this.leg.features, this.leg.finish);
+    this.prefetched = false;
+    // Background loading waits while the truck is moving, and runs whenever it stands still.
+    holdLoadingWhile(() => this.sys.isActive() && this.phase === 'drive' && Math.abs(this.chassis?.velocity.x ?? 0) > 0.6);
     this.trip = data?.trip ?? { leg: 1, cargo: [], lost: [], broken: [], parking: [], time: 0 };
     this.phase = data?.intro && this.leg.n === 1 ? 'intro' : 'pack';
     this.parkBonus = 0;
@@ -706,6 +713,11 @@ export class PlayScene extends Phaser.Scene {
       g.still = stopped ? g.still + dt : 0;
       if (g.state === 'closed' && stopped && this.handbrake) {
         g.state = 'checking';
+        // Stopped at the first gate: start drawing the next leg, while the truck is standing still.
+        if (!this.prefetched && this.leg.stop) {
+          this.prefetched = true;
+          void prepareLeg(this.textures, this.leg.n + 1);
+        }
         g.timer = 0;
         const wake = this.add.text(g.booth.x, g.booth.y + 10, '!', { fontFamily: TITLE, fontSize: '54px', color: C.mustard, stroke: C.ink, strokeThickness: 6 }).setOrigin(0.5).setDepth(-5);
         this.tweens.add({ targets: wake, y: wake.y - 40, alpha: 0, delay: 500, duration: 600, onComplete: () => wake.destroy() });
@@ -2546,6 +2558,7 @@ export class PlayScene extends Phaser.Scene {
     const lostCount = lost.length + this.trip.lost.length;
     const parking = [...this.trip.parking, this.parkBonus].reduce((a, b) => a + b, 0);
     const tripTime = this.trip.time + this.driveTime;
+    const best = bestRun();
     const record = saveRun(tripTime);
     clearTrip();
     const earned = delivered.reduce((n, t) => n + this.valueOf(t), 0);
@@ -2564,113 +2577,26 @@ export class PlayScene extends Phaser.Scene {
             ? 'We can buy a new fridge. Probably.'
             : 'We are minimalists now.';
 
-    const cx = W / 2;
-    const cy = H / 2;
-    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T, d = 201) => o.setScrollFactor(0).setDepth(d);
-    const shown: Phaser.GameObjects.GameObject[] = [];
-    const keep = <T extends Phaser.GameObjects.GameObject>(o: T) => (shown.push(o), o);
-    keep(fixed(this.add.rectangle(cx, cy, W, H, 0x2a2140, 0.55), 199));
-    // A delivery note from the moving company, taped up, with a ribbon across the top.
-    const paperY = cy - 10;
-    const top = paperY - RECEIPT.h / 2;
-    const left = cx - RECEIPT.w / 2 + 110;
-    const paper = keep(fixed(this.add.image(cx, paperY, 'receipt'), 200));
-    this.tweens.add({ targets: paper, y: { from: paperY + 60, to: paperY }, duration: 420, ease: 'Back.easeOut' });
-    keep(fixed(this.add.image(cx, top - 6, 'ribbon'), 202));
-    keep(fixed(this.add.text(cx, top - 18, 'Home sweet home!', { fontFamily: TITLE, fontSize: '62px', color: C.cream, stroke: C.terracottaDark, strokeThickness: 4 }).setOrigin(0.5), 203));
-    keep(fixed(this.add.text(left, top + 104, 'SHIFT HAPPENS MOVING CO.', { fontFamily: TITLE, fontSize: '28px', color: C.ink }).setOrigin(0, 0.5), 202));
-    keep(fixed(this.add.text(left, top + 136, `Delivery note No. ${String(1000 + (score % 9000)).padStart(4, '0')}  ·  ${clock(tripTime, false)} start to finish${record ? '  ·  NEW BEST!' : ''}`, { fontFamily: TEXT, fontSize: '20px', color: C.walnut }).setOrigin(0, 0.5), 202));
-    const ink = this.add.graphics();
-    keep(fixed(ink, 202));
-    const dashed = (y: number, x0: number, x1: number) => {
-      ink.fillStyle(0x2a2140, 0.55);
-      for (let x = x0; x < x1; x += 18) ink.fillRect(x, y - 1.5, 10, 3);
-    };
-    dashed(top + 166, left, cx + RECEIPT.w / 2 - 50);
-
-    // What came off the truck: little tags with each thing and its points. Broken things are crossed out.
-    const tagged = [...delivered.slice().sort((a, b) => this.valueOf(b) - this.valueOf(a)), ...broken].slice(0, 9);
-    const rowY = top + 236;
-    tagged.forEach((t, i) => {
-      const x = cx + 20 + (i - (tagged.length - 1) / 2) * 100;
-      const isBroken = t.broken;
-      const tag = this.add.graphics();
-      tag.fillStyle(0x2a2140, 0.25).fillRoundedRect(x - 40, rowY - 44, 88, 108, 12);
-      tag.fillStyle(isBroken ? 0xf2dcd6 : 0xfff2da).fillRoundedRect(x - 44, rowY - 50, 88, 108, 12);
-      tag.lineStyle(3, 0x2a2140).strokeRoundedRect(x - 44, rowY - 50, 88, 108, 12);
-      tag.fillStyle(0x2a2140).fillCircle(x, rowY - 40, 4);
-      keep(fixed(tag, 202));
-      const img = keep(fixed(this.add.image(x, rowY - 2, t.img.texture.key), 203));
-      img.setScale(Math.min(62 / img.height, 70 / img.width));
-      const value = isBroken ? `−${Math.round(this.valueOf(t) / 2)}` : String(this.valueOf(t));
-      keep(fixed(this.add.text(x, rowY + 40, value, { fontFamily: TITLE, fontSize: '20px', color: isBroken ? C.terracottaDark : C.walnut }).setOrigin(0.5), 203));
-      if (isBroken) {
-        const x2 = this.add.graphics().lineStyle(4, 0xb8403f).lineBetween(x - 28, rowY - 30, x + 28, rowY + 24).lineBetween(x + 28, rowY - 30, x - 28, rowY + 24);
-        keep(fixed(x2, 204));
-      }
-      img.setScale(0);
-      this.tweens.add({ targets: img, scale: Math.min(62 / img.height, 70 / img.width), delay: 300 + i * 70, duration: 260, ease: 'Back.easeOut' });
-    });
-    if (!tagged.length) keep(fixed(this.add.text(cx, rowY, 'Nothing. Not one thing.', { fontFamily: TITLE, fontSize: '30px', color: C.walnut }).setOrigin(0.5), 202));
-    dashed(top + 318, left, cx + RECEIPT.w / 2 - 50);
-
-    // The bill, line by line, with dotted leaders to the numbers.
-    const right = cx + 120;
-    const lines: [string, string, string][] = [
-      [`Delivered safely (${delivered.length})`, `+${earned}`, C.ink],
-      [`Broken (${broken.length})`, broken.length ? `−${penalty}` : '0', broken.length ? C.terracottaDark : C.walnut],
-      [`Fell off on the way (${lostCount})`, '0', C.walnut],
-      ['Careful driver bonus', bonus ? `+${bonus}` : '—', bonus ? C.sageDark : C.walnut],
-      [`Parking at ${this.trip.parking.length + 1} stops`, `+${parking}`, C.sageDark],
-    ];
-    lines.forEach(([label, value, colour], i) => {
-      const y = top + 358 + i * 42;
-      const l = keep(fixed(this.add.text(left, y, label, { fontFamily: TEXT, fontSize: '27px', color: colour }).setOrigin(0, 0.5), 202));
-      const v = keep(fixed(this.add.text(right, y, value, { fontFamily: TITLE, fontSize: '28px', color: colour }).setOrigin(1, 0.5), 202));
-      ink.fillStyle(0x2a2140, 0.35);
-      for (let x = left + l.width + 12; x < right - v.width - 12; x += 10) ink.fillCircle(x, y + 8, 1.8);
-    });
-    const sumY = top + 358 + lines.length * 42 + 6;
-    ink.fillStyle(0x2a2140).fillRect(left, sumY - 18, right - left, 3).fillRect(left, sumY - 11, right - left, 3);
-    keep(fixed(this.add.text(left, sumY + 30, 'TOTAL', { fontFamily: TITLE, fontSize: '40px', color: C.ink }).setOrigin(0, 0.5), 202));
-    const total = keep(fixed(this.add.text(right, sumY + 28, '0', { fontFamily: TITLE, fontSize: '62px', color: C.terracotta, stroke: C.ink, strokeThickness: 5 }).setOrigin(1, 0.5), 202));
-    const count = { v: 0 };
-    this.tweens.add({ targets: count, v: score, delay: 700, duration: 1300, ease: 'Cubic.easeOut', onUpdate: () => total.setText(String(Math.round(count.v))) });
-
-    // The rating, stamped on in red ink once the total has counted up.
-    const sx = cx + 300;
-    const sy = top + 470;
-    const words = stars === 3 ? 'WITH CARE' : stars === 2 ? 'MOSTLY' : stars === 1 ? 'SORT OF' : 'BARELY';
-    const stamp = this.add.container(sx, sy).setScrollFactor(0).setDepth(204).setRotation(-0.22);
-    stamp.add(this.add.image(0, 0, 'stamp').setScrollFactor(0));
-    stamp.add(this.add.text(0, 0, 'DELIVERED', { fontFamily: TITLE, fontSize: '32px', color: '#FFF6E6' }).setOrigin(0.5).setScrollFactor(0));
-    stamp.add(this.add.text(0, -62, '★'.repeat(stars) + '☆'.repeat(3 - stars), { fontFamily: TITLE, fontSize: '58px', color: C.terracottaDark }).setOrigin(0.5).setScrollFactor(0));
-    stamp.add(this.add.text(0, 58, words, { fontFamily: TITLE, fontSize: '26px', color: C.terracottaDark }).setOrigin(0.5).setScrollFactor(0));
-    stamp.setAlpha(0).setScale(2.2);
-    this.tweens.add({
-      targets: stamp,
-      scale: 1,
-      alpha: 0.92,
-      delay: 2100,
-      duration: 180,
-      ease: 'Quad.easeIn',
-      onComplete: () => {
-        play('stamp');
-        this.cameras.main.shake(90, 0.002);
-        for (let i = 0; i < stars; i++) this.time.delayedCall(120 + i * 140, () => play('tie'));
+    showScorecard(
+      this,
+      {
+        delivered: delivered.map((t) => ({ key: t.img.texture.key, value: this.valueOf(t) })),
+        broken: broken.map((t) => ({ key: t.img.texture.key, value: this.valueOf(t) })),
+        lost: lostCount,
+        earned,
+        penalty,
+        bonus,
+        parking,
+        stops: this.trip.parking.length + 1,
+        score,
+        stars,
+        verdict,
+        time: clock(tripTime, false),
+        best: best !== null ? clock(Math.min(best, tripTime), false) : null,
+        record,
       },
-    });
-
-    // A note scribbled at the bottom, and the button to go again.
-    keep(fixed(this.add.text(left, top + RECEIPT.h - 92, `“${verdict}”`, { fontFamily: TEXT, fontSize: '26px', color: C.walnut, fontStyle: 'italic' }).setOrigin(0, 0.5), 202));
-    const again = this.button(cx, top + RECEIPT.h + 46, 'btn', 'Shift again', 46, () => this.scene.restart({ intro: false })).box.setDepth(205);
-    shown.push(again);
-    for (const o of shown) {
-      const a = o as unknown as Phaser.GameObjects.Components.Alpha;
-      const target = a.alpha;
-      a.setAlpha(0);
-      this.tweens.add({ targets: o, alpha: target, duration: 350 });
-    }
+      () => this.scene.restart({ intro: false }),
+    );
   }
 
   update(time: number, delta: number) {
@@ -2786,6 +2712,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.phase === 'pack' && !this.waiting) this.driveTime += delta / 1000;
     if (this.phase === 'drive') {
       this.driveTime += delta / 1000;
+
       const cx = this.chassis.position.x;
       for (const t of this.things) {
         if (t.ghost) {
