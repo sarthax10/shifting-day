@@ -26,7 +26,40 @@ export interface StopLook {
 }
 
 const INK = C.ink;
-const WALL_LIGHT = '#FFD98A';
+const BONE = '#F3E3CC';
+const SAND = '#D9C3A6';
+const TAN = '#B89A7A';
+const RED = '#E3263A';
+const RED_DARK = '#9E1A2E';
+const EMBER = '#FF6A30';
+const GOLD = '#FFB23F';
+const GOLD_DARK = '#D98A2A';
+const OX = '#3A0F22';
+const PLUM = '#5A1A3A';
+const WOOD = '#6A2E2E';
+const OLIVE = '#7E8A44';
+const PINE = '#2A4636';
+const LIT = '#FFC86B';
+const LIT_DEEP = '#FF9E4A';
+
+/** A sunburst of alternating rays behind a sign, the poster's signature flourish. */
+function burst(p: ReturnType<typeof pen>, cx: number, cy: number, r: number, n: number, a: string, b: string) {
+  for (let k = 0; k < n; k++) {
+    const a0 = (k / n) * Math.PI * 2;
+    const a1 = ((k + 1) / n) * Math.PI * 2;
+    p.shape([[cx, cy], [cx + Math.cos(a0) * r, cy + Math.sin(a0) * r], [cx + Math.cos(a1) * r, cy + Math.sin(a1) * r]], { fill: k % 2 ? a : b, raw: true, stroke: null });
+  }
+}
+/** A five-point star. */
+function star(p: ReturnType<typeof pen>, cx: number, cy: number, r: number, fill: string, width = 4) {
+  const pts: [number, number][] = [];
+  for (let k = 0; k < 10; k++) {
+    const a = -Math.PI / 2 + (k / 10) * Math.PI * 2;
+    const rr = k % 2 ? r * 0.45 : r;
+    pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+  }
+  p.shape(pts, { fill, width, raw: true, stroke: INK });
+}
 
 // ---------------------------------------------------------------- 0. Corner Fuel
 
@@ -34,57 +67,80 @@ export const CORNER: StopLook = {
   key: 'stopart_0',
   w: 900,
   h: 560,
-  sign: { x: 760, y: 92, w: 128, size: 26, color: '#FFF4DE', stroke: '#8E1E24', rot: -0.03 },
+  sign: { x: 770, y: 92, w: 140, size: 26, color: BONE, stroke: INK, rot: -0.03 },
   glows: [
-    [180, 420, 300, 120, 0xffd27a],
-    [560, 300, 300, 50, 0xfff6d8],
+    [150, 420, 220, 120, 0xffc86b],
+    [630, 262, 460, 40, 0xfff0d0],
   ],
   bay: 560,
 };
 function cornerArt(): Art {
   const p = pen(CORNER.key);
   const { h } = CORNER;
-  // The station house: white, a rounded front corner, a red band, big shop windows and a garage door.
-  p.shape([[40, h], [40, 300], [300, 300], [330, 310], [340, 340], [340, h]], { fill: '#F3E3CC', width: 5, raw: true, shade: [{ pts: [[260, 290], [360, 290], [360, h], [270, h]], color: '#D9C3A6' }] });
-  p.rect(30, 286, 316, 26, { fill: '#E3263A', width: 4, r: 4 });
-  p.rect(30, 280, 316, 8, { fill: '#F3E3CC', stroke: null, r: 2 });
-  p.rect(70, 360, 150, 120, { fill: WALL_LIGHT, width: 4, r: 4 });
-  for (const x of [120, 170]) p.line([[x, 362], [x, 478]], { width: 3, raw: true });
-  p.rect(64, 476, 162, 10, { fill: '#D9C3A6', width: 3, r: 2 });
-  // Shelves of oil cans through the window.
-  for (let k = 0; k < 5; k++) p.rect(82 + k * 26, 432, 16, 22, { fill: ['#2A4636', '#E3263A', '#FFB23F'][k % 3], width: 2, r: 2 });
-  p.rect(244, 360, 76, h - 360, { fill: '#7E8A44', width: 4, r: 3 });
-  for (let y = 376; y < h - 10; y += 22) p.line([[248, y], [316, y]], { width: 2, color: '#2A4636', raw: true });
-  // The flat canopy on a single slanted column, with a light strip underneath.
-  p.shape([[380, 228], [880, 210], [886, 244], [384, 262]], { fill: '#F3E3CC', width: 5, raw: true });
-  p.shape([[382, 244], [884, 226], [886, 244], [384, 262]], { fill: '#E3263A', stroke: null, raw: true });
-  p.shape([[600, 254], [624, 254], [596, h], [572, h]], { fill: '#D9C3A6', width: 4, raw: true });
-  for (const lx of [460, 560, 700, 800]) p.rect(lx - 30, 254 - (lx - 380) * 0.036, 60, 7, { fill: '#FFF6D8', width: 2, r: 3 });
-  // Two round-shouldered vintage pumps with glass globes.
-  for (const px of [470, 690]) {
-    p.rect(px - 32, 410, 64, h - 410 - 12, { fill: '#E3263A', width: 4, r: 18 });
-    p.rect(px - 22, 430, 44, 36, { fill: '#F3E3CC', width: 3, r: 6 });
-    p.line([[px - 12, 446], [px + 12, 446]], { width: 2, raw: true });
-    p.ellipse(px, 394, 22, 22, { fill: '#FFF4DE', width: 4 });
-    p.rect(px - 22, 388, 44, 10, { fill: '#E3263A', stroke: null, r: 2 });
-    p.line([[px + 32, 470], [px + 52, 500], [px + 40, 540]], { width: 5 });
-    p.rect(px - 40, h - 14, 80, 14, { fill: '#9A96A8', width: 3, r: 3 });
+  // The station house: bone walls on an oxblood plinth, a stepped parapet with a red band and a star.
+  p.rect(30, 300, 330, h - 300, { fill: BONE, width: 5, r: 3, shade: [{ pts: [[270, 290], [370, 290], [370, h], [280, h]], color: SAND }] });
+  p.rect(30, h - 44, 330, 44, { fill: OX, width: 4, r: 1 });
+  for (let x = 44; x < 350; x += 40) p.line([[x, h - 40], [x, h - 6]], { width: 2, color: PLUM, raw: true });
+  p.shape([[22, 304], [22, 250], [120, 250], [120, 226], [270, 226], [270, 250], [368, 250], [368, 304]], { fill: RED, width: 5, raw: true, shade: [{ pts: [[22, 286], [368, 286], [368, 306], [22, 306]], color: RED_DARK }] });
+  p.rect(22, 296, 346, 12, { fill: INK, r: 1, stroke: null });
+  for (let x = 40; x < 360; x += 28) p.rect(x, 258, 14, 14, { fill: GOLD, r: 7, width: 2.5, stroke: INK });
+  burst(p, 195, 226, 46, 16, GOLD, EMBER);
+  star(p, 195, 222, 30, BONE, 4);
+  // The shop window: lit gold, oil cans on shelves, a striped awning over it.
+  p.rect(48, 362, 200, 124, { fill: LIT, width: 5, r: 3, shade: [{ pts: [[48, 440], [250, 420], [250, 490], [48, 490]], color: LIT_DEEP }] });
+  for (const x of [114, 180]) p.line([[x, 364], [x, 484]], { width: 4, raw: true });
+  p.rect(56, 448, 184, 6, { fill: OX, r: 1, stroke: null });
+  for (let k = 0; k < 6; k++) p.rect(62 + k * 30, 424, 18, 24, { fill: [RED, PINE, GOLD][k % 3], width: 2.5, r: 2, stroke: INK });
+  p.line([[56, 370], [86, 370], [56, 400]], { width: 3, color: '#FFFFFF', raw: true, opacity: 0.6 });
+  for (let k = 0; k < 7; k++) p.shape([[40 + k * 31, 326], [71 + k * 31, 326], [67 + k * 31, 356], [44 + k * 31, 356]], { fill: k % 2 ? BONE : RED, raw: true, width: 3, stroke: INK });
+  for (let k = 0; k < 7; k++) p.ellipse(55 + k * 31, 358, 15, 6, { fill: k % 2 ? BONE : RED, width: 2.5, stroke: INK });
+  // The garage door: a red roller door with ink ribs and a gold handle, OPEN in its window strip.
+  p.rect(266, 340, 82, h - 384, { fill: RED, width: 4.5, r: 2, shade: [{ pts: [[316, 330], [350, 330], [350, h], [318, h]], color: RED_DARK }] });
+  for (let y = 360; y < h - 50; y += 18) p.line([[268, y], [346, y]], { width: 2.5, color: INK, raw: true });
+  p.rect(276, 372, 62, 16, { fill: LIT, width: 2.5, r: 1, stroke: INK });
+  p.rect(296, h - 64, 22, 8, { fill: GOLD, width: 2, r: 2, stroke: INK });
+  // The canopy: a heavy red fascia with a bone chevron trim, on two slanted ink columns, downlights under it.
+  for (const cx of [470, 780]) p.shape([[cx - 10, 260], [cx + 14, 260], [cx + 2, h], [cx - 22, h]], { fill: INK, raw: true, width: 4, stroke: INK });
+  p.shape([[380, 196], [890, 180], [890, 244], [380, 260]], { fill: RED, raw: true, width: 6, stroke: INK, shade: [{ pts: [[380, 236], [890, 220], [890, 246], [380, 262]], color: RED_DARK }] });
+  p.shape([[380, 196], [890, 180], [890, 194], [380, 210]], { fill: BONE, raw: true, width: 3, stroke: INK });
+  for (let x = 392, i = 0; x < 880; x += 26, i++) {
+    const y = 212 - (x - 380) * 0.0314;
+    p.shape([[x, y + 10], [x + 13, y + 10], [x + 22, y + 26], [x + 9, y + 26]], { fill: i % 2 ? GOLD : BONE, raw: true, stroke: null });
   }
-  // The arrow pylon: a tall slanted blade with a round sign, and a chain of bulbs down its edge.
-  p.shape([[748, h], [770, 140], [800, 140], [790, h]], { fill: '#F3E3CC', width: 5, raw: true });
-  p.shape([[690, 60], [840, 50], [850, 130], [700, 136]], { fill: '#E3263A', width: 6, raw: true });
-  p.shape([[700, 70], [832, 60], [840, 122], [708, 128]], { fill: '#8E1E24', stroke: null, raw: true });
-  p.shape([[770, 180], [860, 214], [790, 250]], { fill: '#FFB23F', width: 4, raw: true });
-  // Tyres stacked, a soda machine, an air post and flowers by the door.
-  for (let k = 0; k < 3; k++) p.ellipse(350, h - 16 - k * 22, 30, 12, { fill: '#2A2633', width: 3 });
-  p.rect(150, h - 92, 56, 92, { fill: '#C8302C', width: 4, r: 8 });
-  p.rect(160, h - 80, 36, 30, { fill: '#FFF4DE', width: 2.5, r: 4 });
-  p.rect(856, h - 120, 14, 120, { fill: '#9A96A8', width: 3, r: 3 });
-  for (let k = 0; k < 6; k++) p.dot(60 + k * 14, h - 16, 7, [C.terracotta, C.mustard, C.pink][k % 3]);
+  for (const lx of [440, 540, 660, 760, 850]) p.rect(lx - 30, 254 - (lx - 380) * 0.0314, 60, 9, { fill: GOLD, width: 2.5, r: 3, stroke: INK });
+  // Two round-shouldered pumps: red bodies, bone faces, gold globes, ink hoses, on a sand island.
+  p.rect(400, h - 18, 360, 18, { fill: SAND, width: 4, r: 2, stroke: INK });
+  for (let x = 404, i = 0; x < 756; x += 24, i++) p.shape([[x, h - 16], [x + 12, h - 16], [x + 20, h - 3], [x + 8, h - 3]], { fill: i % 2 ? INK : EMBER, raw: true, stroke: null });
+  for (const px of [530, 680]) {
+    p.rect(px - 34, 400, 68, h - 418, { fill: RED, width: 5, r: 20, stroke: INK, shade: [{ pts: [[px + 10, 390], [px + 40, 390], [px + 40, h], [px + 12, h]], color: RED_DARK }] });
+    p.rect(px - 24, 424, 48, 40, { fill: BONE, width: 3.5, r: 6, stroke: INK });
+    p.line([[px - 14, 440], [px + 14, 440]], { width: 2.5, raw: true });
+    p.line([[px - 14, 452], [px + 6, 452]], { width: 2.5, raw: true });
+    p.rect(px - 20, 478, 40, 8, { fill: GOLD, width: 2, r: 2, stroke: INK });
+    p.ellipse(px, 384, 24, 24, { fill: GOLD, width: 4.5, stroke: INK });
+    p.ellipse(px - 7, 377, 7, 5, { fill: '#FFFFFF', stroke: null, opacity: 0.8 });
+    p.rect(px - 24, 380, 48, 10, { fill: INK, stroke: null, r: 2 });
+    p.line([[px + 34, 470], [px + 54, 500], [px + 44, h - 24]], { width: 6 });
+  }
+  // The pylon: an ink blade, a red sign board in a gold sunburst, and an ember arrow pointing in.
+  burst(p, 770, 92, 88, 20, GOLD, EMBER);
+  p.ellipse(770, 92, 88, 88, { stroke: INK, width: 5 });
+  p.shape([[748, h], [768, 140], [802, 140], [792, h]], { fill: INK, width: 4, raw: true, stroke: INK });
+  p.shape([[690, 54], [850, 44], [858, 136], [698, 142]], { fill: RED, width: 6, raw: true, stroke: INK });
+  p.shape([[700, 64], [842, 54], [848, 126], [708, 132]], { fill: OX, stroke: null, raw: true });
+  p.shape([[690, 54], [850, 44], [852, 60], [692, 70]], { fill: BONE, stroke: null, raw: true });
+  p.shape([[800, 178], [880, 214], [800, 250], [812, 214]], { fill: EMBER, width: 4.5, raw: true, stroke: INK });
+  // Tyres, a soda machine, an air post and potted flowers.
+  for (let k = 0; k < 3; k++) {
+    p.ellipse(380, h - 16 - k * 22, 28, 12, { fill: INK, width: 3, stroke: INK });
+    p.ellipse(380, h - 16 - k * 22, 12, 5, { fill: OX, stroke: null });
+  }
+  p.rect(864, h - 130, 16, 130, { fill: BONE, width: 3.5, r: 3, stroke: INK });
+  p.ellipse(872, h - 138, 14, 14, { fill: EMBER, width: 3, stroke: INK });
   return { key: CORNER.key, svg: p.svg(CORNER.w, h), w: CORNER.w, h };
 }
 /** The bulbs down the arrow pylon, lit one after another. */
-export const CORNER_BULBS: [number, number][] = Array.from({ length: 10 }, (_, i) => [774 - i * 0.6 + 10, 160 + i * 36]);
+export const CORNER_BULBS: [number, number][] = Array.from({ length: 10 }, (_, i) => [784 - i * 0.6, 160 + i * 36]);
 
 // ---------------------------------------------------------------- 1. Maple Mill Fuel & Pie
 
@@ -92,10 +148,10 @@ export const MILL: StopLook = {
   key: 'stopart_1',
   w: 960,
   h: 600,
-  sign: { x: 330, y: 300, w: 300, size: 30, color: '#FFF0D6', stroke: '#5A3426' },
+  sign: { x: 290, y: 300, w: 300, size: 30, color: BONE, stroke: INK },
   glows: [
-    [250, 450, 260, 120, 0xffc860],
-    [120, 220, 80, 70, 0xffd27a],
+    [220, 460, 260, 120, 0xffc86b],
+    [280, 160, 70, 70, 0xffc86b],
   ],
   bay: 680,
 };
@@ -104,50 +160,71 @@ export const MILL_WHEEL = { x: 680, y: 440, r: 130 };
 function millArt(): Art {
   const p = pen(MILL.key);
   const { h } = MILL;
-  // The mill: a tall stone body under a steep shingled roof scattered with leaves.
-  p.rect(40, 230, 480, h - 230, { fill: '#B8A798', width: 5, r: 6, shade: [{ pts: [[400, 220], [540, 220], [540, h], [420, h]], color: '#9E8E82' }] });
+  // The mill: a tall stone body, its stones drawn as rounded blocks in sand and tan, quoins at the corners.
+  p.rect(40, 230, 500, h - 230, { fill: SAND, width: 5, r: 4, stroke: INK, shade: [{ pts: [[420, 220], [560, 220], [560, h], [440, h]], color: TAN }] });
   for (let row = 0; row < 9; row++) {
-    for (let sx = 50 + (row % 2) * 26; sx < 500; sx += 56) p.rect(sx, 250 + row * 38, 46, 30, { stroke: '#8A7A70', width: 2.4, r: 8, opacity: 0.7 });
+    for (let sx = 52 + (row % 2) * 26; sx < 520; sx += 56) p.rect(sx, 250 + row * 38, 46, 30, { stroke: TAN, width: 2.4, r: 8, opacity: 0.8 });
   }
-  p.shape([[20, 240], [280, 60], [540, 240]], { fill: '#8E4A3A', width: 6, raw: true, shade: [{ pts: [[280, 50], [560, 50], [560, 250], [280, 250]], color: '#743A2E' }] });
-  for (let r = 0; r < 6; r++) {
-    const y = 110 + r * 24;
-    const half = ((y - 60) / 180) * 260 - 12;
-    for (let x = 280 - half; x < 280 + half; x += 22) p.line([[x, y], [x + 11, y + 9], [x + 22, y]], { width: 2.4, color: '#5E2E26' });
+  for (let y = 240; y < h - 20; y += 52) for (const x of [40, 512]) p.rect(x, y, 28, 26, { fill: BONE, width: 3, r: 2, stroke: INK });
+  // The roof: steep plum shingles under an oxblood ridge, scattered with ember and gold leaves.
+  p.shape([[14, 244], [290, 52], [566, 244]], { fill: PLUM, width: 6, raw: true, stroke: INK, shade: [{ pts: [[290, 40], [580, 40], [580, 250], [290, 250]], color: OX }] });
+  for (let r = 0; r < 7; r++) {
+    const y = 96 + r * 22;
+    const half = ((y - 52) / 192) * 276 - 14;
+    for (let x = 290 - half; x < 290 + half; x += 22) p.line([[x, y], [x + 11, y + 9], [x + 22, y]], { width: 2.4, color: OX });
   }
-  for (const [lx, ly] of [[120, 214], [200, 150], [340, 120], [420, 196], [260, 200]] as const) p.ellipse(lx, ly, 10, 6, { fill: ['#E8743E', '#F2C45A', '#D8463A'][lx % 3], stroke: null });
-  // A round attic window, and the chimney.
-  p.ellipse(280, 160, 26, 26, { fill: WALL_LIGHT, width: 4 });
-  p.line([[254, 160], [306, 160]], { width: 3, raw: true });
-  p.rect(400, 80, 40, 90, { fill: '#9E8E82', width: 4, r: 3 });
-  // The pie shop front: a striped awning, a window full of pies, a door, a chalkboard.
-  for (let k = 0; k < 9; k++) p.shape([[110 + k * 40, 340], [150 + k * 40, 340], [146 + k * 40, 384], [114 + k * 40, 384]], { fill: k % 2 ? '#C8302C' : '#F4EADC', width: 3, raw: true });
-  p.rect(100, 330, 370, 14, { fill: '#5A3426', width: 3, r: 3 });
-  p.rect(130, 400, 220, 120, { fill: WALL_LIGHT, width: 4, r: 4 });
+  p.shape([[8, 250], [290, 46], [572, 250], [560, 256], [290, 64], [20, 256]], { fill: OX, raw: true, width: 3.5, stroke: INK });
+  for (const [lx, ly, c] of [[110, 222, EMBER], [190, 160, GOLD], [350, 120, RED], [430, 200, GOLD], [260, 206, EMBER], [480, 228, RED]] as const) {
+    p.shape([[lx, ly - 9], [lx + 8, ly], [lx, ly + 9], [lx - 8, ly]], { fill: c, raw: true, width: 2, stroke: INK });
+  }
+  // A round attic window glowing, with a crossbar; and the stone chimney.
+  p.ellipse(290, 160, 30, 30, { fill: LIT, width: 5, stroke: INK });
+  p.line([[260, 160], [320, 160]], { width: 4, raw: true });
+  p.line([[290, 130], [290, 190]], { width: 4, raw: true });
+  p.rect(400, 76, 44, 100, { fill: TAN, width: 4.5, r: 2, stroke: INK });
+  p.rect(394, 70, 56, 16, { fill: OX, width: 3.5, r: 2, stroke: INK });
+  // The name board, ink with a gold rule, on two iron brackets.
+  p.rect(130, 276, 320, 50, { fill: OX, width: 5, r: 4, stroke: INK });
+  p.rect(140, 284, 300, 34, { stroke: GOLD, width: 2.5, r: 2 });
+  // The pie shop: a red and bone awning with scalloped edge, a lit window of pies, a door, a chalkboard.
+  for (let k = 0; k < 10; k++) p.shape([[70 + k * 38, 340], [108 + k * 38, 340], [104 + k * 38, 380], [74 + k * 38, 380]], { fill: k % 2 ? BONE : RED, width: 3, raw: true, stroke: INK });
+  for (let k = 0; k < 10; k++) p.ellipse(89 + k * 38, 382, 19, 8, { fill: k % 2 ? BONE : RED, width: 2.5, stroke: INK });
+  p.rect(60, 330, 400, 14, { fill: INK, width: 3, r: 3, stroke: INK });
+  p.rect(90, 404, 240, 124, { fill: LIT, width: 5, r: 4, stroke: INK, shade: [{ pts: [[90, 470], [330, 450], [330, 530], [90, 530]], color: LIT_DEEP }] });
+  p.line([[210, 406], [210, 526]], { width: 4, raw: true });
+  p.rect(98, 498, 224, 8, { fill: OX, r: 1, stroke: null });
   for (let k = 0; k < 4; k++) {
-    p.ellipse(160 + k * 52, 490, 22, 8, { fill: '#D9923A', width: 2.5 });
-    p.ellipse(160 + k * 52, 486, 18, 5, { fill: '#B8642A', stroke: null });
+    p.ellipse(126 + k * 56, 490, 22, 9, { fill: GOLD, width: 2.5, stroke: INK });
+    p.ellipse(126 + k * 56, 486, 17, 5, { fill: GOLD_DARK, stroke: null });
+    for (let j = -1; j <= 1; j++) p.line([[126 + k * 56 + j * 7, 482], [126 + k * 56 + j * 7 + 3, 490]], { width: 1.5, color: OX, raw: true });
   }
-  p.rect(370, 400, 80, h - 400, { fill: '#6A3E2E', width: 4, r: 4 });
-  p.dot(436, 500, 5, '#FFD27A');
-  p.rect(60, h - 110, 56, 80, { fill: '#2E3A34', width: 4, r: 3 });
-  p.line([[66, h - 30], [60, h]], { width: 4 });
-  p.line([[110, h - 30], [116, h]], { width: 4 });
-  // The millrace: a wooden chute on posts carrying water to the top of the wheel.
-  p.rect(520, 270, 220, 26, { fill: '#7A5034', width: 4, r: 3 });
-  p.rect(700, 296, 14, h - 296, { fill: '#6A4430', width: 3, r: 2 });
-  // The wheel's axle housing on the wall.
-  p.ellipse(MILL_WHEEL.x, MILL_WHEEL.y, 22, 22, { fill: '#5A3426', width: 4 });
-  // An old pump, pumpkins and a hay bale.
-  p.rect(800, 420, 60, h - 420, { fill: '#2F7F6A', width: 4, r: 14 });
-  p.ellipse(830, 404, 24, 24, { fill: '#FFF0D6', width: 4 });
-  p.rect(812, 440, 36, 30, { fill: '#F4EADC', width: 3, r: 5 });
-  p.line([[860, 470], [884, 510], [870, 560]], { width: 5 });
-  for (const [x, r] of [[600, 26], [640, 18], [904, 22]] as const) {
-    p.ellipse(x, h - r, r * 1.2, r, { fill: '#E8743E', width: 3.5 });
-    p.line([[x, h - r * 2], [x + 4, h - r * 2 - 10]], { width: 4, color: '#3E5A2E' });
+  p.line([[98, 412], [128, 412], [98, 442]], { width: 3, color: '#FFFFFF', raw: true, opacity: 0.6 });
+  p.rect(360, 400, 86, h - 400, { fill: WOOD, width: 4.5, r: 4, stroke: INK, shade: [{ pts: [[410, 390], [450, 390], [450, h], [412, h]], color: OX }] });
+  p.rect(372, 414, 62, 50, { fill: LIT, width: 3, r: 3, stroke: INK });
+  p.dot(432, 508, 5, GOLD);
+  p.rect(36, h - 106, 46, 76, { fill: PINE, width: 4, r: 2, stroke: INK });
+  p.line([[46, h - 84], [72, h - 84]], { width: 2, color: BONE, raw: true });
+  p.line([[46, h - 70], [66, h - 70]], { width: 2, color: BONE, raw: true });
+  p.line([[42, h - 30], [36, h]], { width: 4 });
+  p.line([[76, h - 30], [82, h]], { width: 4 });
+  // The millrace: a timber chute on a post, carrying water to the top of the wheel.
+  p.rect(530, 268, 222, 28, { fill: WOOD, width: 4.5, r: 2, stroke: INK });
+  for (let x = 546; x < 750; x += 30) p.line([[x, 270], [x, 294]], { width: 2, color: OX, raw: true });
+  p.rect(706, 296, 16, h - 296, { fill: WOOD, width: 3.5, r: 2, stroke: INK });
+  p.ellipse(MILL_WHEEL.x, MILL_WHEEL.y, 24, 24, { fill: OX, width: 4.5, stroke: INK });
+  // A green pump, pumpkins and a hay bale.
+  p.rect(800, 420, 62, h - 420, { fill: PINE, width: 5, r: 16, stroke: INK });
+  p.ellipse(831, 402, 24, 24, { fill: GOLD, width: 4.5, stroke: INK });
+  p.rect(812, 440, 38, 32, { fill: BONE, width: 3, r: 5, stroke: INK });
+  p.line([[862, 470], [886, 510], [872, 560]], { width: 5 });
+  for (const [x, r] of [[596, 26], [636, 18], [910, 22]] as const) {
+    p.ellipse(x, h - r, r * 1.25, r, { fill: EMBER, width: 3.5, stroke: INK });
+    p.line([[x - r * 0.4, h - r * 1.8], [x - r * 0.4, h - 4]], { width: 2, color: '#C0602E', raw: true });
+    p.line([[x + r * 0.4, h - r * 1.8], [x + r * 0.4, h - 4]], { width: 2, color: '#C0602E', raw: true });
+    p.line([[x, h - r * 2], [x + 4, h - r * 2 - 10]], { width: 4, color: PINE });
   }
-  p.rect(480, h - 50, 90, 50, { fill: '#E2B85A', width: 4, r: 8 });
+  p.rect(476, h - 52, 92, 52, { fill: GOLD, width: 4, r: 8, stroke: INK });
+  for (let x = 488; x < 560; x += 14) p.line([[x, h - 46], [x + 4, h - 6]], { width: 2, color: GOLD_DARK, raw: true });
   return { key: MILL.key, svg: p.svg(MILL.w, h), w: MILL.w, h };
 }
 /** The mill wheel: spokes, paddles and rims, drawn separately so it can turn. */
@@ -155,16 +232,20 @@ function millWheelArt(): Art {
   const p = pen('mill_wheel');
   const r = MILL_WHEEL.r;
   const c = r + 14;
-  p.ellipse(c, c, r, r, { stroke: '#5A3426', width: 14, wobble: 0.3 });
-  p.ellipse(c, c, r - 24, r - 24, { stroke: '#7A5034', width: 8, wobble: 0.3 });
+  p.ellipse(c, c, r, r, { stroke: INK, width: 18, wobble: 0.3 });
+  p.ellipse(c, c, r, r, { stroke: WOOD, width: 10, wobble: 0.3 });
+  p.ellipse(c, c, r - 26, r - 26, { stroke: INK, width: 11, wobble: 0.3 });
+  p.ellipse(c, c, r - 26, r - 26, { stroke: RED_DARK, width: 5, wobble: 0.3 });
   for (let k = 0; k < 12; k++) {
     const a = (k / 12) * Math.PI * 2;
-    p.line([[c, c], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { width: 7, color: '#6A4430' });
+    p.line([[c, c], [c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6)]], { width: 8, color: INK });
+    p.line([[c, c], [c + Math.cos(a) * (r - 8), c + Math.sin(a) * (r - 8)]], { width: 4, color: WOOD });
     const px = c + Math.cos(a) * r;
     const py = c + Math.sin(a) * r;
-    p.shape([[px - Math.sin(a) * 22, py + Math.cos(a) * 22], [px + Math.sin(a) * 22, py - Math.cos(a) * 22], [px + Math.sin(a) * 22 + Math.cos(a) * 16, py - Math.cos(a) * 22 + Math.sin(a) * 16], [px - Math.sin(a) * 22 + Math.cos(a) * 16, py + Math.cos(a) * 22 + Math.sin(a) * 16]], { fill: '#8E5C3A', width: 3, raw: true });
+    p.shape([[px - Math.sin(a) * 22, py + Math.cos(a) * 22], [px + Math.sin(a) * 22, py - Math.cos(a) * 22], [px + Math.sin(a) * 22 + Math.cos(a) * 16, py - Math.cos(a) * 22 + Math.sin(a) * 16], [px - Math.sin(a) * 22 + Math.cos(a) * 16, py + Math.cos(a) * 22 + Math.sin(a) * 16]], { fill: k % 2 ? EMBER : GOLD, width: 3.5, raw: true, stroke: INK });
   }
-  p.ellipse(c, c, 20, 20, { fill: '#3E2A22', width: 4 });
+  p.ellipse(c, c, 24, 24, { fill: OX, width: 4.5, stroke: INK });
+  p.dot(c, c, 8, GOLD);
   return { key: 'mill_wheel', svg: p.svg(c * 2, c * 2), w: c * 2, h: c * 2 };
 }
 
@@ -174,51 +255,76 @@ export const LODGE: StopLook = {
   key: 'stopart_2',
   w: 940,
   h: 620,
-  sign: { x: 300, y: 512, w: 240, size: 30, color: '#FFE9C4', stroke: '#3A2418' },
+  sign: { x: 300, y: 514, w: 250, size: 30, color: GOLD, stroke: INK },
   glows: [
-    [300, 330, 300, 260, 0xffb040],
-    [700, 470, 160, 90, 0xffc860],
+    [300, 340, 300, 260, 0xffa840],
+    [720, 470, 140, 90, 0xffc86b],
   ],
   bay: 690,
 };
 function lodgeArt(): Art {
   const p = pen(LODGE.key);
   const { h } = LODGE;
-  // The A-frame: a log wall, a huge triangular window glowing gold, the steep roof under deep snow.
-  p.rect(70, 380, 460, h - 380, { fill: '#7A4E36', width: 5, r: 4 });
-  for (let y = 396; y < h; y += 22) p.line([[74, y], [526, y]], { width: 3, color: '#5E3A28', raw: true });
-  p.shape([[300, 150], [470, 470], [130, 470]], { fill: '#FFC860', width: 5, raw: true, shade: [{ pts: [[300, 330], [470, 470], [130, 470]], color: '#FFA840' }] });
-  for (const [a, b] of [[[300, 150], [300, 470]], [[215, 310], [385, 310]], [[172, 390], [428, 390]]] as const) p.line([a as [number, number], b as [number, number]], { width: 5, raw: true, color: '#3A2418' });
-  // Silhouettes inside: a person by the fire, a lamp.
-  p.ellipse(250, 420, 14, 14, { fill: '#8E4E2A', stroke: null });
-  p.rect(236, 434, 28, 36, { fill: '#8E4E2A', stroke: null, r: 6 });
-  p.shape([[40, 520], [300, 40], [560, 520], [520, 520], [300, 110], [80, 520]], { fill: '#5A3626', width: 5, raw: true });
-  // Snow piled on the roof, bulging over the edges, with icicles.
-  p.shape([[22, 528], [300, 24], [578, 528], [552, 540], [300, 76], [48, 540]], { fill: '#F4F8FF', width: 4, raw: true, shade: [{ pts: [[300, 60], [600, 60], [600, 560], [300, 560]], color: '#D6E2F2' }] });
+  // A stone base, and log walls in wood with ink seams and round log-ends at the corners.
+  p.rect(70, 380, 460, h - 380, { fill: WOOD, width: 5, r: 3, stroke: INK, shade: [{ pts: [[420, 370], [540, 370], [540, h], [430, h]], color: OX }] });
+  for (let y = 398; y < h - 40; y += 22) p.line([[74, y], [526, y]], { width: 3, color: OX, raw: true });
+  for (let y = 392; y < h - 40; y += 22) for (const x of [70, 530]) {
+    p.ellipse(x, y, 11, 10, { fill: '#B87A52', width: 3, stroke: INK });
+    p.ellipse(x, y, 4, 4, { stroke: WOOD, width: 1.5 });
+  }
+  p.rect(60, h - 40, 480, 40, { fill: TAN, width: 4.5, r: 2, stroke: INK });
+  for (let x = 70; x < 530; x += 44) p.rect(x, h - 34, 36, 26, { stroke: '#8A6E58', width: 2, r: 8 });
+  // The great window: a triangle of gold, mullioned in ink, with a fire and a figure inside.
+  p.shape([[300, 150], [474, 474], [126, 474]], { fill: LIT, width: 6, raw: true, stroke: INK, shade: [{ pts: [[300, 330], [474, 474], [126, 474]], color: LIT_DEEP }] });
+  for (const [a, b] of [[[300, 150], [300, 474]], [[214, 310], [386, 310]], [[170, 392], [430, 392]]] as const) p.line([a as [number, number], b as [number, number]], { width: 5, raw: true, color: INK });
+  p.rect(340, 420, 70, 54, { fill: OX, stroke: null, r: 2 });
+  p.shape([[352, 470], [364, 436], [374, 452], [386, 428], [398, 470]], { fill: EMBER, raw: true, stroke: null });
+  p.shape([[362, 470], [374, 452], [386, 470]], { fill: GOLD, raw: true, stroke: null });
+  p.ellipse(240, 420, 15, 15, { fill: OX, stroke: null });
+  p.rect(224, 434, 32, 40, { fill: OX, stroke: null, r: 8 });
+  p.line([[180, 470], [180, 404], [196, 396]], { width: 3, color: OX, raw: true });
+  p.ellipse(198, 396, 12, 8, { fill: GOLD, stroke: null });
+  // The roof: plum boards on the A, under a thick bone snow cap shaded in halftone, with icicles.
+  p.shape([[40, 520], [300, 40], [560, 520], [520, 520], [300, 112], [80, 520]], { fill: PLUM, width: 5, raw: true, stroke: INK });
+  p.shape([[22, 528], [300, 22], [578, 528], [552, 542], [300, 78], [48, 542]], { fill: BONE, width: 5, raw: true, stroke: INK, shade: [{ pts: [[300, 60], [600, 60], [600, 560], [300, 560]], color: SAND }] });
   for (let k = 0; k < 9; k++) {
     const x = 60 + k * 26;
     const y = 540 - k * 46;
-    p.shape([[x, y], [x + 6, y], [x + 3, y + 18 + (k % 3) * 8]], { fill: '#E6F2FF', width: 2, raw: true });
+    p.shape([[x, y], [x + 7, y], [x + 3, y + 18 + (k % 3) * 8]], { fill: BONE, width: 2.5, raw: true, stroke: INK });
     const x2 = 540 - k * 26;
-    p.shape([[x2, y], [x2 + 6, y], [x2 + 3, y + 14 + (k % 2) * 10]], { fill: '#E6F2FF', width: 2, raw: true });
+    p.shape([[x2, y], [x2 + 7, y], [x2 + 3, y + 14 + (k % 2) * 10]], { fill: BONE, width: 2.5, raw: true, stroke: INK });
   }
-  // A stone chimney poking through the snow.
-  p.rect(400, 120, 50, 140, { fill: '#8A8A98', width: 4, r: 3 });
-  p.rect(394, 108, 62, 22, { fill: '#F4F8FF', width: 3, r: 8 });
-  // The porch and its sign board, firewood, skis, a snowman and a snow-capped pump.
-  p.rect(170, 490, 260, 44, { fill: '#5A3626', width: 4, r: 6 });
-  for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) p.ellipse(580 + k * 26, h - 16 - j * 24, 13, 12, { fill: '#9A6A4A', width: 3 });
-  for (const [x, c] of [[668, '#D8463A'], [686, '#3E6EA6']] as const) p.shape([[x, h], [x - 10, h - 170], [x - 2, h - 172], [x + 8, h]], { fill: c, width: 3, raw: true });
-  p.ellipse(760, h - 50, 50, 46, { fill: '#F4F8FF', width: 4 });
-  p.ellipse(760, h - 128, 36, 34, { fill: '#F4F8FF', width: 4 });
-  p.ellipse(760, h - 184, 26, 25, { fill: '#F4F8FF', width: 4 });
-  p.dot(752, h - 190, 3, INK);
-  p.dot(768, h - 190, 3, INK);
-  p.shape([[760, h - 182], [784, h - 178], [760, h - 176]], { fill: C.mustard, width: 2, raw: true });
-  p.line([[740, h - 160], [784, h - 160]], { width: 10, color: '#D8463A' });
-  p.rect(830, 470, 56, h - 470, { fill: '#3E6EA6', width: 4, r: 12 });
-  p.rect(824, 460, 68, 18, { fill: '#F4F8FF', width: 3, r: 8 });
-  p.rect(842, 492, 32, 28, { fill: '#E6F2FF', width: 3, r: 4 });
+  // A crest at the peak: crossed skis behind a red shield with a gold star.
+  for (const s of [-1, 1]) p.line([[300 - s * 40, 70], [300 + s * 40, 6]], { width: 7, color: INK });
+  p.shape([[276, 18], [324, 18], [324, 46], [300, 62], [276, 46]], { fill: RED, raw: true, width: 4, stroke: INK });
+  star(p, 300, 36, 11, GOLD, 2.5);
+  // The stone chimney poking through the snow.
+  p.rect(402, 120, 48, 140, { fill: TAN, width: 4.5, r: 2, stroke: INK });
+  for (let y = 132; y < 250; y += 24) p.line([[404, y], [448, y]], { width: 2, color: '#8A6E58', raw: true });
+  p.rect(394, 106, 64, 24, { fill: BONE, width: 3.5, r: 10, stroke: INK });
+  // The porch board the game writes the name on: ink, gold-ruled, on two posts.
+  p.rect(160, 490, 280, 48, { fill: INK, width: 4, r: 4, stroke: INK });
+  p.rect(168, 497, 264, 34, { stroke: GOLD, width: 2.5, r: 2 });
+  // Firewood, skis, a snowman with a red scarf, and a snow-capped red pump.
+  for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) {
+    p.ellipse(586 + k * 26, h - 16 - j * 24, 13, 12, { fill: '#B87A52', width: 3, stroke: INK });
+    p.ellipse(586 + k * 26, h - 16 - j * 24, 5, 5, { stroke: WOOD, width: 1.5 });
+  }
+  p.shape([[574, h - 74], [612, h - 88], [690, h - 88], [700, h - 74]], { fill: BONE, raw: true, width: 3, stroke: INK });
+  for (const [x, c] of [[684, RED], [702, GOLD]] as const) p.shape([[x, h], [x - 10, h - 170], [x - 2, h - 172], [x + 8, h]], { fill: c, width: 3.5, raw: true, stroke: INK });
+  p.ellipse(770, h - 50, 50, 46, { fill: BONE, width: 4.5, stroke: INK, shade: [{ pts: [[780, h - 100], [830, h - 100], [830, h], [780, h]], color: SAND }] });
+  p.ellipse(770, h - 128, 36, 34, { fill: BONE, width: 4.5, stroke: INK });
+  p.ellipse(770, h - 184, 26, 25, { fill: BONE, width: 4.5, stroke: INK });
+  p.dot(762, h - 190, 3.5, INK);
+  p.dot(778, h - 190, 3.5, INK);
+  p.shape([[770, h - 182], [796, h - 178], [770, h - 175]], { fill: EMBER, width: 2, raw: true, stroke: INK });
+  p.line([[748, h - 160], [794, h - 160]], { width: 11, color: RED });
+  p.line([[788, h - 160], [800, h - 130]], { width: 9, color: RED });
+  for (const y of [h - 136, h - 112, h - 64]) p.dot(770, y, 4, INK);
+  p.rect(846, 470, 56, h - 470, { fill: RED, width: 4.5, r: 14, stroke: INK, shade: [{ pts: [[880, 460], [906, 460], [906, h], [882, h]], color: RED_DARK }] });
+  p.rect(838, 458, 72, 20, { fill: BONE, width: 3.5, r: 10, stroke: INK });
+  p.rect(858, 494, 32, 28, { fill: BONE, width: 3, r: 4, stroke: INK });
+  p.ellipse(874, 450, 14, 12, { fill: GOLD, width: 3, stroke: INK });
   return { key: LODGE.key, svg: p.svg(LODGE.w, h), w: LODGE.w, h };
 }
 /** The string lights along the eaves, as points that twinkle. */
@@ -235,58 +341,71 @@ export const DINER: StopLook = {
   key: 'stopart_3',
   w: 1000,
   h: 520,
-  sign: { x: 330, y: 92, w: 340, size: 52, color: '#FF6AA0', stroke: '#FFE6F0' },
+  sign: { x: 330, y: 92, w: 340, size: 52, color: GOLD, stroke: RED },
   glows: [
-    [330, 330, 560, 120, 0xffc8a0],
-    [330, 92, 420, 110, 0xff4f8b],
-    [800, 380, 160, 80, 0x5cf2ff],
+    [330, 320, 560, 110, 0xffc86b],
+    [330, 92, 420, 110, 0xff6a30],
+    [800, 322, 160, 70, 0xff6a30],
   ],
   bay: 760,
 };
 function dinerArt(): Art {
   const p = pen(DINER.key);
   const { h } = DINER;
-  // The diner car: a long box with rounded ends, chrome bands, a pink stripe, and a band of lit windows.
-  p.rect(40, 210, 600, 270, { fill: '#C9CED8', width: 6, r: 60, shade: [{ pts: [[0, 400], [700, 400], [700, 500], [0, 500]], color: '#A4AAB8' }] });
-  for (let y = 230; y < 470; y += 16) p.line([[90, y], [590, y]], { width: 2, color: '#E8ECF2', raw: true, opacity: 0.7 });
-  p.rect(40, 384, 600, 26, { fill: '#FF5C8A', width: 4, r: 4 });
-  p.rect(70, 270, 540, 100, { fill: '#FFE2B8', width: 5, r: 10 });
-  for (let x = 130; x < 610; x += 60) p.line([[x, 272], [x, 368]], { width: 4, raw: true, color: '#8A92A6' });
-  // Inside: a counter, stools, pie cases and two diners.
-  p.rect(90, 336, 500, 12, { fill: '#C83A5A', stroke: null, r: 3 });
-  for (let x = 110; x < 590; x += 44) p.ellipse(x, 360, 12, 6, { fill: '#D8463A', stroke: null });
-  for (const x of [220, 420]) {
-    p.ellipse(x, 300, 14, 14, { fill: '#5A3E4E', stroke: null });
-    p.rect(x - 14, 312, 28, 26, { fill: '#5A3E4E', stroke: null, r: 6 });
+  burst(p, 330, 92, 92, 24, GOLD, EMBER);
+  p.ellipse(330, 92, 92, 92, { stroke: INK, width: 5 });
+  // The diner car: a long bone body with rounded ends, fluted bands, a red racing stripe and ink trim.
+  p.rect(40, 210, 600, 270, { fill: BONE, width: 6, r: 60, stroke: INK, shade: [{ pts: [[0, 400], [700, 400], [700, 500], [0, 500]], color: SAND }] });
+  for (let y = 420; y < 470; y += 10) p.line([[80, y], [600, y]], { width: 2, color: TAN, raw: true, opacity: 0.8 });
+  p.rect(40, 380, 600, 30, { fill: RED, width: 4.5, r: 3, stroke: INK });
+  p.rect(40, 392, 600, 6, { fill: GOLD, r: 0, stroke: null });
+  for (const x of [80, 600]) p.shape([[x - 20, 380], [x + 20, 380], [x, 410]], { fill: INK, raw: true, stroke: null });
+  // The band of lit windows, mullioned in ink, with a counter, stools and two diners inside.
+  p.rect(70, 262, 540, 106, { fill: LIT, width: 5, r: 10, stroke: INK, shade: [{ pts: [[70, 330], [610, 320], [610, 370], [70, 370]], color: LIT_DEEP }] });
+  for (let x = 130; x < 610; x += 60) p.line([[x, 264], [x, 366]], { width: 4.5, raw: true, color: INK });
+  p.rect(80, 334, 520, 12, { fill: RED_DARK, stroke: null, r: 3 });
+  for (let x = 104; x < 590; x += 44) {
+    p.ellipse(x, 358, 12, 6, { fill: RED, stroke: null });
+    p.line([[x, 362], [x, 368]], { width: 3, color: OX, raw: true });
   }
-  // The door with a porthole, steps, and a roof cornice.
-  p.rect(560, 290, 60, 160, { fill: '#9AA2B6', width: 4, r: 6 });
-  p.ellipse(590, 330, 18, 18, { fill: '#FFE2B8', width: 3 });
-  p.rect(546, 450, 90, 30, { fill: '#7A8094', width: 3, r: 3 });
-  p.rect(30, 196, 620, 22, { fill: '#E8ECF2', width: 4, r: 10 });
-  // The rooftop sign frame (the neon words are lit in the game) with a star on top.
-  p.rect(130, 40, 400, 100, { fill: '#1A1630', width: 5, r: 14 });
-  p.line([[200, 140], [200, 198]], { width: 6 });
-  p.line([[460, 140], [460, 198]], { width: 6 });
-  const star = (cx: number, cy: number, r: number) => {
-    const pts: [number, number][] = [];
-    for (let k = 0; k < 10; k++) {
-      const a = -Math.PI / 2 + (k / 10) * Math.PI * 2;
-      const rr = k % 2 ? r * 0.45 : r;
-      pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
-    }
-    p.shape(pts, { fill: '#FFE07A', width: 4, raw: true });
-  };
-  star(560, 40, 30);
-  // A little canopy over one pump, an OPEN sign, and a parked retro car.
-  p.rect(700, 250, 260, 20, { fill: '#2A2E50', width: 4, r: 4 });
-  p.rect(820, 270, 12, h - 270, { fill: '#9AA2B6', width: 3, r: 3 });
-  p.rect(760, 380, 50, h - 380, { fill: '#FF5C8A', width: 4, r: 12 });
-  p.rect(768, 396, 34, 24, { fill: '#1A1630', width: 2.5, r: 4 });
-  p.rect(700, 300, 120, 44, { fill: '#1A1630', width: 4, r: 8 });
-  p.shape([[860, h - 10], [866, h - 60], [900, h - 86], [960, h - 86], [984, h - 60], [992, h - 10]], { fill: '#5CC8C0', width: 4, raw: true });
-  p.rect(894, h - 80, 64, 24, { fill: '#2A3A5A', width: 3, r: 6 });
-  for (const wx of [884, 970]) p.ellipse(wx, h - 10, 14, 14, { fill: '#1E1C2A', width: 3 });
+  for (const x of [220, 420]) {
+    p.ellipse(x, 296, 14, 14, { fill: OX, stroke: null });
+    p.rect(x - 14, 308, 28, 28, { fill: OX, stroke: null, r: 6 });
+  }
+  p.rect(300, 306, 60, 28, { fill: BONE, width: 2.5, r: 12, stroke: INK, opacity: 0.85 });
+  p.ellipse(330, 322, 18, 6, { fill: GOLD, stroke: null });
+  for (const x of [78, 138]) p.line([[x, 272], [x + 24, 272], [x, 300]], { width: 3, color: '#FFFFFF', raw: true, opacity: 0.5 });
+  // The door with a porthole, the steps, and the roof cornice in red over ink.
+  p.rect(556, 288, 64, 162, { fill: RED, width: 4.5, r: 6, stroke: INK });
+  p.ellipse(588, 328, 20, 20, { fill: LIT, width: 4, stroke: INK });
+  p.rect(568, 380, 40, 6, { fill: GOLD, r: 2, stroke: null });
+  p.rect(542, 450, 94, 30, { fill: TAN, width: 4, r: 2, stroke: INK });
+  p.line([[546, 465], [632, 465]], { width: 2.5, raw: true });
+  p.rect(26, 194, 628, 26, { fill: RED, width: 5, r: 12, stroke: INK });
+  p.rect(36, 214, 608, 8, { fill: INK, r: 2, stroke: null });
+  // The rooftop sign: an ink frame in a gold sunburst (the neon words are lit in the game), a star on top.
+  for (const bx of [90, 570]) { burst(p, bx, 92, 62, 14, EMBER, GOLD); p.ellipse(bx, 92, 62, 62, { stroke: INK, width: 4 }); }
+  p.rect(110, 34, 440, 116, { fill: OX, width: 7, r: 18, stroke: INK });
+  p.rect(124, 46, 412, 92, { fill: INK, stroke: null, r: 12 });
+  for (let k = 0; k < 16; k++) p.dot(132 + k * 26.5, 44, 4, BONE);
+  p.line([[200, 150], [200, 196]], { width: 7 });
+  p.line([[460, 150], [460, 196]], { width: 7 });
+  star(p, 560, 40, 32, GOLD, 5);
+  // The pump canopy, an OPEN 24/7 board, a red pump and a parked ember coupe.
+  p.rect(694, 246, 272, 26, { fill: INK, width: 4, r: 3, stroke: INK });
+  for (let x = 700, i = 0; x < 960; x += 22, i++) p.rect(x, 252, 14, 14, { fill: i % 2 ? RED : GOLD, r: 7, stroke: null });
+  p.rect(826, 272, 14, h - 272, { fill: INK, width: 3, r: 2, stroke: INK });
+  p.rect(700, 300, 120, 44, { fill: INK, width: 4, r: 8, stroke: INK });
+  p.rect(756, 378, 54, h - 378, { fill: RED, width: 4.5, r: 14, stroke: INK, shade: [{ pts: [[790, 370], [814, 370], [814, h], [792, h]], color: RED_DARK }] });
+  p.rect(764, 394, 38, 26, { fill: BONE, width: 2.5, r: 4, stroke: INK });
+  p.ellipse(783, 372, 18, 14, { fill: GOLD, width: 3.5, stroke: INK });
+  p.shape([[856, h - 10], [862, h - 60], [898, h - 88], [962, h - 88], [986, h - 60], [994, h - 10]], { fill: EMBER, width: 4.5, raw: true, stroke: INK, shade: [{ pts: [[856, h - 40], [994, h - 40], [994, h], [856, h]], color: '#C0602E' }] });
+  p.rect(892, h - 82, 66, 24, { fill: LIT, width: 3, r: 6, stroke: INK });
+  p.line([[860, h - 46], [990, h - 46]], { width: 3, color: BONE, raw: true });
+  for (const wx of [884, 966]) {
+    p.ellipse(wx, h - 12, 16, 16, { fill: INK, width: 3, stroke: INK });
+    p.ellipse(wx, h - 12, 6, 6, { fill: BONE, stroke: null });
+  }
   return { key: DINER.key, svg: p.svg(DINER.w, h), w: DINER.w, h };
 }
 
@@ -379,7 +498,7 @@ export function placeStop(scene: Phaser.Scene, index: number, x: number, ground:
   }
   // Starlite Diner: the rooftop neon buzzes, the star sparkles, OPEN blinks.
   const star = scene.add.image(x + 560, top + 40, 'halo').setDepth(-9.6).setDisplaySize(120, 120).setTint(0xffe07a).setBlendMode(Phaser.BlendModes.ADD);
-  const open = scene.add.text(x + 760, top + 322, 'OPEN 24/7', { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '26px', color: '#5CF2FF', letterSpacing: 2 }).setOrigin(0.5).setDepth(-9.6).setShadow(0, 0, '#5CF2FF', 12, true, true);
+  const open = scene.add.text(x + 760, top + 322, 'OPEN 24/7', { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '26px', color: '#FF6A30', letterSpacing: 2 }).setOrigin(0.5).setDepth(-9.6).setShadow(0, 0, '#FF6A30', 12, true, true);
   const reflections = [label, open].map(() => 0);
   void reflections;
   return (time: number) => {

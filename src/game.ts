@@ -223,6 +223,7 @@ export class PlayScene extends Phaser.Scene {
   private prompts!: Prompter;
   private gantry?: { banner: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text };
   private lastSaveMoment = -9999;
+  private walls?: Body[];
   private pauseList?: PosterList;
   private closeControls?: () => void;
   private lostFoundList?: PosterList;
@@ -292,6 +293,7 @@ export class PlayScene extends Phaser.Scene {
     this.chimneys = [];
     this.held = null;
     this.ropesLeft = ROPES;
+    this.walls = undefined;
     this.roping = false;
     this.driveTime = 0;
     this.arrivedAt = 0;
@@ -1160,7 +1162,7 @@ export class PlayScene extends Phaser.Scene {
     this.chimneys = [];
     for (const [x0, key, words] of houses) {
       // The manor is a bigger picture: drawn smaller so its dome and flag stay on screen.
-      const k = key === 'house_old' ? 1.1 : 0.8;
+      const k = key === 'house_old' ? 1.1 : 0.68;
       const groundY0 = GROUND + 6;
       // The old house is a cottage; the new one is a manor, a bigger picture with its own landmarks.
       const look = key === 'house_old' ? HOUSE : MANOR;
@@ -1492,7 +1494,7 @@ export class PlayScene extends Phaser.Scene {
     this.hudHearts = fixed(this.add.text(W - 560, 76, '', { fontFamily: TITLE, fontSize: '46px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
     this.hudLabel = fixed(this.add.text(W - 390, 66, '', { fontFamily: TITLE, fontSize: '32px', color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0, 0.5));
     this.hudBar = fixed(this.add.graphics());
-    this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.08)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.066))];
+    this.hudHomes = [fixed(this.add.image(W - 360, 62, 'house_old#0').setScale(0.08)), fixed(this.add.image(W - 66, 62, 'house_new#0').setScale(0.05))];
     this.hudTruck = fixed(this.add.image(W - 330, 54, 'truck#0').setScale(0.1));
 
     this.tag = this.add
@@ -1901,6 +1903,24 @@ export class PlayScene extends Phaser.Scene {
       g.lineStyle(4, 0x0a0712).strokeRoundedRect(24, 2, 14, 9, 3);
       g.generateTexture('i_fuel', 46, 50);
       g.destroy();
+    }
+  }
+
+  /**
+   * While loading, the screen's left and right edges are walls, so nothing dropped or flung while
+   * packing can tumble out of view. They exist only in the packing phase and go when the truck sets
+   * off. There is no ceiling: things claimed from the Lost & Found still drop in from above.
+   */
+  private packWalls() {
+    const packing = this.phase === 'pack';
+    if (packing && !this.walls) {
+      const cam = this.cameras.main;
+      const wall = (x: number) => M.Bodies.rectangle(x, H / 2, 60, H * 4, { isStatic: true, label: 'wall', friction: 0.3, restitution: 0.1 });
+      this.walls = [wall(cam.scrollX - 30), wall(cam.scrollX + W + 30)];
+      this.matter.world.add(this.walls);
+    } else if (!packing && this.walls) {
+      for (const b of this.walls) this.matter.world.remove(b);
+      this.walls = undefined;
     }
   }
 
@@ -2584,6 +2604,7 @@ export class PlayScene extends Phaser.Scene {
   update(time: number, delta: number) {
     if (this.paused) return;
     this.prompts.update();
+    this.packWalls();
     const cam = this.cameras.main;
     this.frame++;
     if (this.phase === 'intro') this.reverseIn(delta);
