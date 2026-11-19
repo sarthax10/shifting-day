@@ -396,8 +396,13 @@ function birch(key: string): Art {
   );
 }
 
-/** A pine: jagged tiers, each lit on the sun side and screened on the other, a spire at the top. */
-function pine(key: string, pal: Palette, snowy: boolean, seed: number): Art {
+/**
+ * A pine as one silhouette: a single outline that steps out at every tier - down a sloping edge to a
+ * drooping tip, back in to a notch where the next tier hangs below - so no tier is drawn over another.
+ * The sun side is lit and the far side screened in halftone, as one shape. The tiers show only as soft
+ * shadow lines under each, with needles hanging from them, and the sun's rim runs along the outer edge.
+ */
+function pine(key: string, pal: Palette, _snowy: boolean, seed: number): Art {
   const w = 260;
   const h = 460;
   return tree(
@@ -405,31 +410,69 @@ function pine(key: string, pal: Palette, snowy: boolean, seed: number): Art {
     w,
     h,
     (p, r) => {
-      bole(p, 130, h - 8, 340, 9, [], 0);
+      const cx = 130;
+      bole(p, cx, h - 8, 360, 9, [], 0);
       const tiers = 6;
+      const apex = 22;
+      const rows: { tipY: number; half: number; notch: number }[] = [];
       for (let t = 0; t < tiers; t++) {
         const k = t / (tiers - 1);
-        const y = 70 + k * 290;
-        const half = 30 + k * 92 + (r() - 0.5) * 8;
-        const tipY = y + 46 + k * 18;
-        const peak: Pt = [130, y - 40 - (t ? 0 : 26)];
-        // A saw-toothed lower edge: needles hanging in points.
-        const lower: Pt[] = [];
-        const teeth = 6 + t;
-        for (let i = 0; i <= teeth; i++) {
-          const u = i / teeth;
-          const x = 130 + half - u * half * 2;
-          lower.push([x, tipY - Math.sin(u * Math.PI) * (14 + k * 10) + (i % 2 ? 10 : 0)]);
+        rows.push({ tipY: 104 + k * 286 + (r() - 0.5) * 6, half: 34 + k * 90 + (r() - 0.5) * 8, notch: 0 });
+      }
+      // Where each tier tucks in under the one above: a notch partway back toward the trunk.
+      rows.forEach((row) => (row.notch = row.half * 0.46));
+      const side = (s: 1 | -1): Pt[] => {
+        const pts: Pt[] = [];
+        rows.forEach((row, t) => {
+          const from: Pt = t === 0 ? [cx, apex] : [cx + s * rows[t - 1].notch, rows[t - 1].tipY - 6];
+          // The sloping edge, slightly concave, out to a drooping tip.
+          pts.push([from[0] + (cx + s * row.half - from[0]) * 0.55, from[1] + (row.tipY - from[1]) * 0.5 - 4]);
+          pts.push([cx + s * (row.half - 6), row.tipY - 8]);
+          pts.push([cx + s * row.half, row.tipY + 4]);
+          if (t < rows.length - 1) {
+            // Back in along the tier's lower edge to the notch.
+            pts.push([cx + s * (row.half * 0.78), row.tipY - 2]);
+            pts.push([cx + s * row.notch, row.tipY - 6]);
+          }
+        });
+        return pts;
+      };
+      const right = side(1);
+      const left = side(-1);
+      // The bottom: needles hanging from the lowest tier in a soft saw edge, right tip to left tip.
+      const last = rows[rows.length - 1];
+      const bottom: Pt[] = [];
+      const teeth = 9;
+      for (let i = 1; i < teeth; i++) {
+        const u = i / teeth;
+        bottom.push([cx + last.half - u * last.half * 2, last.tipY - Math.sin(u * Math.PI) * 18 + (i % 2 ? 8 : -2)]);
+      }
+      const outline: Pt[] = [[cx, apex], ...right, ...bottom, ...left.slice().reverse()];
+      p.shape(outline, { fill: pal.light, raw: true, width: 4.2, wobble: 0.3, shade: [{ pts: [[cx + 2, 0], [w, 0], [w, h], [cx + 6, h]], color: pal.shadow }] });
+      // The tiers: a soft shadow under each, on the lit side only, sagging from the trunk out toward the tip,
+      // with a few needles hanging from it - enough to read the layers without outlining them again.
+      for (let t = 0; t < rows.length - 1; t++) {
+        const row = rows[t];
+        const shadow: Pt[] = [];
+        for (let i = 0; i <= 6; i++) {
+          const u = i / 6;
+          shadow.push([cx - 4 - u * row.half * 0.74, row.tipY - 4 - Math.sin(u * Math.PI * 0.9) * 8 + u * 6]);
         }
-        const body: Pt[] = [peak, [130 + half * 0.5, y + 6], ...lower, [130 - half * 0.5, y + 6]];
-        p.shape(body, { fill: pal.light, raw: true, width: 3.6, shade: [{ pts: [[132, y - 70], [w, y - 70], [w, tipY + 24], [132, tipY + 24]], color: pal.shadow }] });
-        p.line([peak, [130 - half * 0.5, y + 6], [130 - half, tipY]], { width: 3, color: pal.rim, raw: true, opacity: 0.75 });
-        if (snowy) {
-          const snow: Pt[] = [[130, peak[1] + 4], [130 + half * 0.5, y + 8], [130 + half * 0.82, tipY - 16], [130 + half * 0.36, y + 14], [130, y + 4], [130 - half * 0.36, y + 14], [130 - half * 0.82, tipY - 16], [130 - half * 0.5, y + 8]];
-          p.shape(snow, { fill: '#F3E3CC', width: 2.4, shade: [{ pts: [[130, y - 60], [w, y - 60], [w, tipY + 20], [130, tipY + 20]], color: '#9A84C0' }] });
+        const under = shadow.map(([x, y]): Pt => [x, y + 7]).reverse();
+        p.shape([...shadow, ...under], { fill: pal.mid, raw: true, stroke: null, wobble: 0.3, opacity: 0.85 });
+        for (let i = 1; i < 6; i += 2) {
+          const [x, y] = shadow[i];
+          p.line([[x, y + 6], [x - 2, y + 14]], { width: 2, color: pal.mid, raw: true, opacity: 0.85 });
         }
       }
-      if (!snowy) tufts(p, 130, h - 8, 90, r);
+      // The sun's rim: one stroke per tier, down its sloping outer edge on the left to the tip, and no further.
+      rows.forEach((row, t) => {
+        const from: Pt = t === 0 ? [cx, apex] : [cx - rows[t - 1].notch, rows[t - 1].tipY - 6];
+        const midPt: Pt = [from[0] + (cx - row.half - from[0]) * 0.55, from[1] + (row.tipY - from[1]) * 0.5 - 4];
+        const tip: Pt = [cx - (row.half - 6), row.tipY - 8];
+        p.line([[from[0] - 1, from[1] + 8], [midPt[0] + 5, midPt[1] + 2], [tip[0] + 6, tip[1] - 1]], { width: 3, color: pal.rim, raw: true, opacity: 0.85 });
+      });
+      tufts(p, cx, h - 8, 90, r);
     },
     seed,
   );
