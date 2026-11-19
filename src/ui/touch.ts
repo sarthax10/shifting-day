@@ -29,6 +29,22 @@ export interface TouchView {
   muted: boolean;
 }
 
+/** The touchscreen's slim gauge, in place of the dashboard: fed every frame while driving. */
+export interface GaugeView {
+  /** Show it (a touchscreen, driving). */
+  on: boolean;
+  kmh: number;
+  /** Revs, 0 to 1 of the redline. */
+  revs: number;
+  /** At the rev limiter: the lights flash. */
+  limit: boolean;
+  /** Which way to shift, lit on the gauge and on the rocker. */
+  cue: 'up' | 'down' | '';
+  stalled: boolean;
+  /** 0 to 1. */
+  fuel: number;
+}
+
 export interface TouchActions {
   turn(dir: -1 | 1): void;
   gearUp(): void;
@@ -79,6 +95,28 @@ const CSS = `
 #touchpad .pack .round { width: var(--u); height: var(--u); }
 #touchpad .pack.idle .round { opacity: .45; }
 #touchpad .pack b { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); text-align: center; font-family: "Space Mono", monospace; font-weight: 700; font-size: calc(var(--u) * .14); letter-spacing: .2em; opacity: .8; text-shadow: 0 1px 2px #0A0712; }
+/* The gauge: a slim printed strip at the bottom middle, out of the road's way. Speed in Anton,
+   the shift lights, a fuel line along its foot, and a shift cue tagged on top when it is time. */
+#touchpad .gauge { position: absolute; left: 50%; bottom: var(--edge-b); transform: translateX(-50%); display: flex; align-items: center; gap: calc(var(--u) * .2);
+  padding: calc(var(--u) * .1) calc(var(--u) * .26) calc(var(--u) * .16); border-radius: calc(var(--u) * .2); background: rgba(10,7,18,.86); box-shadow: inset 0 0 0 2px rgba(243,227,204,.8), 3px 4px 0 #E3263A; transition: opacity .18s; }
+#touchpad .gauge.hide { transform: translate(-50%, 14px); }
+#touchpad .gauge .spd { min-width: 2.1ch; text-align: right; font-weight: 400; font-size: calc(var(--u) * .5); line-height: 1; letter-spacing: .02em; }
+#touchpad .gauge small { font-family: "Space Mono", monospace; font-weight: 700; font-size: calc(var(--u) * .12); letter-spacing: .16em; opacity: .7; line-height: 1.1; }
+#touchpad .gauge .leds { display: flex; gap: 3px; }
+#touchpad .gauge .leds i { width: calc(var(--u) * .13); height: calc(var(--u) * .2); background: #3A0F22; border-radius: 2px; }
+#touchpad .gauge .leds i.b { background: #F3E3CC; } #touchpad .gauge .leds i.e { background: #FF6A30; } #touchpad .gauge .leds i.r { background: #E3263A; }
+#touchpad .gauge .fuel { position: absolute; left: calc(var(--u) * .26); right: calc(var(--u) * .26); bottom: calc(var(--u) * .06); height: 3px; background: #3A0F22; border-radius: 2px; overflow: hidden; }
+#touchpad .gauge .fuel span { display: block; height: 100%; background: #FF6A30; }
+#touchpad .gauge .fuel.low span { background: #E3263A; }
+#touchpad .gauge em { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); font-style: normal; font-size: calc(var(--u) * .24); letter-spacing: .06em; padding: 1px 10px; background: #FF6A30; color: #0A0712; white-space: nowrap; display: none; }
+#touchpad .gauge em.on { display: block; }
+#touchpad .gauge em.down { background: #F3E3CC; }
+#touchpad .gauge .stall { display: none; font-size: calc(var(--u) * .26); padding: 0 8px; background: #E3263A; transform: rotate(-4deg); }
+#touchpad .gauge.stalled .stall { display: block; }
+#touchpad .gauge.stalled .leds { display: none; }
+#touchpad .rocker b.hot { background: #E3263A; color: #F3E3CC; }
+#touchpad .rocker button.cue { background: rgba(255,106,48,.35); animation: cue .5s ease-in-out infinite alternate; }
+@keyframes cue { to { background: rgba(255,106,48,.85); } }
 @media (prefers-reduced-motion: reduce) { #touchpad * { transition: none !important; } }
 `;
 
@@ -88,6 +126,8 @@ interface Pad {
   pack: HTMLElement;
   top: HTMLElement;
   gear: HTMLElement;
+  gauge: { root: HTMLElement; spd: HTMLElement; leds: HTMLElement[]; fuel: HTMLElement; cue: HTMLElement; last: string };
+  rocker: { up: HTMLElement; down: HTMLElement };
   hb: HTMLButtonElement;
   sound: HTMLButtonElement;
   held: { gas: boolean; brake: boolean; reel: boolean };
@@ -149,6 +189,7 @@ function build(): Pad {
       <button class="round turn-l" aria-label="Turn left"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2.1-5"/><path d="M7 2.5v4.6h4.6"/></svg></button>
       <button class="round turn-r" aria-label="Turn right"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.1-5"/><path d="M17 2.5v4.6h-4.6"/></svg></button>
     </div>
+    <div class="gauge hide"><b class="spd">0</b><small>KM<br>/H</small><div class="leds">${'<i></i>'.repeat(9)}</div><span class="stall">STALLED</span><div class="fuel"><span></span></div><em>SHIFT UP</em></div>
     <div class="top hide">
       <button class="round pause" aria-label="Pause">II</button>
       <button class="round sound" aria-label="Sound">♪</button>
@@ -161,6 +202,8 @@ function build(): Pad {
     pack: q('.pod.pack'),
     top: q('.top'),
     gear: q('.rocker b'),
+    gauge: { root: q('.gauge'), spd: q('.gauge .spd'), leds: [...root.querySelectorAll<HTMLElement>('.gauge .leds i')], fuel: q('.gauge .fuel'), cue: q('.gauge em'), last: '' },
+    rocker: { up: q('.rocker .up'), down: q('.rocker .down') },
     hb: q('.hb'),
     sound: q('.sound'),
     held: { gas: false, brake: false, reel: false },
@@ -205,6 +248,28 @@ export function touchPad() {
     },
     bind(actions: TouchActions | null) {
       p.actions = actions;
+    },
+    /** The phone's gauge; cheap to call every frame (it only touches the page when something shows a change). */
+    gauge(v: GaugeView) {
+      const g = p.gauge;
+      const lit = v.stalled ? 0 : v.limit ? 9 : Math.round(Math.max(0, Math.min(1, v.revs)) * 9);
+      const flash = v.limit && Math.floor(performance.now() / 120) % 2 === 0;
+      const key = `${v.on}|${Math.round(v.kmh)}|${lit}|${flash}|${v.cue}|${v.stalled}|${Math.round(v.fuel * 40)}`;
+      if (key === g.last) return;
+      g.last = key;
+      g.root.classList.toggle('hide', !v.on);
+      g.root.classList.toggle('stalled', v.stalled);
+      g.spd.textContent = String(Math.round(v.kmh));
+      g.leds.forEach((l, i) => (l.className = i < lit && !(v.limit && !flash) ? (v.limit ? 'r' : i < 5 ? 'b' : i < 7 ? 'e' : 'r') : ''));
+      (g.fuel.firstElementChild as HTMLElement).style.width = `${Math.round(Math.max(0, Math.min(1, v.fuel)) * 100)}%`;
+      g.fuel.classList.toggle('low', v.fuel < 0.25);
+      g.cue.textContent = v.cue === 'up' ? 'SHIFT UP' : 'SHIFT DOWN';
+      g.cue.classList.toggle('on', v.on && !!v.cue);
+      g.cue.classList.toggle('down', v.cue === 'down');
+      p.rocker.up.classList.toggle('cue', v.on && v.cue === 'up');
+      p.rocker.down.classList.toggle('cue', v.on && v.cue === 'down');
+      // The gear goes red when it is time to change up, as the dashboard's does.
+      p.gear.classList.toggle('hot', v.on && v.cue === 'up');
     },
     /** Brings the controls in line with the game; cheap to call every frame. */
     sync(v: TouchView) {

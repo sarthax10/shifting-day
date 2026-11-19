@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Engine, ambience, audio, chime, music, play, thud } from '../systems/audio';
 import { BOIL_FRAMES, HOUSE, MANOR, ITEMS, PLANK, OFFICIAL_SIGN, VALUE, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, RAIL_SIGNAL } from '../art/art';
 import { PLAZAS, TOLL_LIGHT, TOLL_SKINS, tollKeys, type TollSkin } from '../art/tolls';
-import { DASH_RIGHT, Dash } from '../ui/dash';
+import { DASH_RIGHT, Dash, KMH } from '../ui/dash';
 import { CURSOR } from '../art/cursors';
 import { Fx } from '../systems/fx';
 import { Drivetrain, REDLINE, type Gear } from '../systems/drivetrain';
@@ -251,6 +251,10 @@ export class PlayScene extends Phaser.Scene {
   private touchAiming = false;
   /** The touchscreen's controls (ui/touch.ts), on a touch device. */
   private pad: TouchPad | null = null;
+  /** A touchscreen: the slim gauge replaces the dashboard. */
+  private slimGauge = false;
+  /** The truck's speed along the road last frame, for the gauge. */
+  private speedNow = 0;
   private paused = false;
   private pauseUi?: Phaser.GameObjects.Container;
   private hint!: Phaser.GameObjects.Text;
@@ -1626,8 +1630,9 @@ export class PlayScene extends Phaser.Scene {
     this.dash = new Dash(this, () => this.drive);
     this.dash.create();
     // On a touchscreen the thumbs are in the bottom corners: the dashboard moves to the middle.
-    // On a phone it stays its own size: the rocker and the lever already show the gear and the handbrake.
-    if (isTouchDevice()) this.dash.centre(this.hudScale() > 1.15 ? 0.82 : 1);
+    // A touchscreen's thumbs and pedals hold the bottom corners, and the dashboard would cover the truck
+    // between them: a slim gauge (ui/touch.ts) stands in, with the gear and handbrake on the controls.
+    this.slimGauge = isTouchDevice();
     // The sound and effects toggles: small chips, not shouting for attention next to the resource HUD.
     if (false as boolean) {
       this.fxChip = chip(this, 40, 34, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
@@ -1707,6 +1712,17 @@ export class PlayScene extends Phaser.Scene {
       gear: gearName(this.drive.target),
       handbrake: this.handbrake,
       muted: audio.muted,
+    });
+    const d = this.drive;
+    const numbered = typeof d.gear === 'number' && !d.stalled;
+    this.pad.gauge({
+      on: this.slimGauge && live && this.phase === 'drive',
+      kmh: Math.abs(this.speedNow) * KMH,
+      revs: d.rpm / REDLINE,
+      limit: d.rpm / REDLINE > 0.93,
+      cue: numbered && (d.gear as number) < 4 && d.rpm > REDLINE - 400 ? 'up' : numbered && (d.gear as number) > 1 && d.lugging > 0.3 ? 'down' : '',
+      stalled: d.stalled,
+      fuel: this.extras.fuel,
     });
     this.touchGas = this.pad.gas;
     this.touchBrake = this.pad.brake;
@@ -2159,7 +2175,7 @@ export class PlayScene extends Phaser.Scene {
     this.pointer('point');
     if (isTouchDevice()) this.hint.setAlpha(0);
     this.hint.setPosition(DASH_RIGHT + 20, 1040).setFontSize(17).setText('D GAS · A BRAKE · P HANDBRAKE · SHIFT/CTRL GEARS · CLICK FIRE · W REEL · ESC CONTROLS');
-    this.dash.show(true);
+    this.dash.show(!this.slimGauge);
     this.handbrake = true;
     // Teach driving one step at a time, each prompt waiting for the step before it to be done.
     this.prompts.show('hb', [{ key: 'handbrake' }, 'HANDBRAKE OFF'], () => this.overTruck(), () => !this.handbrake, {
@@ -2723,6 +2739,7 @@ export class PlayScene extends Phaser.Scene {
       if (this.phase === 'drive' && this.frame % (pedal ? 7 : 20) === 0) this.exhaust();
       if (this.phase === 'drive') {
         this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), this.extras.fuel, this.handbrake);
+        this.speedNow = forward;
         this.updateGates(forward, delta);
         this.parking(forward);
       }
