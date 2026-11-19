@@ -5,6 +5,7 @@ import { TILE, birdArts, buildBackdrop, cloudBankArt, haze, peaks, plainPen, rnd
 import type { BiomeKey } from './legs';
 import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from './falls';
 import { SWITCH, TUNNEL } from './tunnel';
+import { FROST_TREES } from './trees';
 import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
 import { cloudBankArt as printCloudArt } from './oldstreet';
 import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
@@ -610,7 +611,7 @@ const SNOW: Biome = {
     haze(scene, o.horizon - 260, 260, 0x8e78b8, 0.1, -30, 0.3);
     // Roadside: snowy pines and orange snow poles marking the road edge.
     let seed = 3;
-    for (let x = Math.max(1900, from(o)); x < Math.min(o.finish - 300, to(o)); x += 420 + rnd(11, seed) * 380, seed++) scene.add.image(x, o.groundY(x) + 8, 'snowpine').setOrigin(0.5, 1).setDepth(-9).setScale(0.8 + rnd(13, seed) * 0.5).setFlipX(seed % 2 === 0);
+    for (let x = Math.max(1900, from(o)); x < Math.min(o.finish - 300, to(o)); x += 300 + rnd(11, seed) * 340, seed++) scene.add.image(x, o.groundY(x) + 8, FROST_TREES[Math.floor(rnd(17, seed) * FROST_TREES.length)]).setOrigin(0.5, 1).setDepth(-9).setScale(0.8 + rnd(13, seed) * 0.45).setFlipX(seed % 2 === 0);
     for (let x = Math.max(1700, from(o)); x < Math.min(o.finish, to(o)); x += 600) scene.add.image(x, o.groundY(x) + 10, 'snowpole').setOrigin(0.5, 1).setDepth(-6);
     // Snow: big soft flakes close by, fine ones far off, drifting in the wind.
     const near = fallers(scene, 'halo', 90, 57, (f) => {

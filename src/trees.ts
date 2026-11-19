@@ -457,6 +457,242 @@ function seaPine(key: string): Art {
   );
 }
 
+// ================================================================ the pass's trees
+
+/** Frostpeak's inks for its trees: bottle-green needles, violet in their depths, bone snow shaded lavender. */
+const FROST = { needle: '#2A4636', needleDark: '#1A2E24', deep: '#120E22', snow: '#F3E3CC', snowShade: '#9A84C0', rim: '#FFF6EA', bark: '#3A1A26', berry: '#E3263A', leaf: '#FF6A30' };
+
+/** A snow pillow lying along the top of a bough: thick in the middle, thin at its ends, shaded underneath. */
+function pillow(p: Pen, pts: Pt[], thick: number) {
+  const top = pts.map(([x, y]): Pt => [x, y - thick]);
+  const under = pts
+    .slice()
+    .reverse()
+    .map(([x, y], i, a): Pt => [x, y + Math.sin((i / (a.length - 1)) * Math.PI) * thick * 0.35]);
+  p.shape([...top, ...under], { fill: FROST.snow, width: 2.6, wobble: 0.4, shade: [{ pts: [...pts.map(([x, y]): Pt => [x, y - thick * 0.2]), ...under], color: FROST.snowShade }] });
+}
+
+/**
+ * The pass's spruce, reshaped: not a stack of identical triangles but a crooked trunk carrying boughs one by
+ * one, alternating, uneven in length, each sweeping down to a drooping tip with needles hanging under it in
+ * points and a pillow of snow along its top. The leader leans, and one bough near the top is broken short.
+ */
+function snowSpruce(key: string, seed: number): Art {
+  const w = 280;
+  const h = 470;
+  return tree(
+    key,
+    w,
+    h,
+    (p, r) => {
+      const cx = (y: number) => 140 + Math.sin(y / 70) * 5 + (y < 120 ? (120 - y) * 0.12 : 0);
+      p.line([[cx(h - 8), h - 8], [cx(300), 300], [cx(160), 160], [cx(40), 40]], { width: 12, color: FROST.bark });
+      const n = 13;
+      for (let i = 0; i < n; i++) {
+        const k = i / (n - 1);
+        const y = 52 + k * 330;
+        const side = i % 2 ? 1 : -1;
+        const len = (22 + k * 112) * (0.8 + r() * 0.4) * (i === 3 ? 0.45 : 1);
+        const x0 = cx(y);
+        const droop = 18 + k * 34;
+        const tip: Pt = [x0 + side * len, y + droop];
+        // The bough: an arc out from the trunk, needles hanging from its underside in a saw edge.
+        const top: Pt[] = [];
+        for (let t = 0; t <= 6; t++) {
+          const u = t / 6;
+          top.push([x0 + side * len * u, y - 6 + Math.sin(u * Math.PI * 0.9) * -10 + u * u * droop]);
+        }
+        const under: Pt[] = [];
+        const teeth = 4 + Math.round(k * 5);
+        for (let t = teeth; t >= 0; t--) {
+          const u = t / teeth;
+          under.push([x0 + side * len * u, y + 10 + u * u * droop + (t % 2 ? 14 + k * 10 : 2)]);
+        }
+        const bough = [...top, ...under];
+        p.shape(bough, { fill: side > 0 ? FROST.needleDark : FROST.needle, raw: true, width: 3.2, wobble: 0.3, shade: side > 0 ? [{ pts: bough, color: FROST.deep }] : [] });
+        pillow(p, top.slice(0, 6).concat([tip]).map(([x, y]): Pt => [x, y + 2]), 9 + k * 6);
+      }
+      // The leaning leader at the top, with its own cap of snow.
+      p.shape([[cx(40) - 10, 70], [cx(40) + 4, 4], [cx(40) + 14, 70]], { fill: FROST.needle, raw: true, width: 3 });
+      p.shape([[cx(40) - 6, 30], [cx(40) + 4, 2], [cx(40) + 10, 30], [cx(40) + 2, 36]], { fill: FROST.snow, width: 2.2 });
+      // A drift round its foot.
+      p.shape([[40, h - 2], [70, h - 26], [140, h - 34], [210, h - 24], [244, h - 2]], { fill: FROST.snow, width: 3, shade: [{ pts: [[140, h - 40], [250, h - 40], [250, h], [140, h]], color: FROST.snowShade }] });
+    },
+    seed,
+  );
+}
+
+/**
+ * A snow ghost: a fir so buried in rime and snow it has become a hooded figure - a lumpy column of bone,
+ * leaning a little, with only a few dark needles showing through where the snow has slipped.
+ */
+function snowGhost(key: string, seed: number): Art {
+  const w = 240;
+  const h = 430;
+  return tree(
+    key,
+    w,
+    h,
+    (p, r) => {
+      const left: Pt[] = [];
+      const right: Pt[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const k = i / 12;
+        const y = 30 + k * (h - 50);
+        const half = 18 + Math.pow(k, 0.8) * 86 + Math.sin(k * 19 + 1) * 9;
+        const lean = (1 - k) * 18;
+        left.push([120 + lean - half - (i % 3 === 1 ? 10 : 0), y]);
+        right.push([120 + lean + half + (i % 3 === 2 ? 12 : 0), y]);
+      }
+      const body: Pt[] = [[138, 6], ...right, [120 + 96, h - 6], [120 - 100, h - 6], ...left.reverse()];
+      p.shape(body, { fill: FROST.snow, width: 4.5, wobble: 0.5, shade: [{ pts: [[132, 0], [w, 0], [w, h], [118, h]], color: FROST.snowShade }] });
+      // Dark needles showing where the snow has slipped: little saw-edged patches.
+      for (let i = 0; i < 9; i++) {
+        const y = 80 + r() * (h - 150);
+        const k = (y - 30) / (h - 50);
+        const half = 18 + Math.pow(k, 0.8) * 86;
+        const x = 120 + (1 - k) * 18 + (r() - 0.5) * half * 1.3;
+        const s = 10 + r() * 12;
+        p.shape([[x - s, y], [x - s * 0.4, y - s * 0.5], [x + s * 0.3, y - s * 0.2], [x + s, y + s * 0.1], [x + s * 0.5, y + s * 0.5], [x, y + s * 0.2], [x - s * 0.5, y + s * 0.6]], { fill: x > 125 ? FROST.needleDark : FROST.needle, raw: true, width: 2.4 });
+      }
+      // Bulges of rime along its sides, catching the moon.
+      for (let i = 0; i < 6; i++) {
+        const y = 80 + i * 56;
+        const k = (y - 30) / (h - 50);
+        const lx = 120 + (1 - k) * 18 - (18 + Math.pow(k, 0.8) * 86) + 14;
+        p.line([[lx, y], [lx + 22, y - 10], [lx + 46, y - 6]], { width: 3, color: FROST.rim, opacity: 0.8 });
+      }
+    },
+    seed,
+  );
+}
+
+/**
+ * A subalpine fir: a tall, very narrow spire with short stiff branches all the way up, snow tufted on their
+ * tips, and a sharp top. It stands in the gaps between the broader trees.
+ */
+function snowSpire(key: string, seed: number): Art {
+  const w = 150;
+  const h = 500;
+  return tree(
+    key,
+    w,
+    h,
+    (p, r) => {
+      const outline: Pt[] = [[75, 6]];
+      const rows = 16;
+      for (let i = 1; i <= rows; i++) {
+        const k = i / rows;
+        const y = 6 + k * (h - 70);
+        const half = 8 + k * 46 + (r() - 0.5) * 6;
+        outline.push([75 + half, y], [75 + half * 0.6, y + 6]);
+      }
+      const leftSide = outline.slice(1).map(([x, y]): Pt => [150 - x, y]).reverse();
+      const body: Pt[] = [...outline, [75 + 10, h - 50], [75 - 10, h - 50], ...leftSide];
+      p.rect(69, h - 70, 12, 62, { fill: FROST.bark, width: 3, r: 2 });
+      p.shape(body, { fill: FROST.needle, raw: true, width: 3.4, shade: [{ pts: [[76, 0], [w, 0], [w, h], [76, h]], color: FROST.deep }] });
+      for (let i = 1; i <= rows; i += 1) {
+        const k = i / rows;
+        const y = 6 + k * (h - 70);
+        const half = 8 + k * 46;
+        for (const s of [-1, 1]) {
+          const x = 75 + s * half * 0.9;
+          p.ellipse(x, y - 3, 6 + k * 6, 4 + k * 2, { fill: FROST.snow, width: 2, shade: s > 0 ? [{ pts: [[x - 20, y - 10], [x + 20, y - 10], [x + 20, y + 10], [x - 20, y + 10]], color: FROST.snowShade }] : [] });
+        }
+      }
+      p.shape([[70, 22], [75, 2], [80, 22]], { fill: FROST.snow, raw: true, width: 2 });
+      p.shape([[40, h - 4], [60, h - 22], [92, h - 24], [112, h - 4]], { fill: FROST.snow, width: 2.6 });
+    },
+    seed,
+  );
+}
+
+/** Branches, forking as they go, for the bare trees; returns the segments so snow can be laid along them. */
+function boughs(p: Pen, x: number, y: number, a: number, len: number, wd: number, depth: number, r: () => number, color: string, out: [Pt, Pt, number][]) {
+  const x1 = x + Math.cos(a) * len;
+  const y1 = y + Math.sin(a) * len;
+  const mid: Pt = [(x + x1) / 2 + (r() - 0.5) * len * 0.15, (y + y1) / 2 + (r() - 0.5) * len * 0.15];
+  p.line([[x, y], mid, [x1, y1]], { width: wd, color });
+  out.push([[x, y], [x1, y1], wd]);
+  if (depth <= 0) return;
+  const forks = depth > 2 ? 2 : 2 + (r() < 0.5 ? 1 : 0);
+  for (let i = 0; i < forks; i++) {
+    const spread = 0.35 + r() * 0.35;
+    const na = a + (i - (forks - 1) / 2) * spread * 1.4 + (r() - 0.5) * 0.2;
+    boughs(p, x1, y1, na, len * (0.62 + r() * 0.16), Math.max(1.4, wd * 0.62), depth - 1, r, color, out);
+  }
+}
+
+/**
+ * A bare birch in winter: a pale trunk barred with black, its fine branches fanning up, and a line of snow
+ * along the top of every bough thick enough to hold it.
+ */
+function snowBirch(key: string, seed: number): Art {
+  const w = 240;
+  const h = 450;
+  return tree(
+    key,
+    w,
+    h,
+    (p, r) => {
+      const segs: [Pt, Pt, number][] = [];
+      boughs(p, 116, 230, -Math.PI / 2 - 0.55, 54, 6, 3, r, '#2A1A26', segs);
+      boughs(p, 120, 190, -Math.PI / 2 + 0.5, 56, 6, 3, r, '#2A1A26', segs);
+      boughs(p, 118, 140, -Math.PI / 2 - 0.08, 46, 5, 3, r, '#2A1A26', segs);
+      p.shape([[106, h - 8], [112, 110], [118, 70], [126, 110], [132, h - 8]], { fill: '#F3E3CC', width: 3.6, shade: [{ pts: [[121, 60], [140, 60], [140, h], [121, h]], color: '#C8B4A8' }] });
+      for (let y = 100; y < h - 24; y += 16 + r() * 18) p.line([[109 + r() * 3, y], [119 + r() * 8, y + 2]], { width: 2.6, color: '#0A0712', raw: true });
+      for (const [a, b, wd] of segs) {
+        if (wd < 2.4) continue;
+        const ax = a[0];
+        const bx = b[0];
+        if (Math.abs(bx - ax) < 6) continue;
+        p.line([[a[0], a[1] - wd * 0.7], [b[0], b[1] - wd * 0.7]], { width: Math.max(2.4, wd * 0.9), color: FROST.snow, raw: true });
+      }
+      p.shape([[70, h - 2], [96, h - 18], [146, h - 20], [172, h - 2]], { fill: FROST.snow, width: 2.6 });
+    },
+    seed,
+  );
+}
+
+/**
+ * A rowan in snow: a round, bare crown of dark twigs, hung with clusters of red berries each wearing a cap
+ * of snow, and a last few ember leaves the winter has not taken.
+ */
+function snowRowan(key: string, seed: number): Art {
+  const w = 280;
+  const h = 390;
+  return tree(
+    key,
+    w,
+    h,
+    (p, r) => {
+      const segs: [Pt, Pt, number][] = [];
+      p.shape([[124, h - 8], [130, 240], [126, 210], [154, 210], [150, 240], [158, h - 8]], { fill: FROST.bark, width: 3.6, shade: [{ pts: [[142, 200], [170, 200], [170, h], [144, h]], color: '#140A12' }] });
+      for (const a of [-2.25, -1.88, -1.57, -1.26, -0.9]) boughs(p, 140, 222, a, 46 + r() * 8, 7, 3, r, FROST.bark, segs);
+      // Snow along the stouter boughs.
+      for (const [a, b, wd] of segs) if (wd > 3 && Math.abs(b[0] - a[0]) > 8) p.line([[a[0], a[1] - wd * 0.7], [b[0], b[1] - wd * 0.7]], { width: wd, color: FROST.snow, raw: true });
+      // Berry clusters at the twig ends, capped with snow; the last few leaves.
+      const ends = segs.filter(([, , wd]) => wd < 2.5);
+      ends.forEach(([, b], i) => {
+        if (i % 2) return;
+        const [x, y] = b;
+        for (let k = 0; k < 5; k++) p.ellipse(x + (k % 3) * 6 - 6, y + 4 + Math.floor(k / 3) * 6, 4.2, 4.2, { fill: FROST.berry, width: 1.8 });
+        p.ellipse(x, y - 1, 9, 3.5, { fill: FROST.snow, stroke: null });
+      });
+      ends.forEach(([, b], i) => {
+        if (i % 5 !== 1) return;
+        const [x, y] = b;
+        p.shape([[x, y], [x + 7, y + 3], [x + 2, y + 11], [x - 4, y + 5]], { fill: FROST.leaf, raw: true, width: 1.8 });
+      });
+      p.shape([[70, h - 2], [100, h - 20], [180, h - 22], [212, h - 2]], { fill: FROST.snow, width: 2.6, shade: [{ pts: [[150, h - 30], [220, h - 30], [220, h], [150, h]], color: FROST.snowShade }] });
+    },
+    seed,
+  );
+}
+
+/** The trees of the pass, by key, for its roadside. */
+export const FROST_TREES = ['snowpine', 'snowpine', 'snowghost', 'snowspire', 'snowbirch', 'snowrowan', 'snowspire'];
+
 /** Every new tree, under the keys the game and the biomes use. */
 export function treeArts(): Art[] {
   return [
@@ -468,7 +704,11 @@ export function treeArts(): Art[] {
     maple('maple_1', P.gold, 23),
     maple('maple_2', P.rust, 31),
     birch('birch'),
-    pine('snowpine', P.snow, true, 37),
+    snowSpruce('snowpine', 37),
+    snowGhost('snowghost', 41),
+    snowSpire('snowspire', 43),
+    snowBirch('snowbirch', 47),
+    snowRowan('snowrowan', 53),
     seaPine('seapine'),
   ];
 }
