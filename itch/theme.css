@@ -31,15 +31,21 @@ body {
   background-attachment: fixed;
 }
 
-/* The page itself is a printed sheet: ink, with a hard red offset like a misregistered print. */
+/*
+ * The page itself is a printed sheet: ink, with a hard red offset like a misregistered print.
+ * itch's page column holds the banner and the page, so the sheet is drawn on the column.
+ */
+.inner_column {
+  background: var(--ink);
+  outline: 3px solid var(--bone);
+  box-shadow: 14px 14px 0 3px var(--red);
+  margin-top: 28px;
+  margin-bottom: 60px;
+}
 .view_game_page {
   background: var(--ink);
   color: var(--bone);
   font-family: var(--mono);
-  box-shadow: 14px 14px 0 var(--red), 14px 14px 0 3px var(--ink);
-  border: 3px solid var(--bone);
-  margin-top: 28px;
-  margin-bottom: 60px;
 }
 
 /* The banner sits flush on the sheet. */
@@ -54,19 +60,20 @@ body {
   text-shadow: 4px 4px 0 var(--red);
 }
 
-/* The game frame: a screen set into the poster. */
+/* The game frame: flush in the column, outlined like a screen set into the poster. */
 .game_frame,
 .embed_wrapper .game_frame {
-  border: 3px solid var(--bone);
-  box-shadow: 0 0 0 6px var(--ink), 10px 10px 0 6px var(--ember);
+  outline: 3px solid var(--bone);
+  outline-offset: -3px;
   background-color: var(--ink);
 }
+.game_frame iframe { display: block; }
+/* The launch screen: launch.jpg, uploaded as the theme's Embed BG, behind the button in place of the cover. */
+.view_game_page .game_frame { background-size: cover; background-position: center; }
 /*
  * Run game: a strip of torn ember tape, like START THE DRIVE on the title screen. The tape's ragged
  * edge is a clip-path, so its red offset print is a drop-shadow on the placeholder that holds it.
  */
-/* The launch screen: launch.jpg, uploaded as the theme's Embed BG, behind the button in place of the cover. */
-.view_game_page .game_frame { background-size: cover; background-position: center; }
 .game_frame .iframe_placeholder {
   display: grid;
   place-items: center;
@@ -414,7 +421,7 @@ body {
 .community_post .post_header a { color: var(--ember); }
 
 @media (max-width: 700px) {
-  .view_game_page { box-shadow: 7px 7px 0 var(--red); margin-top: 12px; }
+  .inner_column { box-shadow: 7px 7px 0 3px var(--red); margin-top: 12px; }
   .formatted_description h2 { font-size: 28px; }
 }
 
