@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Engine, ambience, audio, chime, music, play, thud } from './audio';
-import { BOIL_FRAMES, HOUSE, MANOR, ITEMS, PLANK, OFFICIAL_SIGN, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, TOLL_SKINS, CANOPY, RAIL_SIGNAL } from './art';
+import { BOIL_FRAMES, HOUSE, MANOR, ITEMS, PLANK, OFFICIAL_SIGN, RECEIPT, VALUE, TREE_KINDS, TRUCK, type ItemSpec, type Mood, DRIVER, type DriverMood, RAIL_SIGNAL } from './art';
+import { PLAZAS, TOLL_LIGHT, TOLL_SKINS, tollKeys, type TollSkin } from './tolls';
 import { DASH_RIGHT, Dash } from './dash';
 import { CURSOR } from './cursors';
 import { Fx } from './fx';
@@ -537,7 +538,9 @@ export class PlayScene extends Phaser.Scene {
   private buildGates() {
     this.gates = [];
     const rail = this.leg.gateKind === 'rail';
-    const skin = this.leg.biome in TOLL_SKINS ? this.leg.biome : 'meadow';
+    const skin = (this.leg.biome in TOLL_SKINS ? this.leg.biome : 'meadow') as TollSkin;
+    const plaza = PLAZAS[skin];
+    const keys = tollKeys(skin);
     const glow = (x: number, y: number, w: number, h: number, tint: number, depth: number, alpha = 0) =>
       this.add.image(x, y, 'halo').setDisplaySize(w, h).setTint(tint).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(depth);
     for (const x of this.leg.gates) {
@@ -548,6 +551,7 @@ export class PlayScene extends Phaser.Scene {
       let red: Phaser.GameObjects.Image | undefined;
       let green: Phaser.GameObjects.Image | undefined;
       let beacon: Phaser.GameObjects.Image | undefined;
+      let face = { x: x + 100, y: y - 180 };
       const flashers: Phaser.GameObjects.Image[] = [];
       if (rail) {
         // Rails set into the road, with their sleepers in the ground beneath.
@@ -565,26 +569,34 @@ export class PlayScene extends Phaser.Scene {
           flashers.push(lamp as unknown as Phaser.GameObjects.Image, glow(sx - RAIL_SIGNAL.w / 2 + lx, top + ly, 140, 140, 0xff3a2a, -5.8));
         }
       } else {
-        // The canopy, its downlights and the pools of light they throw on the road.
-        this.add.image(x + 60, y + 20, `toll_canopy_${skin}`).setOrigin(0.5, 1).setDepth(-6.5);
-        const top = y + 20 - CANOPY.h;
-        this.add.text(x + 60, top + CANOPY.slab + 35, 'TOLL', { fontFamily: TITLE, fontSize: '34px', color: C.ink }).setOrigin(0.5).setDepth(-6.4);
-        for (const lx of CANOPY.lights) {
-          const gx = x + 60 - CANOPY.w / 2 + lx;
-          glow(gx, top + CANOPY.slab + 84, 170, 60, 0xfff0c0, -6.3, 0.7);
-          glow(gx, groundY(gx) + 6, 280, 46, 0xfff0c0, 0.7, 0.4);
+        // The portal over the road. Gates sit on hill crests, so its legs reach down to the road on either
+        // side, each stood on a foot of its own; the span rides level from the higher of the two.
+        const P = plaza.portal;
+        const cx = x + 60;
+        const legs = P.legs.map((lx) => cx - P.w / 2 + lx);
+        const gl = Math.min(...legs.map((lx) => groundY(lx))) + 8;
+        this.add.image(cx, gl, keys.portal).setOrigin(0.5, P.ground / P.h).setDepth(-6.5);
+        for (const lx of legs) this.add.image(lx, groundY(lx) + 10, keys.foot).setOrigin(0.5, plaza.foot.ground / plaza.foot.h).setDepth(-6.45);
+        const top = gl - P.ground;
+        this.add.text(cx - P.w / 2 + P.sign.x, top + P.sign.y, P.sign.text, { fontFamily: TITLE, fontSize: P.sign.size + "px", color: P.sign.color, stroke: P.sign.stroke, strokeThickness: 3, letterSpacing: P.sign.spacing ?? 0 }).setOrigin(0.5).setDepth(-6.4);
+        for (const [lx, ly] of P.lamps) {
+          const gx = cx - P.w / 2 + lx;
+          glow(gx, top + ly, 120, 120, P.lampTint, -6.3, 0.75);
+          glow(gx, groundY(gx) + 6, 260, 44, P.lampTint, 0.7, 0.35);
         }
-        this.add.image(x, y + 8, skin === 'meadow' ? 'toll_booth' : `toll_booth_${skin}`).setOrigin(31 / 260, 1).setDepth(-6);
-        beacon = glow(x - 31 + 154, y + 8 - 360 + 74, 90, 90, 0xffb43a, -5.9);
+        // The booth: its barrier post's pivot is where the arm swings from.
+        const B = plaza.booth;
+        const by = y + 8;
+        this.add.image(x, by, keys.booth).setOrigin(B.hinge / B.w, B.ground / B.h).setDepth(-6);
+        beacon = glow(x - B.hinge + B.beacon[0], by - B.ground + B.beacon[1], 90, 90, B.beaconTint, -5.9);
+        face = { x: x - B.hinge + B.face[0], y: by - B.ground + B.face[1] - 70 };
         // The traffic light before the barrier: red until you are let through.
         const tx = x - 90;
-        this.add.rectangle(tx, groundY(tx) + 8, 12, 300, 0x3a3e4a).setOrigin(0.5, 1).setDepth(-6).setStrokeStyle(3, 0x2a2140);
-        this.add.rectangle(tx, groundY(tx) - 296, 40, 74, 0x1e1a24).setOrigin(0.5, 0).setDepth(-6).setStrokeStyle(3, 0x2a2140);
-        this.add.circle(tx, groundY(tx) - 276, 12, 0x4a1a1a).setDepth(-5.95);
-        this.add.circle(tx, groundY(tx) - 242, 12, 0x1a3a24).setDepth(-5.95);
-        red = this.add.circle(tx, groundY(tx) - 276, 12, 0xff3a2a).setDepth(-5.9) as unknown as Phaser.GameObjects.Image;
-        green = this.add.circle(tx, groundY(tx) - 242, 12, 0x3aff8a).setDepth(-5.9).setAlpha(0) as unknown as Phaser.GameObjects.Image;
-        flashers.push(glow(tx, groundY(tx) - 276, 80, 80, 0xff3a2a, -5.85, 0.6), glow(tx, groundY(tx) - 242, 80, 80, 0x3aff8a, -5.85, 0));
+        const lt = groundY(tx) + 8 - TOLL_LIGHT.ground;
+        this.add.image(tx, groundY(tx) + 8, 'toll_light').setOrigin(0.5, TOLL_LIGHT.ground / TOLL_LIGHT.h).setDepth(-6);
+        red = this.add.circle(tx, lt + 20, 11, 0xff3a2a).setDepth(-5.9) as unknown as Phaser.GameObjects.Image;
+        green = this.add.circle(tx, lt + 54, 11, 0x3aff8a).setDepth(-5.9).setAlpha(0) as unknown as Phaser.GameObjects.Image;
+        flashers.push(glow(tx, lt + 20, 80, 80, 0xff3a2a, -5.85, 0.6), glow(tx, lt + 54, 80, 80, 0x3aff8a, -5.85, 0));
       }
       const arm = this.add.image(x, y - 150, 'toll_arm').setOrigin((420 - 37) / 420, 0.5).setDepth(22);
       // Where the barrier is, the road is blocked - unless it is already up and waiting for no one.
@@ -616,7 +628,7 @@ export class PlayScene extends Phaser.Scene {
       // A little variety in how long the check takes, so thirteen stops across the trip do not all
       // feel exactly the same length.
       const checkTime = isFinal ? 0 : 0.9 + Math.random() * 0.7;
-      this.gates.push({ x, body, arm, state: isFinal ? 'open' : 'closed', timer: 0, announced: isFinal, nagged: false, bumped: false, still: 0, snore: 0, booth: { x: x + 100, y: y - 180 }, red, green, beacon, flashers, checkTime });
+      this.gates.push({ x, body, arm, state: isFinal ? 'open' : 'closed', timer: 0, announced: isFinal, nagged: false, bumped: false, still: 0, snore: 0, booth: face, red, green, beacon, flashers, checkTime });
     }
   }
 

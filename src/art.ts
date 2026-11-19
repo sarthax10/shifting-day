@@ -1579,13 +1579,6 @@ export function officialSignArt(): Art {
   return { key: 'sign_official', svg: p.svg(w, h), w, h };
 }
 
-/** The colours a toll plaza is painted in, per place, in the poster's inks: body, its shade, fascia. */
-export const TOLL_SKINS: Record<string, [string, string, string]> = {
-  meadow: ['#E3263A', '#9E1A2E', '#0A0712'],
-  autumn: ['#FFB23F', '#D98A2A', '#3A0F22'],
-  snow: ['#F3E3CC', '#D9C3A6', '#E3263A'],
-  coast: ['#2A4636', '#1A2E24', '#FFB23F'],
-};
 const G_INK = '#0A0712';
 const G_BONE = '#F3E3CC';
 const G_SAND = '#D9C3A6';
@@ -1594,83 +1587,6 @@ const G_RED = '#E3263A';
 const G_GOLD = '#FFB23F';
 const G_OX = '#3A0F22';
 const G_OLIVE = '#7E8A44';
-
-/**
- * A toll booth, printed in the poster's inks: a squat kiosk in the place's colour with a heavy rounded
- * roof cap and a gold beacon, a wraparound window band with the sleepy attendant, a ticket slot, a bone
- * TOLL plate, a STOP disc on the striped hinge post, and the island's kerb in ember and ink chevrons.
- */
-export function tollBoothArt(skin = 'meadow'): Art {
-  const [body, shade] = TOLL_SKINS[skin] ?? TOLL_SKINS.meadow;
-  const key = skin === 'meadow' ? 'toll_booth' : `toll_booth_${skin}`;
-  const p = pen(key);
-  const w = 260;
-  const h = 360;
-  const dark = body === G_BONE;
-  // The island and its chevron kerb.
-  p.rect(0, h - 34, w, 34, { fill: G_SAND, r: 1, width: 4.5, stroke: G_INK });
-  for (let x = -6, i = 0; x < w; x += 26, i++) p.shape([[x, h - 30], [x + 13, h - 30], [x + 25, h - 5], [x + 12, h - 5]], { fill: i % 2 ? G_INK : G_EMBER, raw: true, stroke: null });
-  // The hinge post: bone and red bands, a STOP disc on an arm, the pivot cap.
-  p.rect(18, h - 210, 26, 180, { fill: G_BONE, r: 2, width: 4.5, stroke: G_INK });
-  for (let y = h - 200; y < h - 40; y += 36) p.rect(18, y, 26, 16, { fill: G_RED, r: 0, stroke: null });
-  p.ellipse(31, h - 236, 24, 24, { fill: G_RED, width: 4.5, stroke: G_INK });
-  p.ellipse(31, h - 236, 17, 17, { stroke: G_BONE, width: 3 });
-  p.rect(18, h - 240, 26, 8, { fill: G_BONE, r: 1, stroke: null });
-  p.ellipse(31, h - 158, 20, 20, { fill: G_INK, width: 4.5, stroke: G_INK });
-  p.ellipse(31, h - 158, 9, 9, { fill: G_GOLD, stroke: null });
-  // The kiosk.
-  p.rect(70, 130, 170, h - 162, { fill: body, r: 10, width: 6, stroke: G_INK, shade: [{ pts: [[188, 120], [250, 120], [250, h], [192, h]], color: shade }] });
-  // Its roof cap: a heavy rounded slab, an ink band, and the beacon.
-  p.rect(52, 98, 206, 40, { fill: G_BONE, r: 20, width: 5, stroke: G_INK, shade: [{ pts: [[50, 124], [260, 124], [260, 140], [50, 140]], color: G_SAND }] });
-  p.rect(56, 132, 198, 8, { fill: G_INK, r: 2, stroke: null });
-  p.rect(138, 76, 32, 24, { fill: G_INK, r: 3, width: 3 });
-  p.ellipse(154, 66, 18, 16, { fill: G_GOLD, width: 4, stroke: G_INK });
-  p.ellipse(148, 60, 6, 4, { fill: '#FFFFFF', stroke: null, opacity: 0.85 });
-  // The window band, with the attendant dozing: a peaked cap, closed eyes, a moustache.
-  p.rect(84, 150, 142, 92, { fill: '#FFC86B', r: 8, width: 5, stroke: G_INK, shade: [{ pts: [[84, 210], [230, 200], [230, 246], [84, 246]], color: '#FF9E4A' }] });
-  p.line([[92, 156], [118, 156], [92, 184]], { width: 3, color: '#FFFFFF', raw: true, opacity: 0.6 });
-  p.ellipse(150, 216, 30, 26, { fill: G_BONE, width: 4, stroke: G_INK });
-  p.shape([[120, 200], [126, 184], [150, 178], [174, 184], [180, 200]], { fill: G_OX, width: 4, stroke: G_INK });
-  p.rect(114, 196, 76, 9, { fill: G_INK, r: 2, width: 2 });
-  p.dot(150, 189, 4, G_GOLD);
-  p.line([[136, 216], [144, 219]], { width: 3, raw: true });
-  p.line([[156, 219], [164, 216]], { width: 3, raw: true });
-  p.shape([[140, 226], [150, 222], [160, 226], [156, 232], [144, 232]], { fill: G_OX, raw: true, width: 2.5 });
-  p.rect(80, 238, 150, 12, { fill: G_INK, r: 2, width: 3 });
-  // A ticket slot, the TOLL plate and the door.
-  p.rect(200, 256, 30, 10, { fill: G_INK, r: 2, stroke: null });
-  p.rect(204, 266, 22, 16, { fill: G_BONE, r: 1, width: 2.5, stroke: G_INK });
-  p.rect(92, 258, 100, 30, { fill: dark ? G_INK : G_BONE, r: 3, width: 3.5, stroke: G_INK });
-  p.rect(116, 296, 60, h - 330, { fill: shade, r: 4, width: 4, stroke: G_INK });
-  p.dot(166, 316, 4, G_GOLD);
-  // A potted plant the attendant waters, between shifts.
-  p.shape([[222, h - 34], [244, h - 34], [240, h - 60], [226, h - 60]], { fill: G_EMBER, raw: true, width: 3, stroke: G_INK });
-  for (const [dx, dy] of [[-6, -70], [6, -74], [0, -82]] as const) p.dot(233 + dx, h + dy, 8, G_OLIVE);
-  return { key, svg: p.svg(w, h), w, h };
-}
-
-/**
- * The plaza's canopy: a heavy fascia in the place's colour with an ink edge and a chevron trim along
- * its foot, a bone band the game writes TOLL on, gold downlights, on ink columns with ember bands.
- */
-export const CANOPY = { w: 780, h: 560, slab: 70, fascia: { x: 390, y: 104 }, lights: [190, 390, 590] };
-export function tollCanopyArt(skin = 'meadow'): Art {
-  const [body, , fascia] = TOLL_SKINS[skin] ?? TOLL_SKINS.meadow;
-  const key = `toll_canopy_${skin}`;
-  const p = pen(key);
-  const { w, h, slab } = CANOPY;
-  for (const cx of [40, w - 40]) {
-    p.rect(cx - 18, slab + 60, 36, h - slab - 60, { fill: G_INK, r: 2, width: 4, stroke: G_INK });
-    for (let y = slab + 120; y < h - 40; y += 90) p.rect(cx - 18, y, 36, 10, { fill: G_EMBER, r: 0, stroke: null });
-    p.rect(cx - 26, h - 20, 52, 20, { fill: G_SAND, r: 1, width: 3.5, stroke: G_INK });
-  }
-  p.rect(0, slab, w, 74, { fill: fascia, r: 3, width: 6, stroke: G_INK });
-  for (let x = 6, i = 0; x < w - 10; x += 24, i++) p.shape([[x, slab + 60], [x + 12, slab + 60], [x + 22, slab + 74], [x + 10, slab + 74]], { fill: i % 2 ? body : G_BONE, raw: true, stroke: null });
-  p.rect(10, slab - 18, w - 20, 20, { fill: G_BONE, r: 2, width: 4, stroke: G_INK });
-  p.rect(CANOPY.fascia.x - 116, slab + 10, 232, 46, { fill: G_BONE, r: 3, width: 4, stroke: G_INK });
-  for (const lx of CANOPY.lights) p.rect(lx - 40, slab + 74, 80, 12, { fill: G_GOLD, r: 2, width: 3, stroke: G_INK });
-  return { key, svg: p.svg(w, h), w, h };
-}
 
 /** The barrier: ember and ink stripes, gold lamps along it, a red STOP disc at its tip, an ink counterweight. */
 export function tollArmArt(): Art {

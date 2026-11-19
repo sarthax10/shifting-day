@@ -7,6 +7,7 @@ import '@fontsource/space-mono/400.css';
 import '@fontsource/space-mono/700.css';
 import Phaser from 'phaser';
 import * as art from './art';
+import { tollArts } from './tolls';
 import { C, type Pt } from './ink';
 import { PlayScene } from './game';
 import { prepareLeg } from './prepare';
@@ -167,7 +168,7 @@ game.events.once('ready', async () => {
     os.homeSignArt(),
     os.plankSignArt(),
     art.officialSignArt(),
-    ...Object.keys(art.TOLL_SKINS).flatMap((k) => [art.tollBoothArt(k), art.tollCanopyArt(k)]),
+    ...tollArts(),
     art.tollArmArt(),
     art.railSignalArt(),
     art.fuelCanArt(),
