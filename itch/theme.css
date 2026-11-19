@@ -68,7 +68,7 @@ body {
   background-color: var(--ink);
 }
 .game_frame iframe { display: block; }
-.view_game_page .embed_wrapper { margin-top: 0; }
+.view_game_page .embed_wrapper { margin-top: 0 !important; }
 /* The launch screen: launch.jpg, uploaded as the theme's Embed BG, behind the button in place of the cover. */
 .view_game_page .game_frame { background-size: cover; background-position: center; }
 /*
