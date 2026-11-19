@@ -1,4 +1,3 @@
-import { roadsidePineArt } from './night';
 import { pen, type Art } from './art';
 import type { Pt } from './ink';
 
@@ -24,11 +23,11 @@ export const P: Record<string, Palette> = {
   gold: { shadow: '#A86A24', mid: '#F2B23A', light: '#FFE07A', rim: '#FFF2B0' },
   rust: { shadow: '#6A3A2A', mid: '#C9702E', light: '#EE9A4A', rim: '#FFD8A0' },
   pine: { shadow: '#140F18', mid: '#1A2E24', light: '#2A4636', rim: '#FF6A30' },
-  snow: { shadow: '#14283C', mid: '#1E3448', light: '#2E4E66', rim: '#E8F0FF' },
+  snow: { shadow: '#120E22', mid: '#1A2E24', light: '#2A4636', rim: '#F3E3CC' },
   sea: { shadow: '#1F4A3E', mid: '#3E7A5E', light: '#6AA878', rim: '#E8F4C8' },
 };
-const BARK = '#4A3438';
-const BARK_LIGHT = '#6A4E4E';
+const BARK = '#3A1A26';
+const BARK_LIGHT = '#7A4A4A';
 
 export function rng(seed: number) {
   let a = seed >>> 0;
@@ -91,22 +90,196 @@ export function clump(p: Pen, cx: number, cy: number, rx: number, ry: number, pa
   }
 }
 
-/** A trunk tapering up from a flared root, and branches forking from it toward the clumps. */
-function trunk(p: Pen, x: number, base: number, top: number, w: number, branches: [number, number, number][], lean = 0) {
-  p.shape(
-    [
-      [x - w * 1.4, base],
-      [x - w * 0.6, base - 16],
-      [x - w * 0.42 + lean, top],
-      [x + w * 0.42 + lean, top],
-      [x + w * 0.6, base - 16],
-      [x + w * 1.4, base],
-    ],
-    { fill: BARK, width: 3.5, shade: [{ pts: [[x - w * 2, base + 4], [x - w * 0.1, base + 4], [x - w * 0.1 + lean, top - 4], [x - w * 2 + lean, top - 4]], color: BARK_LIGHT }] },
-  );
-  for (const [fy, tx, ty] of branches) {
+// ================================================================ crowns, printed
+
+/** A lobe of a crown: a circle (or, with an aspect, an ellipse squashed in y) at x, y of radius r. */
+type Lobe = [number, number, number];
+
+/**
+ * The outline of a crown: the union of its lobes, traced from a point inside them. For each direction from
+ * the middle, the farthest edge of any lobe; so overlapping lobes become one leafy silhouette, as a
+ * printmaker would cut it, instead of a pile of separate balls.
+ */
+function union(lobes: Lobe[], cx: number, cy: number, aspect = 1, n = 220): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    let best = 0;
+    for (const [lx, ly, lr] of lobes) {
+      // Work in a space squashed by the aspect, where the lobes are circles.
+      const ox = cx - lx;
+      const oy = (cy - ly) / aspect;
+      const ddy = dy / aspect;
+      const len = Math.hypot(dx, ddy);
+      const ux = dx / len;
+      const uy = ddy / len;
+      const b = ox * ux + oy * uy;
+      const c = ox * ox + oy * oy - lr * lr;
+      const disc = b * b - c;
+      if (disc < 0) continue;
+      const t = (-b + Math.sqrt(disc)) / len;
+      if (t > best) best = t;
+    }
+    out.push([cx + dx * best, cy + dy * best]);
+  }
+  return out;
+}
+
+/** Leafy edging: small lobes set round the rim of each big one, so the silhouette breaks into leaf clusters. */
+function leafy(lobes: Lobe[], r: () => number, k = 0.34, every = 0.5): Lobe[] {
+  const out: Lobe[] = [...lobes];
+  for (const [x, y, rad] of lobes) {
+    const n = Math.max(5, Math.round((Math.PI * 2 * rad) / (rad * every * 2)));
+    const ph = r() * Math.PI * 2;
+    for (let i = 0; i < n; i++) {
+      const a = ph + (i / n) * Math.PI * 2;
+      const rr = rad * k * (0.75 + r() * 0.5);
+      out.push([x + Math.cos(a) * (rad - rr * 0.25), y + Math.sin(a) * (rad - rr * 0.25), rr]);
+    }
+  }
+  return out;
+}
+
+const shift = (lobes: Lobe[], dx: number, dy: number, s: number): Lobe[] => lobes.map(([x, y, r]) => [x + dx * r, y + dy * r, r * s]);
+
+interface CrownOpts {
+  lobes: Lobe[];
+  cx: number;
+  cy: number;
+  pal: Palette;
+  r: () => number;
+  aspect?: number;
+  /** Where branches show through gaps in the leaves: [x, y, size]. */
+  holes?: [number, number, number][];
+  /** Where the trunk enters the crown, and the boughs reaching up into its hollow. */
+  trunkX?: number;
+  boughs?: Pt[];
+  hollow?: boolean;
+  /** The marks that suggest leaves: ticks, or small maple stars. */
+  marks?: 'ticks' | 'stars' | 'strokes';
+  width?: number;
+}
+
+/**
+ * A crown in three values, as on a print: the whole mass in the middle tone, the side away from the sun
+ * screened with halftone dots of the shadow colour, a lit region toward the sun (up and to the left) in the
+ * light tone, gaps where branches show through, leaf marks, and a rim of the sun's colour along the lit edge.
+ */
+function crown(p: Pen, o: CrownOpts) {
+  const { cx, cy, pal, r } = o;
+  const aspect = o.aspect ?? 1;
+  const edge = leafy(o.lobes, r);
+  const outline = union(edge, cx, cy, aspect);
+  const shadow = union(shift(edge, 0.3, 0.36, 0.98), cx + 20, cy + 24, aspect);
+  p.shape(outline, { fill: pal.mid, raw: true, width: o.width ?? 4.5, wobble: 0.35, shade: [{ pts: shadow, color: pal.shadow }] });
+  // The lit side: the same crown, pulled toward the sun and shrunk, so it sits inside the mass.
+  const lit = union(leafy(shift(o.lobes, -0.16, -0.2, 0.8), r, 0.3), cx - 14, cy - 18, aspect, 180);
+  p.shape(lit, { fill: pal.light, raw: true, stroke: null, wobble: 0.35 });
+  const big = o.lobes.reduce((m, l) => (l[2] > m[2] ? l : m), o.lobes[0]);
+  const capLobes = o.lobes.filter(([, ly, lr]) => ly - lr < big[1] - big[2] * 0.4);
+  const top = union(shift(capLobes, -0.3, -0.34, 0.5), cx - 24, cy - 34, aspect, 120);
+  p.shape(top, { fill: mixC(pal.light, pal.rim, 0.3), raw: true, stroke: null, wobble: 0.35 });
+  // The hollow under the crown, in shadow, where the boughs go up into the leaves.
+  const ys = outline.map(([, y]) => y);
+  const bottom = Math.max(...ys);
+  const R = big[2];
+  if (o.hollow !== false) {
+    p.ellipse(o.trunkX ?? cx, bottom - R * 0.32 * aspect, R * 0.62, R * 0.26 * aspect, { fill: pal.shadow, stroke: null, wobble: 0.6 });
+    for (const [tx, ty] of o.boughs ?? []) p.line([[o.trunkX ?? cx, bottom + 6], [(tx + (o.trunkX ?? cx)) / 2, (ty + bottom) / 2], [tx, ty]], { width: 6, color: BARK });
+  }
+  // Gaps in the leaves with a branch crossing each.
+  for (const [hx, hy, s] of [] as [number, number, number][]) {
+    const hole: Pt[] = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const k = i % 2 ? 0.7 : 1;
+      hole.push([hx + Math.cos(a) * s * k * 1.3, hy + Math.sin(a) * s * k]);
+    }
+    p.shape(hole, { fill: pal.shadow, raw: true, width: 2.4, wobble: 0.4 });
+    p.line([[hx - s * 1.2, hy + s * 0.5], [hx, hy - s * 0.1], [hx + s * 1.1, hy - s * 0.6]], { width: Math.max(3, s * 0.35), color: BARK });
+  }
+  // Leaf marks: in the lit side, in the rim colour; in the middle tone, a shade darker.
+  const marks = o.marks ?? 'ticks';
+  const inside = (pts: Pt[], x: number, y: number) => {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i];
+      const [xj, yj] = pts[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  const xs = outline.map(([x]) => x);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  for (let i = 0; i < 70; i++) {
+    const x = x0 + r() * (x1 - x0);
+    const y = y0 + r() * (y1 - y0);
+    if (!inside(outline, x, y)) continue;
+    const onLit = inside(lit, x, y);
+    if (!onLit && inside(shadow, x, y) && r() < 0.7) continue;
+    const c = onLit ? pal.rim : pal.shadow;
+    if (marks === 'stars') {
+      const s = 4 + r() * 3;
+      p.shape([[x, y - s], [x + s * 0.35, y - s * 0.3], [x + s, y - s * 0.4], [x + s * 0.45, y + s * 0.15], [x + s * 0.6, y + s * 0.8], [x, y + s * 0.4], [x - s * 0.6, y + s * 0.8], [x - s * 0.45, y + s * 0.15], [x - s, y - s * 0.4], [x - s * 0.35, y - s * 0.3]], { fill: c, raw: true, stroke: null, wobble: 0.2, opacity: 0.9 });
+    } else if (marks === 'strokes') {
+      p.line([[x, y], [x + (r() - 0.5) * 3, y + 10 + r() * 8]], { width: 2.4, color: c, raw: true, opacity: 0.8, wobble: 0.2 });
+    } else {
+      p.line([[x - 5, y - 3], [x, y + 2], [x + 5, y - 4]], { width: 2.2, color: c, raw: true, opacity: 0.8, wobble: 0.2 });
+    }
+  }
+  // The sun's rim along the upper-left of the outline, just inside the ink.
+  const rim = outline.filter(([x, y]) => {
+    const a = Math.atan2(y - cy, x - cx);
+    return a > -Math.PI * 0.95 && a < -Math.PI * 0.42;
+  });
+  if (rim.length > 3) p.line(rim.map(([x, y]): Pt => [x + (cx - x) * 0.04, y + (cy - y) * 0.04]), { width: 3.2, color: pal.rim, raw: true, opacity: 0.9, wobble: 0.2 });
+  return outline;
+}
+
+/** Mixes two hex colours. */
+function mixC(a: string, b: string, k: number) {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return '#' + pa.map((v, i) => Math.round(v + (pb[i] - v) * k).toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * A trunk with weight: flared roots gripping the ground, a gentle S as it rises, bark lines down it in
+ * shade, a lit edge on the sun side, and boughs forking up into the crown.
+ */
+function bole(p: Pen, x: number, base: number, top: number, w: number, boughs: [number, number, number][], lean = 0, bark = BARK) {
+  const mid = (base + top) / 2;
+  const body: Pt[] = [
+    [x - w * 2.1, base + 2],
+    [x - w * 1.1, base - 10],
+    [x - w * 0.7, base - 34],
+    [x - w * 0.56 + lean * 0.4, mid],
+    [x - w * 0.46 + lean, top],
+    [x + w * 0.46 + lean, top],
+    [x + w * 0.6 + lean * 0.4, mid],
+    [x + w * 0.74, base - 34],
+    [x + w * 1.2, base - 10],
+    [x + w * 2.2, base + 2],
+  ];
+  for (const [fy, tx, ty] of boughs) {
     const fx = x + lean * ((base - fy) / (base - top));
-    p.line([[fx, fy], [(fx + tx) / 2, (fy + ty) / 2 - 8], [tx, ty]], { width: Math.max(3, w * 0.45), color: BARK });
+    p.line([[fx, fy], [(fx * 2 + tx) / 3, (fy * 2 + ty) / 3 - 10], [tx, ty]], { width: Math.max(4, w * 0.5), color: bark });
+  }
+  p.shape(body, { fill: bark, width: 4, shade: [{ pts: [[x + w * 0.05 + lean, top - 10], [x + w * 3, top - 10], [x + w * 3, base + 10], [x + w * 0.15, base + 10]], color: '#140A12' }] });
+  p.line([[x - w * 0.38 + lean, top + 10], [x - w * 0.5 + lean * 0.4, mid], [x - w * 0.6, base - 30]], { width: 2.6, color: BARK_LIGHT, opacity: 0.9 });
+  for (let k = 0; k < 4; k++) {
+    const y = top + 30 + k * ((base - top - 60) / 4);
+    p.line([[x + w * 0.1 + lean * 0.5, y], [x + w * 0.2 + lean * 0.5, y + 22]], { width: 1.8, color: '#140A12', raw: true, opacity: 0.7 });
+  }
+}
+
+/** Grass tufts at the foot of a tree, in olive and gold. */
+function tufts(p: Pen, x: number, base: number, spread: number, r: () => number) {
+  for (let i = 0; i < 7; i++) {
+    const tx = x + (r() - 0.5) * spread;
+    for (const a of [-0.5, 0, 0.45]) p.line([[tx, base], [tx + Math.sin(a) * 14, base - 14 - r() * 10]], { width: 2.4, color: i % 3 ? '#7E8A44' : '#A3A653', raw: true });
   }
 }
 
@@ -114,12 +287,12 @@ function tree(key: string, w: number, h: number, draw: (p: Pen, r: () => number)
   const p = pen(key);
   const r = rng(seed);
   // A soft contact shadow on the ground.
-  p.ellipse(w / 2, h - 6, w * 0.32, 9, { fill: '#2A2140', stroke: null, opacity: 0.22, wobble: 0.3 });
+  p.ellipse(w / 2, h - 6, w * 0.34, 10, { fill: '#0A0712', stroke: null, opacity: 0.22, wobble: 0.3 });
   draw(p, r);
   return { key, svg: p.svg(w, h), w, h };
 }
 
-/** A broad oak: a heavy crown of five clumps, leaning, with branches showing through. */
+/** A broad oak: a heavy, cloud-edged crown wider than it is tall, a stout trunk, boughs showing through. */
 function oak(key: string, pal: Palette, seed: number): Art {
   const w = 340;
   const h = 420;
@@ -128,23 +301,23 @@ function oak(key: string, pal: Palette, seed: number): Art {
     w,
     h,
     (p, r) => {
-      trunk(p, 170, h - 8, 200, 16, [[260, 96, 170], [250, 250, 160], [220, 170, 130]], 6);
-      const cl: [number, number, number, number, number][] = [
-        [110, 200, 70, 56, 0.8],
-        [240, 196, 74, 58, 0.8],
-        [170, 150, 96, 78, 0],
-        [92, 132, 62, 54, 0],
-        [236, 116, 66, 56, 0],
-        [176, 80, 72, 58, 0],
-      ];
-      for (const [cx, cy, rx, ry, d] of cl) clump(p, cx + (r() - 0.5) * 10, cy, rx, ry, pal, r, d);
-      p.line([[178, 230], [150, 196], [120, 190]], { width: 5, color: BARK });
+      bole(p, 170, h - 8, 210, 17, [[262, 92, 178], [248, 252, 170], [226, 168, 120], [236, 206, 128]], 6);
+      crown(p, {
+        lobes: [[170, 150, 84], [104, 184, 62], [240, 180, 64], [120, 116, 56], [226, 110, 58], [172, 82, 60], [70, 156, 40], [276, 150, 40]],
+        cx: 170,
+        cy: 150,
+        pal,
+        r,
+        trunkX: 174,
+        boughs: [[120, 206], [226, 202], [176, 196]],
+      });
+      tufts(p, 170, h - 8, 120, r);
     },
     seed,
   );
 }
 
-/** A poplar: tall and narrow, five to seven slim clumps stacked up a straight trunk. */
+/** A poplar: a tall flame of a crown on a straight trunk, its leaves drawn as upright strokes. */
 function poplar(key: string, pal: Palette, seed: number): Art {
   const w = 170;
   const h = 460;
@@ -153,18 +326,18 @@ function poplar(key: string, pal: Palette, seed: number): Art {
     w,
     h,
     (p, r) => {
-      trunk(p, 85, h - 8, 120, 10, [], 0);
-      for (let i = 0; i < 7; i++) {
-        const y = 360 - i * 46;
-        const rx = 46 - Math.abs(i - 2.5) * 5;
-        clump(p, 85 + (r() - 0.5) * 12, y, rx, 40, pal, r, i < 2 ? 0.8 : 0);
-      }
+      bole(p, 85, h - 8, 300, 9, [[340, 70, 300], [330, 102, 280]], 0);
+      const lobes: Lobe[] = [];
+      for (let i = 0; i < 8; i++) lobes.push([85 + (r() - 0.5) * 8, 370 - i * 40, 44 - Math.abs(i - 2.6) * 5.2]);
+      lobes.push([85, 52, 18]);
+      crown(p, { lobes, cx: 85, cy: 220, pal, r, marks: 'strokes', aspect: 1, hollow: false });
+      tufts(p, 85, h - 8, 70, r);
     },
     seed,
   );
 }
 
-/** A maple: a rounder, lighter crown than the oak, in autumn colours, with leaves fallen beneath. */
+/** A maple: a round, full crown in autumn colour with a little point at the top, maple-leaf marks, and leaves fallen beneath. */
 function maple(key: string, pal: Palette, seed: number): Art {
   const w = 320;
   const h = 400;
@@ -173,23 +346,28 @@ function maple(key: string, pal: Palette, seed: number): Art {
     w,
     h,
     (p, r) => {
-      for (let i = 0; i < 14; i++) p.ellipse(60 + r() * 200, h - 8 - r() * 6, 6, 3, { fill: i % 2 ? pal.light : pal.mid, stroke: null });
-      trunk(p, 160, h - 8, 210, 13, [[260, 90, 190], [250, 240, 180], [230, 160, 120]], -4);
-      const cl: [number, number, number, number, number][] = [
-        [100, 210, 62, 50, 0.8],
-        [222, 214, 64, 50, 0.8],
-        [160, 168, 86, 70, 0],
-        [86, 150, 58, 50, 0],
-        [234, 140, 60, 52, 0],
-        [158, 92, 70, 58, 0],
-      ];
-      for (const [cx, cy, rx, ry, d] of cl) clump(p, cx + (r() - 0.5) * 10, cy, rx, ry, pal, r, d);
+      for (let i = 0; i < 22; i++) {
+        const x = 50 + r() * 220;
+        const y = h - 6 - r() * 8;
+        p.shape([[x - 6, y], [x, y - 4], [x + 6, y], [x, y + 3]], { fill: [pal.light, pal.mid, pal.shadow][i % 3], raw: true, width: 1.5 });
+      }
+      bole(p, 160, h - 8, 220, 14, [[262, 92, 196], [250, 236, 186], [228, 158, 126], [240, 190, 140]], -4);
+      crown(p, {
+        lobes: [[160, 168, 82], [96, 192, 58], [226, 196, 60], [110, 124, 56], [214, 120, 58], [160, 84, 58], [160, 50, 26]],
+        cx: 160,
+        cy: 160,
+        pal,
+        r,
+        marks: 'stars',
+        trunkX: 158,
+        boughs: [[112, 222], [210, 218], [160, 212]],
+      });
     },
     seed,
   );
 }
 
-/** A birch: a thin white trunk with black marks, and an airy crown of small gold clusters. */
+/** A birch pair: two slender white trunks with black marks, one leaning, under airy gold clusters. */
 function birch(key: string): Art {
   const w = 220;
   const h = 440;
@@ -198,21 +376,27 @@ function birch(key: string): Art {
     w,
     h,
     (p, r) => {
-      p.shape([[100, h - 8], [104, 140], [96, 60], [108, 58], [116, 140], [120, h - 8]], { fill: '#F2EEE6', width: 3.5 });
-      for (let y = 90; y < h - 20; y += 22 + r() * 14) p.line([[102 + r() * 4, y], [110 + r() * 6, y + 2]], { width: 2.2, color: '#2A2140', raw: true });
-      p.line([[108, 200], [70, 150]], { width: 3, color: '#D8D2C8' });
-      p.line([[110, 170], [156, 120]], { width: 3, color: '#D8D2C8' });
-      for (let i = 0; i < 13; i++) {
-        const x = 50 + r() * 120;
-        const y = 50 + r() * 180;
-        clump(p, x, y, 18 + r() * 10, 15 + r() * 8, P.gold, r);
-      }
+      const stem = (x0: number, x1: number, top: number, wd: number) => {
+        p.shape([[x0 - wd, h - 8], [x1 - wd * 0.6, top], [x1 + wd * 0.6, top], [x0 + wd, h - 8]], { fill: '#F3E3CC', width: 3.5, shade: [{ pts: [[x0 + wd * 0.2, h], [x1 + wd * 0.3, top], [x1 + wd * 2, top], [x0 + wd * 2, h]], color: '#C8B4A8' }] });
+        for (let y = top + 20; y < h - 24; y += 18 + r() * 16) {
+          const t = (h - 8 - y) / (h - 8 - top);
+          const cx = x0 + (x1 - x0) * t;
+          p.line([[cx - wd * 0.7, y], [cx + wd * (0.1 + r() * 0.5), y + 2]], { width: 2.6, color: '#0A0712', raw: true });
+        }
+      };
+      stem(118, 92, 90, 9);
+      stem(124, 158, 150, 6);
+      p.line([[100, 200], [62, 156]], { width: 3.5, color: '#0A0712' });
+      p.line([[150, 210], [182, 168]], { width: 3, color: '#0A0712' });
+      crown(p, { lobes: [[96, 118, 44], [66, 160, 30], [128, 86, 32]], cx: 96, cy: 120, pal: P.gold, r, width: 3.5, hollow: false });
+      crown(p, { lobes: [[160, 164, 34], [184, 140, 24], [140, 186, 22]], cx: 160, cy: 164, pal: P.gold, r, width: 3.5, hollow: false });
+      tufts(p, 120, h - 8, 60, r);
     },
     13,
   );
 }
 
-/** A pine with drooping tiers. With snow, white blobs lie on top of every tier. */
+/** A pine: jagged tiers, each lit on the sun side and screened on the other, a spire at the top. */
 function pine(key: string, pal: Palette, snowy: boolean, seed: number): Art {
   const w = 260;
   const h = 460;
@@ -221,37 +405,37 @@ function pine(key: string, pal: Palette, snowy: boolean, seed: number): Art {
     w,
     h,
     (p, r) => {
-      p.rect(122, 330, 16, 120, { fill: BARK, width: 3.5, r: 3 });
+      bole(p, 130, h - 8, 340, 9, [], 0);
       const tiers = 6;
       for (let t = 0; t < tiers; t++) {
         const k = t / (tiers - 1);
-        const y = 60 + k * 300;
-        const half = 26 + k * 92 + (r() - 0.5) * 10;
-        const tipY = y + 40 + k * 20;
-        // Each tier: a peak, then the lower edge sagging between the trunk and the tips.
-        const pts: Pt[] = [[130, y - 36 + (t ? 0 : -24)]];
-        pts.push([130 + half * 0.55, y + 4], [130 + half, tipY + (r() - 0.5) * 8]);
-        for (let i = 1; i < 6; i++) {
-          const u = i / 6;
-          pts.push([130 + half * (1 - u * 2), tipY - Math.sin(u * Math.PI) * (16 + k * 10) + (i % 2 ? 6 : 0)]);
+        const y = 70 + k * 290;
+        const half = 30 + k * 92 + (r() - 0.5) * 8;
+        const tipY = y + 46 + k * 18;
+        const peak: Pt = [130, y - 40 - (t ? 0 : 26)];
+        // A saw-toothed lower edge: needles hanging in points.
+        const lower: Pt[] = [];
+        const teeth = 6 + t;
+        for (let i = 0; i <= teeth; i++) {
+          const u = i / teeth;
+          const x = 130 + half - u * half * 2;
+          lower.push([x, tipY - Math.sin(u * Math.PI) * (14 + k * 10) + (i % 2 ? 10 : 0)]);
         }
-        pts.push([130 - half, tipY + (r() - 0.5) * 8], [130 - half * 0.55, y + 4]);
-        p.shape(pts, { fill: pal.light, raw: true, width: 3.2, shade: [{ pts: [[130, y - 60], [260, y - 60], [260, tipY + 20], [130, tipY + 20]], color: pal.mid }] });
+        const body: Pt[] = [peak, [130 + half * 0.5, y + 6], ...lower, [130 - half * 0.5, y + 6]];
+        p.shape(body, { fill: pal.light, raw: true, width: 3.6, shade: [{ pts: [[132, y - 70], [w, y - 70], [w, tipY + 24], [132, tipY + 24]], color: pal.shadow }] });
+        p.line([peak, [130 - half * 0.5, y + 6], [130 - half, tipY]], { width: 3, color: pal.rim, raw: true, opacity: 0.75 });
         if (snowy) {
-          // Snow lying on the tier, thick on the moonlit left, with a soft overhanging lip.
-          const snow: Pt[] = [[130, y - 30 + (t ? 0 : -20)], [130 + half * 0.6, y + 14], [130 + half * 0.95, tipY - 4], [130 + half * 0.7, tipY - 14], [130 + half * 0.3, y + 22], [130 - half * 0.3, y + 22], [130 - half * 0.7, tipY - 14], [130 - half * 0.95, tipY - 4], [130 - half * 0.6, y + 14]];
-          p.shape(snow, { fill: '#F4F8FF', raw: false, width: 2.4, shade: [{ pts: [[130, y - 60], [260, y - 60], [260, tipY + 20], [130, tipY + 20]], color: '#B8C8E8' }] });
-        } else {
-          const arc: Pt[] = [[130, y - 30], [130 - half * 0.55, y + 6], [130 - half, tipY]];
-          p.line(arc, { width: 2.4, color: pal.rim, opacity: 0.6 });
+          const snow: Pt[] = [[130, peak[1] + 4], [130 + half * 0.5, y + 8], [130 + half * 0.82, tipY - 16], [130 + half * 0.36, y + 14], [130, y + 4], [130 - half * 0.36, y + 14], [130 - half * 0.82, tipY - 16], [130 - half * 0.5, y + 8]];
+          p.shape(snow, { fill: '#F3E3CC', width: 2.4, shade: [{ pts: [[130, y - 60], [w, y - 60], [w, tipY + 20], [130, tipY + 20]], color: '#9A84C0' }] });
         }
       }
+      if (!snowy) tufts(p, 130, h - 8, 90, r);
     },
     seed,
   );
 }
 
-/** A windswept sea pine: a bent trunk and flat pads of foliage, dark underneath, lit on top. */
+/** A stone pine by the sea: a leaning trunk forking into limbs, under a broad, flat-topped umbrella of pads. */
 function seaPine(key: string): Art {
   const w = 360;
   const h = 360;
@@ -260,20 +444,14 @@ function seaPine(key: string): Art {
     w,
     h,
     (p, r) => {
-      p.line([[190, h - 8], [182, 280], [150, 200], [118, 140]], { width: 18, color: BARK });
-      p.line([[156, 214], [230, 170]], { width: 9, color: BARK });
-      p.line([[128, 160], [80, 128]], { width: 8, color: BARK });
-      const pads: [number, number, number, number][] = [
-        [110, 110, 120, 34],
-        [230, 150, 96, 28],
-        [70, 130, 70, 24],
-        [150, 86, 86, 26],
-      ];
-      for (const [cx, cy, rx, ry] of pads) {
-        const pts = scallop(cx, cy, rx, ry, 10, r);
-        p.shape(pts, { fill: P.sea.light, raw: true, width: 3.2, shade: [{ pts: move(pts, 0, ry * 0.55), color: P.sea.shadow }] });
-        p.line(pts.filter(([, y]) => y < cy - ry * 0.4), { width: 2.4, color: P.sea.rim, raw: true, opacity: 0.7 });
-      }
+      p.line([[196, h - 8], [190, 290], [168, 220], [140, 168]], { width: 20, color: BARK });
+      p.line([[194, h - 8], [188, 290], [166, 222]], { width: 5, color: BARK_LIGHT, opacity: 0.8 });
+      p.line([[168, 226], [232, 176]], { width: 11, color: BARK });
+      p.line([[146, 178], [96, 138]], { width: 9, color: BARK });
+      p.line([[232, 178], [266, 150]], { width: 7, color: BARK });
+      crown(p, { lobes: [[110, 122, 46], [160, 104, 52], [214, 112, 46], [262, 134, 36], [64, 138, 30]], cx: 160, cy: 118, pal: P.sea, r, aspect: 0.42, marks: 'ticks', hollow: false });
+      crown(p, { lobes: [[226, 160, 34], [262, 168, 26], [194, 168, 22]], cx: 228, cy: 162, pal: P.sea, r, aspect: 0.45, hollow: false });
+      tufts(p, 196, h - 8, 80, r);
     },
     29,
   );
@@ -290,7 +468,7 @@ export function treeArts(): Art[] {
     maple('maple_1', P.gold, 23),
     maple('maple_2', P.rust, 31),
     birch('birch'),
-    roadsidePineArt(),
+    pine('snowpine', P.snow, true, 37),
     seaPine('seapine'),
   ];
 }
