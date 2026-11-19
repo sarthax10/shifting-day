@@ -462,41 +462,124 @@ export function snowyPine(p: ReturnType<typeof plainPen>, x: number, y: number, 
 }
 
 /**
- * A pine forest on rolling snow. Far away it is one silhouette of tiered pines with only a hint of snow;
- * near, every tree is drawn with its drooping, snow-laden tiers, some poking well above the rest, over a
- * dark mass of trunks and shadow, with snow drifted at their feet.
+ * The woods on the pass, in miniature, as one printed band: the same kinds of tree that stand by the road -
+ * drooping spruces with snow along their boughs, narrow spires, snow ghosts buried in rime, bare birches and
+ * berried rowans - over a dark mass of trunks and shadow, with snow drifted at their feet. Far away they are
+ * flat and hazed toward the sky; nearer, they carry more snow and more detail. No outlines: far layers are
+ * printed flat, shaded with halftone, as on the poster.
  */
 export function frostForestArt(key: string, h: number, colour: string, rim: string, seed: number, size: number, snow: string): Art {
   const p = plainPen(key);
   const near = size >= 1;
   const hill = wave(seed, [60, 26, 12]);
   const at = (x: number) => h - 200 - hill(x);
-  // The trees, back row first.
-  const trees: [number, number][] = [];
+  const lit = near ? '#F3E3CC' : mix('#F3E3CC', '#8E78B4', 0.4);
+  const shade = near ? '#9A84C0' : mix('#9A84C0', colour, 0.35);
+  const deep = mix(colour, '#0A0712', 0.45);
+  const bare = mix(colour, '#3A1A26', 0.5);
+  // Which tree stands where: mostly spruce, with spires between, the odd ghost, and bare trees in clearings.
+  type Kind = 'spruce' | 'spire' | 'ghost' | 'birch' | 'rowan';
+  const trees: [number, number, Kind][] = [];
   for (let i = 0, x = 0; x < TILE; i++) {
-    const tall = rnd(seed + 1, i) < 0.12 ? 1.6 : 0.65 + rnd(seed + 2, i) * 0.6;
-    trees.push([x, 80 * size * tall]);
-    x += (near ? 22 : 16) * size + rnd(seed + 3, i) * 18 * size;
+    const roll = rnd(seed + 7, i);
+    const kind: Kind = roll < 0.48 ? 'spruce' : roll < 0.7 ? 'spire' : roll < 0.8 ? 'ghost' : roll < 0.91 ? 'birch' : 'rowan';
+    const tall = rnd(seed + 1, i) < 0.12 ? 1.5 : 0.7 + rnd(seed + 2, i) * 0.55;
+    const th = 80 * size * tall * (kind === 'spire' ? 1.25 : kind === 'ghost' ? 0.8 : kind === 'rowan' ? 0.75 : 1);
+    trees.push([x, th, kind]);
+    x += (near ? 26 : 19) * size + rnd(seed + 3, i) * 20 * size;
   }
-  // The dark under the canopy, so the trees read as one wood.
+  // The dark under the trees, so they read as one wood.
   const under: Pt[] = [];
-  for (let x = 0; x <= TILE; x += 16) under.push([x, at(x) - 30 * size]);
-  p.shape([...under, [TILE, h], [0, h]], { fill: colour, stroke: null, raw: true, wobble: 0.2 });
-  const lit = near ? '#F3E3CC' : mix('#F3E3CC', '#8E78B4', 0.45);
-  const shade = near ? '#9A84C0' : mix('#9A84C0', colour, 0.4);
-  for (const [x, th] of trees) {
-    for (const shift of [0, x < 80 ? TILE : x > TILE - 80 ? -TILE : 0].filter((v, n) => n === 0 || v !== 0)) {
-      snowyPine(p, x + shift, at(x) + 6, th, colour, lit, shade, near);
+  for (let x = 0; x <= TILE; x += 16) under.push([x, at(x) - 26 * size]);
+  p.shape([...under, [TILE, h], [0, h]], { fill: deep, stroke: null, raw: true, wobble: 0.2 });
+
+  const spruce = (x: number, base: number, th: number) => {
+    p.line([[x, base], [x + 2, base - th]], { width: Math.max(2, th * 0.03), color: bare, raw: true });
+    const n = near ? 7 : 5;
+    for (let i = 0; i < n; i++) {
+      const k = i / (n - 1);
+      const y = base - th + 6 + k * th * 0.8;
+      const len = th * (0.07 + k * 0.27);
+      const droop = th * (0.05 + k * 0.06);
+      for (const s of [-1, 1]) {
+        const tip: Pt = [x + s * len, y + droop];
+        const bough: Pt[] = [[x, y - 3], [x + s * len * 0.55, y + droop * 0.25], tip, [x + s * len * 0.7, y + droop + th * 0.035], [x + s * len * 0.35, y + droop * 0.6 + th * 0.05], [x, y + th * 0.08]];
+        p.shape(bough, { fill: colour, stroke: null, raw: true, wobble: 0.2, shade: s > 0 && near ? [{ pts: bough, color: deep }] : [] });
+        // Snow along the top of the bough, lit on the moon's side.
+        const t2 = Math.max(2.4, th * 0.03);
+        p.shape([[x, y - 4], [x + s * len * 0.55, y + droop * 0.2 - t2], [tip[0] - s * 2, tip[1] - t2 * 0.6], [x + s * len * 0.5, y + droop * 0.3 + t2 * 0.4], [x, y + t2 * 0.6]], { fill: s > 0 ? lit : shade, stroke: null, raw: true, wobble: 0.2 });
+      }
     }
-  }
-  // Moonlit rims on the tallest.
-  for (const [x, th] of trees.filter(([, th]) => th > 90 * size)) p.line([[x + 2, at(x) - th + 6], [x + th * 0.2, at(x) - th * 0.3]], { width: 1.6, color: rim, raw: true, opacity: 0.7, wobble: 0 });
-  // Snow drifted along the forest's edge, with a lit crest.
+    p.shape([[x - th * 0.04, base - th + 10], [x + 2, base - th - 6], [x + th * 0.04, base - th + 10]], { fill: lit, stroke: null, raw: true });
+  };
+  const spire = (x: number, base: number, th: number) => {
+    const half = th * 0.12;
+    const body: Pt[] = [[x, base - th]];
+    for (let i = 1; i <= 8; i++) body.push([x + half * (i / 8) + (i % 2 ? 2 : -1), base - th + (i / 8) * th * 0.92]);
+    for (let i = 8; i >= 1; i--) body.push([x - half * (i / 8) - (i % 2 ? 2 : -1), base - th + (i / 8) * th * 0.92]);
+    p.shape(body, { fill: colour, stroke: null, raw: true, wobble: 0.2, shade: near ? [{ pts: [[x, base - th - 4], [x + half + 6, base - th - 4], [x + half + 6, base], [x, base]], color: deep }] : [] });
+    for (let i = 2; i <= 8; i += 2) {
+      const y = base - th + (i / 8) * th * 0.92;
+      const wd = half * (i / 8);
+      p.ellipse(x - wd, y - 2, 2.4 + i * 0.4, 1.8 + i * 0.15, { fill: lit, stroke: null });
+      p.ellipse(x + wd, y - 2, 2.4 + i * 0.4, 1.8 + i * 0.15, { fill: shade, stroke: null });
+    }
+  };
+  const ghost = (x: number, base: number, th: number) => {
+    const half = th * 0.24;
+    const body: Pt[] = [[x + 3, base - th]];
+    for (let i = 1; i <= 6; i++) body.push([x + half * Math.pow(i / 6, 0.7) + (i % 2 ? 4 : 0), base - th + (i / 6) * th]);
+    for (let i = 6; i >= 1; i--) body.push([x - half * Math.pow(i / 6, 0.7) - (i % 2 ? 0 : 4), base - th + (i / 6) * th]);
+    p.shape(body, { fill: lit, stroke: null, wobble: 0.4, shade: [{ pts: [[x + 2, base - th - 4], [x + half + 8, base - th - 4], [x + half + 8, base + 4], [x + 2, base + 4]], color: shade }] });
+    for (let i = 0; i < 3; i++) p.dot(x + (rnd(seed + 11, x + i) - 0.5) * half, base - th * (0.25 + i * 0.22), Math.max(1.6, th * 0.025), colour);
+  };
+  const branches = (x: number, base: number, th: number, berries: boolean) => {
+    const wd = Math.max(1.4, th * 0.022);
+    const crownY = base - th * (berries ? 0.55 : 0.4);
+    const tops: Pt[] = [];
+    for (const a of berries ? [-2.2, -1.8, -1.45, -1.1, -0.8] : [-2.0, -1.6, -1.25]) {
+      const len = th * (berries ? 0.38 : 0.5);
+      const tip: Pt = [x + Math.cos(a) * len, crownY + Math.sin(a) * len];
+      p.line([[x, crownY], tip], { width: wd, color: bare, raw: true });
+      p.line([[x, crownY - wd], [tip[0], tip[1] - wd]], { width: wd * 0.8, color: lit, raw: true, opacity: 0.85 });
+      tops.push(tip);
+    }
+    if (berries) {
+      p.line([[x, base], [x, crownY]], { width: wd * 2.2, color: bare, raw: true });
+      for (const [tx, ty] of tops) {
+        p.dot(tx, ty + 2, Math.max(1.8, th * 0.03), near ? '#E3263A' : mix('#E3263A', colour, 0.35));
+        p.dot(tx + 3, ty + 4, Math.max(1.6, th * 0.026), near ? '#E3263A' : mix('#E3263A', colour, 0.35));
+      }
+    } else {
+      p.line([[x, base], [x - 1, base - th]], { width: wd * 2, color: near ? '#F3E3CC' : lit, raw: true });
+      for (let y = base - th * 0.9; y < base - 6; y += th * 0.14) p.line([[x - wd, y], [x + wd * 0.6, y]], { width: wd * 0.8, color: '#0A0712', raw: true, opacity: near ? 0.8 : 0.4 });
+    }
+  };
+  // Bare trees and ghosts first (they stand among the others), then the evergreens in front.
+  const draw = (only: Kind[]) => {
+    for (const [x, th, kind] of trees) {
+      if (!only.includes(kind)) continue;
+      for (const sx of [0, x < 80 ? TILE : x > TILE - 80 ? -TILE : 0].filter((v, n) => n === 0 || v !== 0)) {
+        const tx = x + sx;
+        const base = at(x) + 6;
+        if (kind === 'spruce') spruce(tx, base, th);
+        else if (kind === 'spire') spire(tx, base, th);
+        else if (kind === 'ghost') ghost(tx, base, th);
+        else branches(tx, base, th, kind === 'rowan');
+      }
+    }
+  };
+  draw(['birch', 'rowan']);
+  draw(['ghost']);
+  draw(['spire', 'spruce']);
+  // The moon catching the tallest crowns.
+  for (const [x, th, kind] of trees) if (th > 95 * size && kind !== 'birch' && kind !== 'rowan') p.line([[x + 3, at(x) - th + 8], [x + th * 0.16, at(x) - th * 0.45]], { width: 1.6, color: rim, raw: true, opacity: 0.7, wobble: 0 });
+  // Snow drifted along the wood's edge, shaded in halftone, with a lit crest.
   const edge: Pt[] = [];
   for (let x = 0; x <= TILE; x += 16) edge.push([x, at(x) + 4 + Math.sin(x / 70) * 6]);
   p.shape([...edge, [TILE, h], [0, h]], { fill: snow, stroke: null, raw: true, wobble: 0.3, shade: [{ pts: [...edge.map(([x, y]): Pt => [x, y + 30]), [TILE, h], [0, h]], color: '#8E78B4' }] });
   p.line(edge, { width: 2.5, color: '#FFF6EA', raw: true, opacity: 0.8, wobble: 0 });
-  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: near ? 0.2 : 0.9 };
+  return { key, svg: p.svg(TILE, h), w: TILE, h, blur: near ? 0.2 : 0.8 };
 }
 
 /**
