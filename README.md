@@ -55,20 +55,22 @@ The game teaches itself as you go: when something new comes up, a key-cap prompt
 | | Keyboard + mouse | Gamepad | Touch |
 |---|---|---|---|
 | **Pick up and load** | `DRAG` | `DRAG` | `DRAG` |
-| **Turn what you hold** | `Q` `E` `SCROLL` | `Q` `E` | twist |
+| **Turn what you hold** | `Q` `E` `SCROLL` | `Q` `E` | hold it, tap `TURN` |
 | **Tie it down** | `R` | `R` | `ROPE` |
-| **Gas** | `D` `RIGHT` | `RT` | `GAS` |
-| **Brake** | `A` `LEFT` | `LT` | `BRAKE` |
-| **Handbrake** | `P` `SPACE` | `A` | `P` |
-| **Gear up / down** | `SHIFT` / `CTRL` | `RB` / `LB` | `GEAR +` / `GEAR −` |
+| **Gas** | `D` `RIGHT` | `RT` | `GAS` pedal, right thumb |
+| **Brake** | `A` `LEFT` | `LT` | `BRAKE` pedal, left thumb |
+| **Handbrake** | `P` `SPACE` | `A` | `P` lever |
+| **Gear up / down** | `SHIFT` / `CTRL` | `RB` / `LB` | the gear rocker, ▲ / ▼ |
 | **First gear / reverse** | `1` / `R` | `LB` | `GEAR −` |
 | **Aim the crossbow** | mouse | right stick | drag |
 | **Fire the anchor** | `CLICK` | `X` | lift your finger |
 | **Reel in** | `W` | `B` | `REEL` |
 | **Let go** | `RIGHT-CLICK` | | |
-| **Pause** | `ESC` | `START` | `PAUSE` |
+| **Pause** | `ESC` | `START` | `II`, top corner |
 
 The same table is in the game, under **Controls** on the title screen and in the pause menu.
+
+On a phone or an iPad (held sideways) the controls are laid out like a mobile driving game: the pedals under your thumbs, the gear rocker by the brake, the handbrake lever and reel by the gas.
 
 <p align="center">
   <img src="docs/readme/controls.jpg" alt="The in-game Controls sheet, with keyboard, gamepad and touch tabs" width="100%">

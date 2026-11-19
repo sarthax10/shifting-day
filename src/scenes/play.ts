@@ -110,6 +110,8 @@ import { TUNNEL, buildTunnel, type Tunnel } from '../world/tunnel';
 import { Extras } from '../systems/extras';
 import { Crossbow } from '../systems/crossbow';
 import { banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
+import { isTouchDevice, touchPad, type TouchPad } from '../ui/touch';
+import { gearName } from '../systems/drivetrain';
 /** True where the tunnel's rock hides the roadside, so nothing is put there. */
 const inTunnel = (x: number, on: boolean) => on && x > TUNNEL.from - 300 && x < TUNNEL.to + 300;
 /** How far the truck reaches behind and in front of its middle (tailgate to bumper). */
@@ -247,7 +249,8 @@ export class PlayScene extends Phaser.Scene {
   /** A touch aiming the crossbow fires on release, once it has had a chance to drag the aim first,
    * rather than firing the instant a finger lands wherever it happens to touch down. */
   private touchAiming = false;
-  private touchButtons: (Phaser.GameObjects.Arc | Phaser.GameObjects.Text)[] = [];
+  /** The touchscreen's controls (ui/touch.ts), on a touch device. */
+  private pad: TouchPad | null = null;
   private paused = false;
   private pauseUi?: Phaser.GameObjects.Container;
   private hint!: Phaser.GameObjects.Text;
@@ -400,6 +403,8 @@ export class PlayScene extends Phaser.Scene {
     const fuelBar = this.add.rectangle(240, hudY, 88, 12, 0xff6a30).setOrigin(0, 0.5).setScrollFactor(0).setDepth(102).setVisible(false);
     this.extrasIcons = { wrap: wrapIcon, fuel: fuelIcon, fuelBarBg, fuelBar };
     this.fuelPctText = this.add.text(240, hudY + 14, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '12px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0).setScrollFactor(0).setDepth(101).setVisible(false);
+    // Grown with the score panel on a phone, from the top-left corner.
+    this.add.container(0, 0, [this.extrasChip, wrapIcon, this.extrasLabel, fuelIcon, fuelBarBg, fuelBar, this.fuelPctText]).setScrollFactor(0).setDepth(100).setScale(this.hudScale());
 
     this.matter.world.on('collisionstart', (event: { pairs: { bodyA: Body; bodyB: Body }[] }) => this.knocks(event.pairs));
 
@@ -812,7 +817,6 @@ export class PlayScene extends Phaser.Scene {
       this.parkBonus = Math.round(Phaser.Math.Clamp(100 * (1 - off / slack), 10, 100));
       this.phase = 'arrived';
       this.dash.show(false);
-      for (const o of this.touchButtons) o.setVisible(false);
       this.hint.setVisible(false).setText('');
       this.arrivedAt = this.time.now;
       this.engine.stop();
@@ -1575,6 +1579,8 @@ export class PlayScene extends Phaser.Scene {
 
   private hud() {
     this.hint = this.add.text(40, 1006, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '24px', color: '#F3E3CC', letterSpacing: 1, backgroundColor: 'rgba(10, 7, 18, 0.88)', padding: { x: 20, y: 12 } }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(100);
+    // On a touchscreen the turn buttons hold the bottom-left corner: the hint sits up over the road instead.
+    if (isTouchDevice()) this.hint.setOrigin(0.5).setPosition(W / 2 - 160, 900);
     this.ropeLines = this.add.graphics().setDepth(25);
     // The print over everything: a fine ink dot screen and paper grain across the whole picture, so the
     // world (people, buildings, furniture, scenery) reads as printed on the same sheet as the title.
@@ -1588,7 +1594,8 @@ export class PlayScene extends Phaser.Scene {
     this.add.image(0, 0, 'grain').setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(94).setAlpha(0.7);
 
     // Top right: the points on the truck, and how far along the road it is.
-    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) => o.setScrollFactor(0).setDepth(100);
+    const panel = this.add.container(0, 0).setScrollFactor(0).setDepth(100);
+    const fixed = <T extends Phaser.GameObjects.GameObject>(o: T) => (panel.add(o), o);
     fixed(this.add.rectangle(W - 14, 18, 566, 122, 0x0a0712, 0.9).setOrigin(1, 0).setStrokeStyle(2, 0xf3e3cc, 0.3));
     fixed(this.add.rectangle(W - 14, 18, 566, 5, 0xff6a30).setOrigin(1, 0));
     fixed(this.add.text(W - 560, 40, 'SCORE', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(0, 0.5));
@@ -1605,6 +1612,9 @@ export class PlayScene extends Phaser.Scene {
     if (best) fixed(this.add.text(W - 560, 127, `BEST ${clock(best, false)}`, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5).setAlpha(0.55));
     this.hudClock = fixed(this.add.text(W - 30, 127, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '15px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(1, 0.5));
     fixed(this.add.text(W - 150, 127, 'RUN', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(1, 0.5));
+    // On a phone the game is drawn at a third of its size: the panel grows from its corner to stay readable.
+    const k = this.hudScale();
+    panel.setScale(k).setPosition(W * (1 - k), 0);
 
     this.tag = this.add
       .text(0, 0, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '22px', color: '#F3E3CC', align: 'center', backgroundColor: 'rgba(10, 7, 18, 0.92)', padding: { x: 16, y: 10 }, lineSpacing: 2 })
@@ -1615,6 +1625,9 @@ export class PlayScene extends Phaser.Scene {
     // The dashboard appears when the truck sets off.
     this.dash = new Dash(this, () => this.drive);
     this.dash.create();
+    // On a touchscreen the thumbs are in the bottom corners: the dashboard moves to the middle.
+    // On a phone it stays its own size: the rocker and the lever already show the gear and the handbrake.
+    if (isTouchDevice()) this.dash.centre(this.hudScale() > 1.15 ? 0.82 : 1);
     // The sound and effects toggles: small chips, not shouting for attention next to the resource HUD.
     if (false as boolean) {
       this.fxChip = chip(this, 40, 34, 190, 44).setScrollFactor(0).setDepth(100).setInteractive({ cursor: CURSOR.open });
@@ -1633,6 +1646,10 @@ export class PlayScene extends Phaser.Scene {
       soundLabel.setText(`SOUND ${audio.muted ? 'OFF' : 'ON'}  · M`);
       soundChip.setSize(soundLabel.width + 32, 44);
     };
+    if (isTouchDevice()) {
+      soundChip.setVisible(false).disableInteractive();
+      soundLabel.setVisible(false);
+    }
     soundChip.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
       audio.toggleMute();
@@ -1650,62 +1667,50 @@ export class PlayScene extends Phaser.Scene {
   }
 
   /**
-   * A touchscreen's own controls, shown only on a device that actually has one: gas and brake as big
-   * held buttons, the handbrake as a toggle, a gear up/down pair, and a reel button for the crossbow -
-   * everything a key or a mouse click does elsewhere, since there is no keyboard to hold a key down on.
-   * Aiming the crossbow itself still just uses the same touch-and-drag the pointer already gets.
+   * How much larger the HUD is drawn: the game is scaled to fit the screen, which on a phone leaves its
+   * small type a few pixels tall, so the panels grow until it reads (and not at all on a big screen).
    */
+  private hudScale() {
+    const shown = this.scale.displaySize.height / H;
+    return shown > 0 ? Phaser.Math.Clamp(0.6 / shown, 1, 1.4) : 1;
+  }
+
+  /** On a touchscreen, binds the shared on-screen controls (ui/touch.ts) to this run of the scene. */
   private buildTouchControls() {
-    if (!this.sys.game.device.input.touch) return;
-    const knob = (x: number, y: number, r: number, label: string, active = false) => {
-      // Poster-style knobs: an ink disc with a bone ring and an Anton label, ember while pressed.
-      const circle = this.add.circle(x, y, r, active ? 0xff6a30 : 0x0a0712, active ? 0.85 : 0.72).setStrokeStyle(3, 0xf3e3cc, 0.7).setScrollFactor(0).setDepth(110).setInteractive({ cursor: CURSOR.open });
-      const text = this.add.text(x, y, label, { fontFamily: TITLE, fontSize: `${Math.round(r * 0.52)}px`, color: '#F3E3CC', letterSpacing: 1 }).setOrigin(0.5).setScrollFactor(0).setDepth(111);
-      this.touchButtons.push(circle, text);
-      return { circle, text };
-    };
-    const hold = (x: number, y: number, r: number, label: string, set: (v: boolean) => void) => {
-      const { circle } = knob(x, y, r, label);
-      circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-        e.stopPropagation();
-        set(true);
-        circle.setFillStyle(0xff6a30, 0.9);
-      });
-      const up = () => {
-        set(false);
-        circle.setFillStyle(0x0a0712, 0.72);
-      };
-      circle.on('pointerup', up);
-      circle.on('pointerout', up);
-    };
-    const tap = (x: number, y: number, r: number, label: string, act: () => void) => {
-      const { circle } = knob(x, y, r, label);
-      circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-        e.stopPropagation();
-        play('click');
-        act();
-        this.tweens.add({ targets: circle, scale: 1.15, duration: 80, yoyo: true });
-      });
-    };
-    hold(1815, 900, 72, 'GAS', (v) => (this.touchGas = v));
-    hold(1665, 950, 54, 'BRAKE', (v) => (this.touchBrake = v));
-    hold(1690, 790, 44, 'REEL', (v) => (this.touchReel = v));
-    tap(1550, 760, 40, 'UP', () => this.gearShift(1));
-    tap(1550, 860, 40, 'DN', () => this.gearShift(-1));
-    const hb = knob(1815, 770, 40, 'P');
-    hb.circle.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-      e.stopPropagation();
-      this.toggleHandbrake();
-      hb.circle.setFillStyle(this.handbrake ? 0xe3263a : 0x0a0712, this.handbrake ? 0.9 : 0.72);
+    this.pad = touchPad();
+    this.pad?.bind({
+      turn: (dir) => {
+        if (this.held && this.phase === 'pack') this.held.angle += (dir * Math.PI) / 12;
+      },
+      gearUp: () => this.gearShift(1),
+      gearDown: () => this.gearShift(-1),
+      handbrake: () => this.toggleHandbrake(),
+      pause: () => this.togglePause(),
+      sound: () => audio.toggleMute(),
     });
-    // A pause button of its own, shown throughout - there is no Escape key on a touchscreen.
-    const pauseBtn = this.add.circle(W / 2, 40, 30, 0x0a0712, 0.8).setStrokeStyle(3, 0xf3e3cc, 0.7).setScrollFactor(0).setDepth(111).setInteractive({ cursor: CURSOR.open });
-    this.add.text(W / 2, 40, 'II', { fontFamily: TITLE, fontSize: '28px', color: '#F3E3CC' }).setOrigin(0.5).setScrollFactor(0).setDepth(112);
-    pauseBtn.on('pointerdown', (_p: unknown, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-      e.stopPropagation();
-      this.togglePause();
+    this.events.once('shutdown', () => {
+      this.pad?.bind(null);
+      this.pad?.sync({ driving: false, packing: false, holding: false, menu: false, gear: '1', handbrake: true, muted: audio.muted });
     });
-    for (const o of this.touchButtons) o.setVisible(false);
+  }
+
+  /** Brings the touch controls in line with the game, and reads the held pedals back. Every frame. */
+  private syncTouch() {
+    if (!this.pad) return;
+    const overlay = !!this.pauseUi || !!this.closeControls || !!this.lostFoundPanel;
+    const live = !this.waiting && !overlay;
+    this.pad.sync({
+      driving: live && this.phase === 'drive',
+      packing: live && this.phase === 'pack',
+      holding: !!this.held,
+      menu: !this.waiting && (this.phase === 'pack' || this.phase === 'drive'),
+      gear: gearName(this.drive.target),
+      handbrake: this.handbrake,
+      muted: audio.muted,
+    });
+    this.touchGas = this.pad.gas;
+    this.touchBrake = this.pad.brake;
+    this.touchReel = this.pad.reel;
   }
 
   /** ESC: a pause menu over everything, the engine silenced, Matter and tweens frozen while it's up. */
@@ -1850,7 +1855,8 @@ export class PlayScene extends Phaser.Scene {
     this.roping = on && this.phase === 'pack';
     this.ropeLabel.setText(`Rope × ${this.ropesLeft}`).setColor(this.roping ? '#FF6A30' : '#F3E3CC');
     if (this.phase !== 'pack') return;
-    this.hint.setText(this.roping ? 'CLICK A THING ON THE TRUCK TO TIE IT · CLICK A TIED THING TO UNTIE IT' : 'DRAG THINGS ONTO THE TRUCK · Q / E TURN · R ROPE');
+    if (isTouchDevice()) this.hint.setText(this.roping ? 'TAP A THING ON THE TRUCK TO TIE IT · TAP A TIED THING TO UNTIE IT' : 'DRAG THINGS ONTO THE TRUCK · HOLD ONE AND TAP TURN');
+    else this.hint.setText(this.roping ? 'CLICK A THING ON THE TRUCK TO TIE IT · CLICK A TIED THING TO UNTIE IT' : 'DRAG THINGS ONTO THE TRUCK · Q / E TURN · R ROPE');
     this.pointer(this.roping ? 'rope' : 'point');
   }
 
@@ -2151,10 +2157,9 @@ export class PlayScene extends Phaser.Scene {
     this.goButton.setVisible(false);
     this.ropeButton.setVisible(false);
     this.pointer('point');
-    if (this.sys.game.device.input.touch && !this.sys.game.device.os.desktop) this.hint.setAlpha(0);
+    if (isTouchDevice()) this.hint.setAlpha(0);
     this.hint.setPosition(DASH_RIGHT + 20, 1040).setFontSize(17).setText('D GAS · A BRAKE · P HANDBRAKE · SHIFT/CTRL GEARS · CLICK FIRE · W REEL · ESC CONTROLS');
     this.dash.show(true);
-    for (const o of this.touchButtons) o.setVisible(true);
     this.handbrake = true;
     // Teach driving one step at a time, each prompt waiting for the step before it to be done.
     this.prompts.show('hb', [{ key: 'handbrake' }, 'HANDBRAKE OFF'], () => this.overTruck(), () => !this.handbrake, {
@@ -2615,6 +2620,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    this.syncTouch();
     if (this.waiting) return;
     if (this.paused) return;
     this.prompts.update();

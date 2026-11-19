@@ -1,3 +1,4 @@
+import { isTouchDevice } from './touch';
 import Phaser from 'phaser';
 
 /**
@@ -29,7 +30,7 @@ export const CONTROLS: { section: string; rows: Control[] }[] = [
     section: 'PACKING',
     rows: [
       { act: 'drag', label: 'PICK UP AND LOAD', keys: ['DRAG'], pad: ['DRAG'], touch: ['DRAG'] },
-      { act: 'turn', label: 'TURN WHAT YOU HOLD', keys: ['Q', 'E', 'SCROLL'], pad: ['Q', 'E'], touch: ['TWIST'] },
+      { act: 'turn', label: 'TURN WHAT YOU HOLD', keys: ['Q', 'E', 'SCROLL'], pad: ['Q', 'E'], touch: ['TURN'] },
       { act: 'rope', label: 'TIE IT DOWN', keys: ['R'], pad: ['R'], touch: ['ROPE'] },
     ],
   },
@@ -38,7 +39,7 @@ export const CONTROLS: { section: string; rows: Control[] }[] = [
     rows: [
       { act: 'gas', label: 'GAS', keys: ['D', 'RIGHT'], pad: ['RT'], touch: ['GAS'] },
       { act: 'brake', label: 'BRAKE', keys: ['A', 'LEFT'], pad: ['LT'], touch: ['BRAKE'] },
-      { act: 'handbrake', label: 'HANDBRAKE', keys: ['P', 'SPACE'], pad: ['A'], touch: ['P'] },
+      { act: 'handbrake', label: 'HANDBRAKE', keys: ['P', 'SPACE'], pad: ['A'], touch: ['P BRAKE'] },
       { act: 'gearUp', label: 'GEAR UP', keys: ['SHIFT', 'E'], pad: ['RB'], touch: ['GEAR +'] },
       { act: 'gearDown', label: 'GEAR DOWN', keys: ['CTRL', 'Q'], pad: ['LB'], touch: ['GEAR −'] },
       { act: 'first', label: 'FIRST GEAR', keys: ['1'], pad: ['LB'], touch: ['GEAR −'] },
@@ -105,7 +106,7 @@ export class Prompter {
     kb?.on('keydown', () => this.setMode('keys'));
     scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.setMode(p.wasTouch ? 'touch' : 'keys'));
     scene.input.gamepad?.on('down', () => this.setMode('pad'));
-    if (scene.sys.game.device.input.touch && !scene.sys.game.device.os.desktop) this.mode = 'touch';
+    if (isTouchDevice()) this.mode = 'touch';
   }
 
   private setMode(m: Mode) {

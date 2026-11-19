@@ -1,3 +1,4 @@
+import { isTouchDevice } from '../ui/touch';
 import Phaser from 'phaser';
 import { TRUCK, DRIVER } from '../art/art';
 import { DRIVER_AT } from './play';
@@ -439,7 +440,7 @@ export class TitleScene extends Phaser.Scene {
     this.time.delayedCall(2100, () => (this.ready = true));
     this.events.once('shutdown', () => list.destroy());
 
-    const touch = this.sys.game.device.input.touch;
+    const touch = isTouchDevice();
     const hint = touch ? 'TAP TO CHOOSE' : 'UP / DOWN  CHOOSE   ·   ENTER / A  GO   ·   M  SOUND';
     const h = this.add.text(W - LEFT, ROAD + 46, hint, { fontFamily: MONO, fontStyle: 'bold', fontSize: '22px', color: BONE, letterSpacing: 4 }).setOrigin(1, 0.5).setDepth(60).setAlpha(0);
     this.tweens.add({ targets: h, alpha: 0.6, duration: 800, delay: 2600 });

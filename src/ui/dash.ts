@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Drivetrain, REDLINE, gearName } from '../systems/drivetrain';
+import { W } from '../world/terrain';
 
 /**
  * The dashboard, printed in the title's inks like everything else on the interface: an ink plate with
@@ -42,6 +43,7 @@ export class Dash {
   private needle!: Phaser.GameObjects.Graphics;
   private odo!: Phaser.GameObjects.Text;
   private gearText!: Phaser.GameObjects.Text;
+  private keysHint!: Phaser.GameObjects.Text;
   private gearKey!: Phaser.GameObjects.Rectangle;
   private leds: Phaser.GameObjects.Rectangle[] = [];
   private cue!: Phaser.GameObjects.Text;
@@ -115,7 +117,7 @@ export class Dash {
     this.gearText = add(s.add.text(GEAR.x, GEAR.y - 2, '1', { fontFamily: DISPLAY, fontSize: '86px', color: INK_CSS }).setOrigin(0.5));
     for (let i = 0; i < 9; i++) this.leds.push(add(s.add.rectangle(GEAR.x - 56 + i * 14 + 1, GEAR.y - 82, 11, 14, OX).setOrigin(0, 0.5).setStrokeStyle(1.5, INK)));
     add(s.add.text(GEAR.x, GEAR.y + 76, 'GEAR', { fontFamily: MONO, fontStyle: 'bold', fontSize: '15px', color: BONE_CSS, letterSpacing: 5 }).setOrigin(0.5).setAlpha(0.75));
-    add(s.add.text(GEAR.x, GEAR.y + 98, 'SHIFT UP · CTRL DOWN', { fontFamily: MONO, fontStyle: 'bold', fontSize: '11px', color: BONE_CSS, letterSpacing: 1 }).setOrigin(0.5).setAlpha(0.5));
+    this.keysHint = add(s.add.text(GEAR.x, GEAR.y + 98, 'SHIFT UP · CTRL DOWN', { fontFamily: MONO, fontStyle: 'bold', fontSize: '11px', color: BONE_CSS, letterSpacing: 1 }).setOrigin(0.5).setAlpha(0.5));
     this.cue = add(s.add.text(GEAR.x, -22, '', { fontFamily: DISPLAY, fontSize: '28px', color: INK_CSS, letterSpacing: 2, backgroundColor: EMBER_CSS, padding: { x: 12, y: 2 } }).setOrigin(0.5));
     this.stall = add(s.add.text(GEAR.x, GEAR.y - 2, 'STALLED', { fontFamily: DISPLAY, fontSize: '26px', color: BONE_CSS, letterSpacing: 2, backgroundColor: RED_CSS, padding: { x: 8, y: 2 } }).setOrigin(0.5).setAngle(-8));
 
@@ -129,6 +131,12 @@ export class Dash {
 
     this.box = s.add.container(CORNER.x, CORNER.y - PH, parts).setScrollFactor(0).setDepth(100);
     this.show(false);
+  }
+
+  /** For a touchscreen: no keyboard cue, and the plate at the bottom middle, between the thumbs, grown by k. */
+  centre(k: number) {
+    this.keysHint.setVisible(false);
+    this.box.setScale(k).setPosition(W / 2 - (PW * k) / 2, CORNER.y - PH * k);
   }
 
   show(on: boolean) {
