@@ -6,6 +6,7 @@ import type { BiomeKey } from './legs';
 import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from './falls';
 import { SWITCH, TUNNEL } from './tunnel';
 import { FROST_TREES } from './trees';
+import { HOUSE, STREET_TOP, houseArt, streetArt } from './townhouses';
 import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
 import { cloudBankArt as printCloudArt } from './oldstreet';
 import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
@@ -675,50 +676,12 @@ function skylineArt(key: string, h: number, base: string, seed: number, tall: nu
 
 /** A storefront for the main street, inked, with a sign board (the neon words are added in the game). */
 export const SHOPS = [
-  { name: 'DINER', colour: '#FF6A6A', wall: '#1E2A44', awning: '#E3566A' },
-  { name: 'LAUNDRY', colour: '#5ED6C2', wall: '#1A3040', awning: '#2E6E6A' },
-  { name: 'CINEMA', colour: '#FFB23F', wall: '#2A2A4A', awning: '#E3263A' },
-  { name: 'PIZZA', colour: '#FF8A4A', wall: '#22283E', awning: '#C8502E' },
-  { name: 'HOTEL', colour: '#FF8AA0', wall: '#1C2440', awning: '#5A3A6E' },
+  { name: 'DINER', colour: '#FF6A6A', wall: '#3A4A7A', awning: '#E3566A' },
+  { name: 'LAUNDRY', colour: '#5ED6C2', wall: '#2E5A6A', awning: '#2E6E6A' },
+  { name: 'CINEMA', colour: '#FFB23F', wall: '#4A4682', awning: '#E3263A' },
+  { name: 'PIZZA', colour: '#FF8A4A', wall: '#3E4A7C', awning: '#C8502E' },
+  { name: 'HOTEL', colour: '#FF8AA0', wall: '#3A4478', awning: '#5A3A6E' },
 ];
-function shopArt(n: number): Art {
-  const s = SHOPS[n];
-  const neon = s.colour;
-  const glass = mix(neon, '#140E24', 0.55);
-  return inked(`shop_${n}`, 420, 460, (p) => {
-    // Dark wall panels, street-lit warm at the foot.
-    p.rect(20, 80, 380, 380, { fill: '#221C36', width: 5, r: 4, shade: [{ pts: [[0, 330], [420, 330], [420, 470], [0, 470]], color: '#3A2638' }] });
-    for (const x of [100, 200, 300]) p.line([[x, 84], [x, 206]], { width: 2, color: '#16122A', raw: true });
-    // Upper windows with blinds, some lit.
-    for (let k = 0; k < 3; k++) {
-      const lit = (n + k) % 3 !== 0;
-      const c = lit ? ['#FFD27A', '#9FE8FF', '#FF9AE8'][(n + k) % 3] : '#16122A';
-      p.rect(46 + k * 120, 112, 84, 70, { fill: c, width: 4, r: 3 });
-      if (lit) for (let y = 120; y < 176; y += 9) p.line([[50 + k * 120, y], [126 + k * 120, y]], { width: 2, color: mix(c, '#000000', 0.35), raw: true, opacity: 0.6 });
-    }
-    // An AC unit on the wall, and a pipe running down.
-    p.rect(330, 186, 54, 30, { fill: '#5A5470', width: 3.5, r: 3 });
-    p.ellipse(346, 201, 9, 9, { fill: '#2A2440', width: 2.5 });
-    p.line([[30, 90], [30, 456]], { width: 5, color: '#3A3450', raw: true });
-    // The sign board, outlined in a neon tube; the shop's name is lit on it in the game.
-    p.rect(40, 214, 340, 56, { fill: '#0E0A1C', width: 4, r: 6 });
-    p.rect(46, 220, 328, 44, { width: 3, stroke: neon, r: 5 });
-    // A metal canopy, with a strip light along its underside.
-    p.shape([[24, 282], [396, 282], [404, 304], [16, 304]], { fill: '#3A3450', raw: true, width: 4 });
-    p.rect(30, 304, 360, 6, { fill: neon, r: 2, stroke: null });
-    // The shop window, glowing in the shop's colour, with shelves and goods inside; a shutter half up.
-    p.rect(44, 324, 230, 126, { fill: glass, width: 4, r: 4 });
-    for (let y = 334; y < 352; y += 6) p.line([[46, y], [272, y]], { width: 3, color: '#5A5470', raw: true });
-    for (const y of [384, 420]) {
-      p.line([[52, y], [266, y]], { width: 3, color: mix(neon, '#000000', 0.4), raw: true });
-      for (let x = 62; x < 260; x += 26) p.rect(x, y - 16, 16, 14, { fill: mix(neon, '#FFFFFF', 0.3), r: 3, width: 2 });
-    }
-    // The door, with a lit strip window.
-    p.rect(296, 324, 76, 136, { fill: '#2A2440', width: 4, r: 4 });
-    p.rect(310, 340, 48, 60, { fill: mix(neon, '#FFFFFF', 0.4), width: 3, r: 3 });
-    p.dot(360, 410, 4, '#B9BCCB');
-  });
-}
 
 const TOWN: Biome = {
   key: 'town',
@@ -741,7 +704,10 @@ const TOWN: Biome = {
     ...[megaArt(false), megaArt(true)].map((a) => posterize(a, ['#8A78B8', 0.5])),
     ...[cityArt('far', false), cityArt('far', true)].map((a) => posterize(a, ['#5E5498', 0.32])),
     ...[cityArt('mid', false), cityArt('mid', true)].map((a) => posterize(a, ['#3A3A70', 0.12])),
-    ...[railArt(), trainArt(), wetStreetArt(), holoFishArt(), ...SHOPS.map((_, i) => shopArt(i))].map((a) => posterize(a)),
+    ...[railArt(), trainArt(), wetStreetArt(), holoFishArt()].map((a) => posterize(a)),
+    // The street's own buildings, drawn in the night palette already, and the plaza behind the road.
+    ...SHOPS.map((s, i) => houseArt(i, { wall: s.wall, neon: s.colour, awning: s.awning })),
+    streetArt(),
   ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_town', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
@@ -795,6 +761,9 @@ const TOWN: Biome = {
       });
     }
     haze(scene, o.horizon - 300, 260, 0x1e2448, 0.3, -37, 0.25);
+    // Street level: a plaza between the road and the city, so the buildings and the railway's pillars stand on
+    // something instead of floating over a gap of sky.
+    tiles(scene, 'bd_n_street', o.horizon - 70 + (500 - STREET_TOP), 0.33, -36.5, o.reach);
     // The elevated railway, and a train along it now and then.
     tiles(scene, 'bd_n_rail', o.horizon + 60, 0.42, -36, o.reach);
     const deckY = o.horizon + 60 - 520 + RAIL_DECK;
@@ -808,8 +777,8 @@ const TOWN: Biome = {
       if (o.busy?.some((bx) => Math.abs(bx - x) < 480)) continue;
       const n = i % SHOPS.length;
       const k = 0.85;
-      const gy = o.groundY(x) + 6;
-      scene.add.image(x, gy, `shop_${n}`).setOrigin(0.5, 1).setDepth(-9).setScale(k);
+      const gy = Math.min(o.groundY(x - 170), o.groundY(x), o.groundY(x + 170)) + 8;
+      scene.add.image(x, gy, `shop_${n}`).setOrigin(0.5, HOUSE.ground / HOUSE.h).setDepth(-9).setScale(k);
       const sy = gy - (460 - 242) * k;
       const text = scene.add.text(x, sy, SHOPS[n].name, { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '44px', color: SHOPS[n].colour, stroke: '#0A0712', strokeThickness: 2, letterSpacing: 3 }).setOrigin(0.5).setDepth(-8.9).setShadow(0, 0, SHOPS[n].colour, 16, true, true);
       const g = scene.add.image(x, sy, 'halo').setDepth(-8.8).setDisplaySize(380, 140).setTint(Phaser.Display.Color.HexStringToColor(SHOPS[n].colour).color).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD);
