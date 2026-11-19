@@ -10,7 +10,7 @@ import { HOUSE, STREET_TOP, houseArt, streetArt } from './townhouses';
 import { blimpArt, hoverCarArt, synthSunArt } from './futurecity';
 import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidgeArt, valleySunArt } from './maplevalley';
 import { cloudBankArt as printCloudArt } from './oldstreet';
-import { COVE, LIGHT, cliffsArt, coveArt, headlandsArt, seaArt, surfArt } from './coast';
+import { COVE, LIGHT, bayArt, coastSunArt, coveArt, dolphinArt, headlandsArt, palmArt, promLampArt, sailArt, seaArt, surfArt, wavesArt } from './coast';
 import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostMoonArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from './night';
 
 /**
@@ -938,68 +938,99 @@ function windswept(): Art {
 
 const COAST: Biome = {
   key: 'coast',
+  // A bright seaside morning, printed: clear teal overhead, warming to cream at the horizon.
   sky: [
-    [0, '#4A9AD8'],
-    [0.45, '#8CC8EC'],
-    [0.8, '#D6EEF6'],
-    [1, '#F6EEDC'],
+    [0, '#2E7A9A'],
+    [0.45, '#6EB4C0'],
+    [0.8, '#BFE0D0'],
+    [1, '#F6E2BC'],
   ],
-  ground: { '#C47F58': '#E2C49A', '#9C5C48': '#C8A47A', '#5E3A44': '#8A6A5A', '#B06E50': '#D6B48A', '#93594A': '#BE9C76', '#774650': '#9A7A62', '#EDB27D': '#EED8B4', '#F8CC97': '#FFF0D6' },
-  grass: { '#2F6B55': '#6E9A5A', '#3E8A68': '#9AB870', '#4F9C74': '#B8C98A', '#62AE7E': '#D6D69A' },
+  // The marine drive: a warm grey road over sand-coloured ground.
+  ground: { '#C47F58': '#D9B48A', '#9C5C48': '#B8906A', '#5E3A44': '#6A4A3E', '#B06E50': '#C8A47A', '#93594A': '#A8805E', '#774650': '#7E5A48', '#EDB27D': '#E8CFA6', '#F8CC97': '#F6E2BC' },
+  // Dune grass at the road's edge, olive into sand.
+  grass: { '#2F6B55': '#7E8A44', '#3E8A68': '#A3A653', '#4F9C74': '#D9C08A', '#62AE7E': '#F2C98A' },
   grip: 1,
   lamps: false,
   arts: () => [
-    ...[0, 1, 2].map((n) => recolor(cloudBankArt(n), `bd_cloud_white_${n}`, { '#C9A3CF': '#D8E6F4', '#F7C6CC': '#F4F8FC', '#FFE7DF': '#FFFFFF' })),
-    ...birdArts().map((a) => recolor(a, a.key.replace('bd_bird', 'bd_gull'), { '#3B2F55': '#F4F6FA' })),
+    ...[0, 1, 2].map((n) => recolor(printCloudArt(n), `bd_cloud_white_${n}`, { '#FFF1DE': '#FFFAF0', '#FFC29E': '#E2F0EA', '#FF6A30': '#A8D4CC' })),
+    ...birdArts().map((a) => recolor(a, a.key.replace('bd_bird', 'bd_gull'), { '#3B2F55': '#F4F6FA', '#0A0712': '#F4F6FA' })),
+    coastSunArt(),
     seaArt(),
     headlandsArt(),
-    cliffsArt(),
+    bayArt(),
+    wavesArt(),
     coveArt(),
     surfArt(),
-    lighthouseArt(), beachHutArt(0), beachHutArt(1), beachHutArt(2), beachHutArt(3)],
+    palmArt(),
+    promLampArt(),
+    dolphinArt(),
+    sailArt(),
+    beachHutArt(0),
+    beachHutArt(1),
+    beachHutArt(2),
+    beachHutArt(3),
+  ],
   build(scene, o) {
     scene.add.image(0, 0, skyTexture(scene, 'sky_coast', this.sky)).setOrigin(0).setDisplaySize(1920, 1080).setScrollFactor(0).setDepth(-50);
-    // A bright morning sun, and its glitter path on the sea.
-    scene.add.image(1500, 210, 'halo').setScrollFactor(0.03).setDepth(-46).setTint(0xfff6d8).setDisplaySize(700, 700).setAlpha(0.85);
-    scene.add.circle(1500, 210, 64, 0xfffbe8).setScrollFactor(0.03).setDepth(-45);
+    // The sun, printed, high over the bay, and its glitter path on the water.
+    scene.add.image(1500, 230, 'halo').setScrollFactor(0.03).setDepth(-46).setTint(0xfff0c8).setDisplaySize(760, 760).setAlpha(0.7);
+    scene.add.image(1500, 230, 'bd_c_sun').setScrollFactor(0.03).setDepth(-45).setScale(0.7);
     const clouds: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < 7; i++) clouds.push(scene.add.image(i * 640 - 300, 110 + ((i * 89) % 180), `bd_cloud_white_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-44).setScale(0.9 + (i % 3) * 0.2));
+    for (let i = 0; i < 7; i++) clouds.push(scene.add.image(i * 640 - 300, 110 + ((i * 89) % 170), `bd_cloud_white_${i % 3}`).setScrollFactor(0.05, 1).setDepth(-44).setScale(0.8 + (i % 3) * 0.15));
     const seaTop = o.horizon - 380;
     tiles(scene, 'bd_c_sea', seaTop + 400, 0.06, -42.5, o.reach);
-    // Headlands receding along the coast, in the haze.
     tiles(scene, 'bd_c_far', seaTop + 14, 0.09, -42, o.reach, -500);
     const glitter: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < 46; i++) glitter.push(scene.add.image(1500 + (Math.random() - 0.5) * (60 + i * 6), seaTop + 8 + i * 7, 'halo').setScrollFactor(0.03, 1).setDepth(-41).setDisplaySize(30 + Math.random() * 40, 5).setTint(0xfff6d8).setBlendMode(Phaser.BlendModes.ADD));
-    // Sailboats on the sea, drifting.
-    const boats: Phaser.GameObjects.Container[] = [];
-    for (let i = 0; i < 4; i++) {
-      const sail = scene.add.triangle(0, 0, 0, 30, 14, 0, 16, 30, 0xffffff).setOrigin(0.5, 1);
-      const hull = scene.add.rectangle(4, 2, 30, 6, 0x3a3a4e).setOrigin(0.5, 0);
-      boats.push(scene.add.container(300 + i * 520, seaTop + 40 + (i % 2) * 40, [sail, hull]).setScrollFactor(0.07, 1).setDepth(-41).setScale(1 + (i % 2) * 0.4));
-    }
-    const cliffBottom = o.horizon + 10;
-    tiles(scene, 'bd_c_cliffs', cliffBottom, 0.22, -38, o.reach, -700);
-    // The lighthouse lamps, blinking, one in each stretch of cliffs.
+    for (let i = 0; i < 60; i++) glitter.push(scene.add.image(1500 + (Math.random() - 0.5) * (50 + i * 7), seaTop + 10 + i * 6.5, 'halo').setScrollFactor(0.03, 1).setDepth(-41).setDisplaySize(26 + Math.random() * 40, 4).setTint(0xfff4d8).setBlendMode(Phaser.BlendModes.ADD));
+    // Sailboats out on the open sea.
+    const boats = [0, 1, 2, 3].map((i) => scene.add.image(300 + i * 560, seaTop + 60 + (i % 2) * 50, 'bd_c_sail').setScrollFactor(0.07, 1).setDepth(-41).setScale(0.45 + (i % 2) * 0.2).setFlipX(i % 2 === 1));
+    // The bay, with its pier and lighthouse; crests drifting over the water so it moves.
+    const bayBottom = o.horizon + 10;
+    tiles(scene, 'bd_c_cliffs', bayBottom, 0.22, -38, o.reach, -700);
+    const waves = scene.add.tileSprite(-700, bayBottom - 200, 1920 + o.reach * 0.22 + TILE, 200, 'bd_c_waves').setOrigin(0, 0).setScrollFactor(0.22, 1).setDepth(-37.95).setAlpha(0.5);
     const lamps: Phaser.GameObjects.Image[] = [];
     const cn = Math.ceil((1920 + o.reach * 0.22) / TILE) + 1;
-    for (let i = 0; i < cn; i++) {
-      lamps.push(scene.add.image(i * TILE - 700 + LIGHT.x, cliffBottom - 600 + LIGHT.lampY, 'halo').setScrollFactor(0.22, 1).setDepth(-36.9).setDisplaySize(110, 110).setTint(0xfff0a0).setBlendMode(Phaser.BlendModes.ADD));
-    }
-    haze(scene, o.horizon - 330, 300, 0xeaf6ff, 0.18, -35, 0.22);
-    // The cove, nearer, and its surf washing up and down the sand.
+    for (let i = 0; i < cn; i++) lamps.push(scene.add.image(i * TILE - 700 + LIGHT.x, bayBottom - 600 + LIGHT.lampY, 'halo').setScrollFactor(0.22, 1).setDepth(-37.5).setDisplaySize(120, 120).setTint(0xfff0a0).setBlendMode(Phaser.BlendModes.ADD));
+    // Dolphins leaping in the bay now and then, with a splash.
+    const dolphin = scene.add.image(0, 0, 'bd_c_dolphin').setScrollFactor(0.22, 1).setDepth(-37.6).setVisible(false).setScale(0.8);
+    let nextLeap = 2500;
+    let leap = -1;
+    let leapX = 0;
+    const leapY = bayBottom - 150;
+    haze(scene, o.horizon - 330, 300, 0xeaf6f0, 0.14, -35, 0.22);
+    // The beach, nearer, and its surf washing up and down the sand.
     const coveBottom = o.horizon + 70;
     tiles(scene, 'bd_c_cove', coveBottom, 0.36, -34, o.reach, -300);
-    const surf = scene.add
-      .tileSprite(-300, coveBottom - COVE.h + COVE.edge - 20, 1920 + o.reach * 0.36 + TILE, 40, 'bd_c_surf')
-      .setOrigin(0, 0)
-      .setScrollFactor(0.36, 1)
-      .setDepth(-33.9);
+    const surf = scene.add.tileSprite(-300, coveBottom - COVE.h + COVE.edge - 20, 1920 + o.reach * 0.36 + TILE, 40, 'bd_c_surf').setOrigin(0, 0).setScrollFactor(0.36, 1).setDepth(-33.9);
     const surfY = surf.y;
-    // Roadside: beach huts in a row, windswept pines.
+    // The promenade: a white balustrade along the road, seafront lamps and palms, a beach hut now and then.
+    const x0 = Math.max(1800, from(o));
+    const x1 = Math.min(o.finish - 300, to(o));
+    const rail = scene.add.graphics().setDepth(-8.8);
+    for (let x = x0; x < x1; x += 22) {
+      const y = o.groundY(x) + 4;
+      rail.fillStyle(0xf3e3cc, 1).fillRect(x - 4, y - 40, 8, 40);
+      rail.fillStyle(0xd9c3a6, 1).fillRect(x + 1, y - 40, 3, 40);
+    }
+    rail.lineStyle(10, 0xf3e3cc, 1).beginPath();
+    for (let x = x0; x <= x1; x += 22) {
+      const y = o.groundY(x) + 4 - 44;
+      if (x === x0) rail.moveTo(x, y);
+      else rail.lineTo(x, y);
+    }
+    rail.strokePath();
+    rail.lineStyle(2.5, 0x0a0712, 0.8).beginPath();
+    for (let x = x0; x <= x1; x += 22) {
+      const y = o.groundY(x) + 4 - 49;
+      if (x === x0) rail.moveTo(x, y);
+      else rail.lineTo(x, y);
+    }
+    rail.strokePath();
     let seed = 7;
-    for (let x = Math.max(2000, from(o)); x < Math.min(o.finish - 400, to(o)); x += 520 + rnd(19, seed) * 520, seed++) {
-      const key = rnd(21, seed) < 0.5 ? `hut_${seed % 4}` : 'seapine';
-      scene.add.image(x, o.groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-9).setScale(key === 'seapine' ? 0.95 : 0.9).setFlipX(key === 'seapine' && seed % 2 === 0);
+    for (let x = x0 + 120; x < x1; x += 300 + rnd(19, seed) * 200, seed++) {
+      const r = rnd(21, seed);
+      const key = r < 0.45 ? 'palm' : r < 0.8 ? 'bd_c_lamp' : `hut_${seed % 4}`;
+      scene.add.image(x, o.groundY(x) + 8, key).setOrigin(0.5, 1).setDepth(-9).setScale(key === 'palm' ? 0.9 + rnd(23, seed) * 0.2 : key === 'bd_c_lamp' ? 0.95 : 0.85).setFlipX(key === 'palm' && seed % 2 === 0);
     }
     // Gulls gliding, flapping now and then.
     const gulls: { img: Phaser.GameObjects.Image; vx: number; t: number; y0: number }[] = [];
@@ -1013,18 +1044,37 @@ const COAST: Biome = {
         for (const c of clouds) c.x += dt * 5;
         glitter.forEach((g, i) => g.setAlpha(Math.max(0, Math.sin(time / 260 + i * 1.7)) * 0.9));
         boats.forEach((b, i) => {
-          b.x += dt * (4 + i);
+          b.x += dt * (4 + i) * (i % 2 ? -1 : 1);
           b.y += Math.sin(time / 700 + i) * 0.05;
           b.rotation = Math.sin(time / 900 + i) * 0.05;
         });
+        waves.tilePositionX = time * 0.01;
+        waves.setAlpha(0.42 + Math.sin(time / 1500) * 0.1);
         for (const l of lamps) l.setAlpha(Math.sin(time / 600) > 0.3 ? 0.9 : 0.15);
+        // A dolphin's leap: up out of the water in an arc and back down, every so often.
+        nextLeap -= delta;
+        if (leap < 0 && nextLeap < 0) {
+          leap = 0;
+          leapX = scrollX * 0.22 + 300 + Math.random() * 1300;
+          dolphin.setVisible(true);
+        }
+        if (leap >= 0) {
+          leap += dt / 1.3;
+          const u = Math.min(1, leap);
+          dolphin.setPosition(leapX + u * 220, leapY - Math.sin(u * Math.PI) * 110).setRotation(-0.9 + u * 1.8);
+          if (leap >= 1) {
+            leap = -1;
+            nextLeap = 3500 + Math.random() * 5000;
+            dolphin.setVisible(false);
+          }
+        }
         // The surf washes up the sand and draws back, every few seconds.
         const wash = Math.sin(time / 1300);
-        surf.setY(surfY + wash * 7).setAlpha(0.65 + wash * 0.3);
+        surf.setY(surfY + wash * 7).setAlpha(0.7 + wash * 0.25);
         surf.tilePositionX = time * 0.004;
         for (const g of gulls) {
           g.t += dt;
-          g.img.x += (g.vx * 60 * dt) - pan * 0.4;
+          g.img.x += g.vx * 60 * dt - pan * 0.4;
           g.img.y = g.y0 + Math.sin(g.t * 0.8) * 20;
           if (Math.floor(g.t * 4) % 9 < 2) g.img.setTexture(Math.floor(g.t * 8) % 2 ? 'bd_gull_up' : 'bd_gull_down');
           else g.img.setTexture('bd_gull_up');
