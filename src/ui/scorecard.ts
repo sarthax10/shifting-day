@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { H, W } from '../world/terrain';
 import { BONE, BONE_CSS, DISPLAY, EMBER, EMBER_CSS, INK, INK_CSS, MONO, RED } from './poster';
 import { play } from '../systems/audio';
+import { leaderboardOn } from '../systems/leaderboard';
+import { openBoard } from './board';
 
 /** What the trip came to, for the card at the end. */
 export interface Tally {
@@ -10,6 +12,8 @@ export interface Tally {
   /** What each leg banked at its checkpoint; the score is their sum. */
   legs: { name: string; score: number }[];
   score: number;
+  /** The run time in seconds, for the leaderboard. */
+  seconds: number;
   stars: number;
   verdict: string;
   time: string;
@@ -141,21 +145,41 @@ export function showScorecard(scene: Phaser.Scene, t: Tally, onAgain: () => void
 
   // Under the card: the verdict, and the way out.
   const verdict = add(scene.add.text(W / 2, top + CARD.h + 52, `“${t.verdict}”`, { fontFamily: MONO, fontStyle: 'italic', fontSize: '24px', color: BONE_CSS }).setOrigin(0.5));
-  const btn = scene.add.container(W / 2, top + CARD.h + 128);
+  // With the online leaderboard deployed, a second button opens it (ui/board.ts), beside SHIFT AGAIN.
+  const board = leaderboardOn();
+  const btn = scene.add.container(W / 2 - (board ? 200 : 0), top + CARD.h + 128);
   const tape = scene.add.rectangle(0, 0, 360, 74, EMBER).setStrokeStyle(4, INK).setInteractive({ useHandCursor: true });
   btn.add([tape, scene.add.text(0, 2, 'SHIFT AGAIN', { fontFamily: DISPLAY, fontSize: '40px', color: INK_CSS, letterSpacing: 3 }).setOrigin(0.5)]);
   add(btn);
   tape.on('pointerover', () => scene.tweens.add({ targets: btn, scale: 1.06, duration: 120 }));
   tape.on('pointerout', () => scene.tweens.add({ targets: btn, scale: 1, duration: 120 }));
   let gone = false;
+  /** The leaderboard panel is open over the card: Enter is for its name field, not for SHIFT AGAIN. */
+  let boardOpen = false;
   const again = () => {
-    if (gone) return;
+    if (gone || boardOpen) return;
     gone = true;
     play('click');
     onAgain();
   };
   tape.on('pointerdown', again);
-  scene.input.keyboard?.once('keydown-ENTER', again);
+  scene.input.keyboard?.on('keydown-ENTER', again);
+  if (board) {
+    const lb = scene.add.container(W / 2 + 200, top + CARD.h + 128);
+    const plate = scene.add.rectangle(0, 0, 360, 74, INK).setStrokeStyle(4, BONE).setInteractive({ useHandCursor: true });
+    lb.add([plate, scene.add.text(0, 2, 'LEADERBOARD', { fontFamily: DISPLAY, fontSize: '38px', color: BONE_CSS, letterSpacing: 3 }).setOrigin(0.5)]);
+    add(lb);
+    plate.on('pointerover', () => scene.tweens.add({ targets: lb, scale: 1.06, duration: 120 }));
+    plate.on('pointerout', () => scene.tweens.add({ targets: lb, scale: 1, duration: 120 }));
+    plate.on('pointerdown', () => {
+      if (boardOpen || gone) return;
+      boardOpen = true;
+      play('click');
+      openBoard({ legs: t.legs.map((l) => l.score), score: t.score, time: t.seconds }, () => (boardOpen = false));
+    });
+    lb.setAlpha(0);
+    scene.tweens.add({ targets: lb, alpha: 1, delay: 2900, duration: 400 });
+  }
 
   // The sequence.
   for (const o of [kicker, head, rule, verdict, btn]) o.setAlpha(0);

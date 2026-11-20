@@ -2658,6 +2658,7 @@ export class PlayScene extends Phaser.Scene {
         stars,
         verdict,
         time: clock(tripTime, false),
+        seconds: tripTime,
         best: best !== null ? clock(Math.min(best, tripTime), false) : null,
         record,
       },

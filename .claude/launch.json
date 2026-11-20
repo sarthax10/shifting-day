@@ -18,6 +18,23 @@
         "preview"
       ],
       "port": 5211
+    },
+    {
+      "name": "leaderboard",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--yes",
+        "wrangler@4",
+        "dev",
+        "--config",
+        "leaderboard/wrangler.toml",
+        "--local",
+        "--port",
+        "8787",
+        "--ip",
+        "127.0.0.1"
+      ],
+      "port": 8787
     }
   ]
 }

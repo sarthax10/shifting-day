@@ -3,3 +3,4 @@ dist
 *.local
 shots
 itch/*.zip
+.wrangler
