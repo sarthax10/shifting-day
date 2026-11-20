@@ -22,7 +22,7 @@ Stack it well, tie it down, drive it gently, and catch whatever bounces off befo
 
 <p align="center">
   <img src="docs/readme/old-street.jpg" alt="Old Street: the leaning, patched-up old house with the furniture piled in front of it and the truck waiting" width="49%">
-  <img src="docs/readme/home-stretch.jpg" alt="The home stretch: golden hour on the coast avenue, under a WELCOME HOME arch" width="49%">
+  <img src="docs/readme/home-stretch.jpg" alt="Home: the manor by the sea under a HOME banner at the end of the road" width="49%">
 </p>
 <p align="center"><sub>FROM THIS &nbsp;·&nbsp; TO THIS</sub></p>
 
@@ -36,11 +36,9 @@ Stack it well, tie it down, drive it gently, and catch whatever bounces off befo
 
 **Climb and catch.** The roof-mounted anchor crossbow fires a grapple. Shoot the top of a cliff that's too steep to drive, then reel the truck up it. Shoot something that's just fallen off and it gets reeled straight back onto the bed.
 
-**Deliver.** Park between the cones at each stop. Whatever fell off waits in the stop's Lost & Found, and you buy it back with the bubble wrap you collect on the road.
+**Deliver.** Park between the cones at each stop, and the leg is scored (see [Scoring](#scoring)). Whatever fell off waits in the stop's Lost & Found, and you buy it back with the bubble wrap you collect on the road.
 
-**Score at every stop.** Each checkpoint banks a score for the leg you just drove: the worth of everything still on the truck and intact, a parking bonus for stopping square in the bay, +50 for a leg where nothing fell off or broke, minus half the worth of anything that broke on the way. The trip's score is the five legs added up, so whatever you carry safely pays at every stop, and something lost early costs you every leg after (unless you buy it back at a Lost & Found).
-
-**Beat the clock.** A run clock sits under the score, and your best run is kept, separately from the score: rushing with an empty truck never pays.
+**Race.** Finish the trip, put your name on the run and send it to the [leaderboard](#the-leaderboard).
 
 The game teaches itself as you go: when something new comes up, a key-cap prompt appears right next to it and goes away once you've done it.
 
@@ -50,7 +48,59 @@ The game teaches itself as you go: when something new comes up, a key-cap prompt
 
 <br>
 
-<img src="docs/readme/h-controls.svg" alt="03 · Controls" width="100%">
+<a id="scoring"></a>
+<img src="docs/readme/h-score.svg" alt="03 · Scoring" width="100%">
+
+Every stop banks a score for the leg you just drove. The trip's score is the five legs added up.
+
+| On each leg | Points |
+|---|---|
+| **Everything on the truck and in one piece** | its worth, counted again at every stop |
+| **Parking** square between the cones | +10 to +100 |
+| **Clean leg:** nothing fell off or broke | +50 |
+| **Speed bonus:** every whole second at 50 km/h or more | +5 a second |
+| **Breakage:** anything that broke on this leg | minus half its worth |
+
+So whatever you carry safely pays at every stop, and something lost early costs you every leg after, unless you buy it back at a Lost & Found.
+
+**The speed bonus** takes top gear: third runs out of revs just under 50 km/h. While you hold it, a strip of ember tape under the score counts the points up. It's a gamble: the faster you take the bumps, the more shakes loose.
+
+**What things are worth.** Biscuit the cat 250, the grandfather clock 220, Sunny the canary 200, Goldie the fish 160, the fridge 150, the guitar 140, the sofa and the record player 120, the washing machine 110, the old TV and the armchair 90, the bookshelf 80, the rug and the suitcase 70, the mattress, the monstera and the toolbox 60, the jam and the floor lamp 50, the boxes 20 to 40, and the kitchen chair 30.
+
+**Stars.** 1,500 points for one star, 3,000 for two, 4,500 for three.
+
+**The clock.** A run clock counts the whole move, packing included, and your best time is kept. Time is scored apart from points, so emptying the truck to race never wins the TOP SCORE board, and a careful run never wins FASTEST.
+
+<p align="center">
+  <img src="docs/readme/checkpoint.jpg" alt="A checkpoint card: still on the truck, parking, clean leg, speed bonus and breakage, then the leg's score" width="49%">
+  <img src="docs/readme/speed-bonus.jpg" alt="The truck at speed in a tunnel, the speed bonus strip counting up under the score" width="49%">
+</p>
+
+<br>
+
+<a id="the-leaderboard"></a>
+<img src="docs/readme/h-board.svg" alt="04 · The leaderboard" width="100%">
+
+At the end of the trip, press **LEADERBOARD** on the score card, put your name on the run (up to 12 letters) and send it. **LEADERBOARD** on the title menu opens the boards any time, just to look.
+
+| Board | Ranks |
+|---|---|
+| **FASTEST** | whole trips by time, with each one's score beside it |
+| **TOP SCORE** | whole trips by points, with each one's time beside it |
+| **BY LEG** | any one of the five legs, by the fastest time or the best score on it |
+
+**Tap a name** to open that run's card: its total, time, stars and date, which pets made it home, and every leg's time, score and how it was made (cargo, parking, clean leg, speed bonus, breakage), with what fell off or broke where.
+
+**Fair play.** The server rebuilds every leg's score from its parts and turns away anything the game couldn't have produced: a score that doesn't add up, breakage that doesn't match what broke, a clean leg with losses, a speed bonus longer than the leg, a leg under 30 seconds, or a thing the game doesn't have. It works the stars out itself. The board runs on a Cloudflare Worker with a D1 database, in [`leaderboard/`](leaderboard).
+
+<p align="center">
+  <img src="docs/readme/leaderboard.jpg" alt="The leaderboard panel over the score card: the name field, the FASTEST, TOP SCORE and BY LEG tabs, and the fastest runs" width="49%">
+  <img src="docs/readme/run-card.jpg" alt="A run card: every leg's time and score, with its breakdown and what was lost or broken" width="49%">
+</p>
+
+<br>
+
+<img src="docs/readme/h-controls.svg" alt="05 · Controls" width="100%">
 
 | | Keyboard + mouse | Gamepad | Touch |
 |---|---|---|---|
@@ -78,7 +128,7 @@ On a phone or an iPad (held sideways) the controls are laid out like a mobile dr
 
 <br>
 
-<img src="docs/readme/h-road.svg" alt="04 · The road" width="100%">
+<img src="docs/readme/h-road.svg" alt="06 · The road" width="100%">
 
 | Leg | Where | When | Stop |
 |---|---|---|---|
@@ -99,12 +149,12 @@ Each leg has its own bumps, hills and cliffs, and each place builds its toll gat
   <img src="docs/readme/coast-road.jpg" alt="Coast Road: the marine drive, palms and a balustrade over the bay" width="49%">
 </p>
 <p align="center">
-  <img src="docs/readme/scorecard.jpg" alt="The score card: HOME SWEET HOME, a ticket tallying the delivery, the run time and a DELIVERED stamp" width="100%">
+  <img src="docs/readme/scorecard.jpg" alt="The score card: HOME SWEET HOME, a delivery note with what made it, each leg's score, the run time and a DELIVERED stamp" width="100%">
 </p>
 
 <br>
 
-<img src="docs/readme/h-run.svg" alt="05 · Run it" width="100%">
+<img src="docs/readme/h-run.svg" alt="07 · Run it" width="100%">
 
 ```bash
 npm install
@@ -124,7 +174,7 @@ The build uses relative paths, so it runs from any folder: GitHub Pages, itch.io
 
 <br>
 
-<img src="docs/readme/h-built.svg" alt="06 · How it is made" width="100%">
+<img src="docs/readme/h-built.svg" alt="08 · How it is made" width="100%">
 
 Every picture in the game is drawn in code, not painted or imported. Each one is written as SVG by a wobbly ink pen, shaded with halftone dots, and turned into a texture while the game runs. Each leg's pictures are drawn in small slices in idle time, only while the truck is standing still, and the next leg's start as soon as you reach a checkpoint, so the road never stalls to load.
 
@@ -138,6 +188,7 @@ The source is grouped by what it does:
 | [`src/ui/`](src/ui) | The printed poster screens (pause, Controls, Lost & Found), key-cap prompts, the dashboard and the score card |
 | [`src/systems/`](src/systems) | The engine and gearbox, the anchor crossbow, sound, weather and the colour grade |
 | [`src/dev/`](src/dev) | `?debug` and QA helpers |
+| [`leaderboard/`](leaderboard) | The online leaderboard: a Cloudflare Worker, its D1 database and the admin console ([notes](leaderboard/README.md)) |
 | [`itch/`](itch) | The itch.io page: cover, banner, screenshots, description and custom CSS ([setup notes](itch/README.md)) |
 | [`docs/`](docs) | Design notes: [the journey](docs/JOURNEY.md) and [the gameplay](docs/GAMEPLAY.md) |
 
