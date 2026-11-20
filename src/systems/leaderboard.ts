@@ -4,7 +4,7 @@ import type { LegLog } from '../world/score';
  * The online leaderboard (leaderboard/ in the repo: a Cloudflare Worker). Empty until it is deployed:
  * while it is, the game simply has no leaderboard button.
  */
-export const LEADERBOARD_URL = '';
+export const LEADERBOARD_URL: string = 'https://shifting-day-leaderboard.watchnight.workers.dev';
 
 /** A finished run, as the game has it: each leg in full, the stars, and what made it home. */
 export interface RunLog {

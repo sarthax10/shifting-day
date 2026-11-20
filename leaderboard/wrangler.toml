@@ -5,5 +5,5 @@ compatibility_date = "2026-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "shifting-day-leaderboard"
-# Filled in by `npx wrangler d1 create shifting-day-leaderboard` (see README.md).
-database_id = "REPLACE_WITH_DATABASE_ID"
+
+database_id = "f3619f84-3bfe-4da9-b249-c6b8b1c20790"
