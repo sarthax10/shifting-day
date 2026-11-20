@@ -16,7 +16,7 @@
  *   GET/POST/DELETE /admin/api/bans[/:p]  the players whose runs are refused
  *
  * A browser game can never fully stop someone sending a made-up run, but this refuses anything the game
- * could not have produced. Each leg must add up (cargo + parking + clean-leg bonus - breakage = its score,
+ * could not have produced. Each leg must add up (cargo + parking + clean-leg bonus + speed bonus - breakage = its score,
  * and the breakage must be half the worth of what it says broke), its time must be one a real drive could
  * take, the legs must add up to the run, and every thing named must be one of the game's. Names are cleaned,
  * and a player can send one run every 20 seconds.
@@ -30,10 +30,12 @@ const VALUE = {
 };
 const ALL_WORTH = Object.values(VALUE).reduce((a, b) => a + b, 0);
 const CLEAN_LEG = 50;
+/** The speed bonus: this many points for each whole second at 50 km/h or more (src/world/score.ts). */
+const SPEED_RATE = 5;
 /** The total needed for one, two and three stars (src/world/score.ts STARS). */
 const STARS = [1500, 3000, 4500];
 /** No real leg is quicker than this, in seconds; none is worth keeping after two hours. */
-const LEG_MIN = 20;
+const LEG_MIN = 30;
 const LEG_MAX = 2 * 3600;
 /** Seconds a player waits between submissions. */
 const COOLDOWN = 20;
@@ -86,13 +88,16 @@ const isKeys = (xs) => Array.isArray(xs) && xs.length <= 23 && xs.every((k) => t
 function cleanLeg(l) {
   if (!l || typeof l !== 'object') return null;
   const { cargo, parking, clean, penalty, score, time, lost, broken } = l;
+  const speed = l.speed ?? 0;
   if (!isInt(cargo, 0, ALL_WORTH) || !isInt(parking, 0, 100) || (clean !== 0 && clean !== CLEAN_LEG) || !isInt(penalty, 0, ALL_WORTH)) return null;
   if (!isKeys(lost) || !isKeys(broken)) return null;
-  if (score !== Math.max(0, cargo + parking + clean - penalty)) return null;
+  if (typeof time !== 'number' || !Number.isFinite(time) || time < LEG_MIN || time > LEG_MAX) return null;
+  // The speed bonus comes in whole seconds, and the truck cannot be fast for longer than the leg lasted.
+  if (!isInt(speed, 0, Math.floor(time) * SPEED_RATE) || speed % SPEED_RATE) return null;
+  if (score !== Math.max(0, cargo + parking + clean + speed - penalty)) return null;
   if (penalty !== broken.reduce((n, k) => n + Math.round(VALUE[k] / 2), 0)) return null;
   if (clean && (cargo === 0 || lost.length || broken.length)) return null;
-  if (typeof time !== 'number' || !Number.isFinite(time) || time < LEG_MIN || time > LEG_MAX) return null;
-  return { cargo, parking, clean, penalty, score, time: Math.round(time * 10) / 10, lost, broken };
+  return { cargo, parking, clean, penalty, speed, score, time: Math.round(time * 10) / 10, lost, broken };
 }
 
 /** The player, as far as the board can tell: a salted hash of their address, never the address itself. */

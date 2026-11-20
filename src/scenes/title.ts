@@ -30,7 +30,6 @@ import { isTouchDevice } from '../ui/touch';
  * and then idles with the rays turning, the cat blinking, the logo slipping out of register now and
  * then, and the truck running on the spot. Mouse, keys, gamepad and touch all drive the menu.
  */
-const DISPLAY = '"Anton", "Impact", sans-serif';
 const MONO = '"Space Mono", monospace';
 const EMBER = 0xff6a30;
 const RED = 0xe3263a;
@@ -468,13 +467,25 @@ export class TitleScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.input.gamepad?.off('down', pad));
   }
 
-  /** The maker's mark, bottom left, opposite the controls: small, in the poster's type, like a print's signature. */
+  /**
+   * The byline: one quiet line in the top-left margin, inside the crop marks, like the slug a printer
+   * sets outside a poster's trim. It arrives with the printer's marks, and a pointer over it
+   * lifts the ink a little; clicking opens the maker's itch.io page.
+   */
   private buildCredit() {
-    const by = this.add.text(0, 0, 'MADE BY', { fontFamily: MONO, fontStyle: 'bold', fontSize: '15px', color: BONE, letterSpacing: 5 }).setOrigin(0, 0.5).setAlpha(0.7);
-    const name = this.add.text(by.width + 12, -1, 'SARTHAX10', { fontFamily: DISPLAY, fontSize: '30px', color: BONE, letterSpacing: 2 }).setOrigin(0, 0.5).setShadow(3, 3, '#E3263A', 0, true, false);
-    const rule = this.add.rectangle(by.width + 12, 19, name.width, 4, EMBER).setOrigin(0, 0.5);
-    const credit = this.add.container(LEFT, ROAD + 46, [by, name, rule]).setDepth(60).setAlpha(0);
-    this.tweens.add({ targets: credit, alpha: 0.9, duration: 800, delay: 2800 });
+    // A phone shows the poster at about a third of its size: the line grows just enough to stay legible.
+    const style = { fontFamily: MONO, fontStyle: 'bold', fontSize: isTouchDevice() ? '26px' : '15px', color: BONE, letterSpacing: 5 };
+    const by = this.add.text(0, 0, '— BY', style).setOrigin(0, 0.5).setAlpha(0.45);
+    const name = this.add.text(by.width + 10, 0, 'SARTHAX10', style).setOrigin(0, 0.5).setAlpha(0.7);
+    const credit = this.add.container(64, 57, [by, name]).setDepth(96).setAlpha(0);
+    this.tweens.add({ targets: credit, alpha: 1, duration: 800, delay: 1800 });
+    const hit = this.add.zone(64 + (by.width + 10 + name.width) / 2, 57, by.width + 10 + name.width + 16, 30).setDepth(96).setInteractive({ useHandCursor: true });
+    hit.on('pointerover', () => name.setAlpha(1).setColor('#FF6A30'));
+    hit.on('pointerout', () => name.setAlpha(0.7).setColor(BONE));
+    hit.on('pointerdown', () => {
+      play('click');
+      window.open('https://sarthax10.itch.io', '_blank', 'noopener');
+    });
   }
 
   private refreshMenu() {
@@ -493,7 +504,7 @@ export class TitleScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ frame
 
-  /** Printer's marks: crop marks in each corner, a registration target and the ink bars, plus grain. */
+  /** Printer's marks: crop marks in each corner, and a registration target, plus grain. */
   private buildFrame() {
     const g = this.add.graphics().setDepth(95).setAlpha(0);
     g.lineStyle(2, BONE_N, 0.55);
@@ -506,8 +517,6 @@ export class TitleScene extends Phaser.Scene {
     g.strokeCircle(W / 2, m + 6, 10);
     g.lineBetween(W / 2 - 18, m + 6, W / 2 + 18, m + 6);
     g.lineBetween(W / 2, m - 12, W / 2, m + 24);
-    // Colour bars, as on a proof: the poster's inks.
-    [INK_N, 0x3a0f22, RED, EMBER, BONE_N].forEach((c, i) => g.fillStyle(c, 1).fillRect(W - m - 30 - (4 - i) * 22, m + 14, 18, 18));
     this.tweens.add({ targets: g, alpha: 1, duration: 800, delay: 1800 });
 
     this.add.image(W / 2, H / 2, 'vignette').setDisplaySize(W * 1.05, H * 1.05).setTint(0x000000).setDepth(99);
@@ -777,3 +786,4 @@ function routeNear(): HTMLCanvasElement {
   }
   return c;
 }
+

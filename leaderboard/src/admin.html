@@ -454,7 +454,7 @@ async function showRun(id) {
     const top = el('div', 'top');
     top.append(el('span', 'n', String(i + 1).padStart(2, '0')), el('b', '', LEGS[i].toUpperCase()), el('span', '', clock(l.time)), el('span', 's', String(l.score)));
     const how = el('div', 'how');
-    how.appendChild(document.createTextNode([`CARGO ${l.cargo}`, `PARKING +${l.parking}`, l.clean ? `CLEAN LEG +${l.clean}` : '', l.penalty ? `BREAKAGE −${l.penalty}` : ''].filter(Boolean).join(' · ')));
+    how.appendChild(document.createTextNode([`CARGO ${l.cargo}`, `PARKING +${l.parking}`, l.clean ? `CLEAN LEG +${l.clean}` : '', l.speed ? `SPEED +${l.speed}` : '', l.penalty ? `BREAKAGE −${l.penalty}` : ''].filter(Boolean).join(' · ')));
     const bad = [...l.lost.map((k) => `LOST ${thing(k)}`), ...l.broken.map((k) => `BROKE ${thing(k)}`)];
     if (bad.length) { how.appendChild(el('br')); how.appendChild(el('span', 'bad', bad.join(' · '))); }
     const bar = el('div', 'bar'); const fill = el('i'); fill.style.width = `${(l.score / best) * 100}%`; bar.appendChild(fill);

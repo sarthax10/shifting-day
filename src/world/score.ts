@@ -5,6 +5,7 @@
  *   the worth of every intact thing on the truck when it parks
  *   + the parking bonus (10 to 100, for how centred the truck is in the bay)
  *   + CLEAN_LEG, when nothing fell off or broke on the way and the truck carried something
+ *   + SPEED_RATE for every whole second the truck held SPEED_KMH or more
  *   − half the worth of each thing that broke on this leg (only on the leg it broke)
  *
  * so carrying a thing safely the whole way pays at every stop, losing one early costs every leg after, and
@@ -15,6 +16,14 @@
 /** The bonus for a leg with nothing lost or broken. */
 export const CLEAN_LEG = 50;
 
+/**
+ * The speed bonus: points for every whole second at or above this speed. It takes top gear (third runs
+ * out of revs just under it), so it pays for nerve, and costs whatever shakes loose on the way.
+ */
+export const SPEED_KMH = 50;
+export const SPEED_RATE = 5;
+export const speedBonus = (fastSeconds: number) => Math.floor(fastSeconds) * SPEED_RATE;
+
 /** The total needed for one, two and three stars. */
 export const STARS = [1500, 3000, 4500];
 
@@ -24,12 +33,14 @@ export interface LegScore {
   parking: number;
   clean: number;
   penalty: number;
+  /** The speed bonus: SPEED_RATE for each whole second at SPEED_KMH or more. */
+  speed: number;
   score: number;
 }
 
-export function legScore(cargo: number, parking: number, nothingLost: boolean, penalty: number): LegScore {
+export function legScore(cargo: number, parking: number, nothingLost: boolean, penalty: number, speed = 0): LegScore {
   const clean = cargo > 0 && nothingLost ? CLEAN_LEG : 0;
-  return { cargo, parking, clean, penalty, score: Math.max(0, cargo + parking + clean - penalty) };
+  return { cargo, parking, clean, penalty, speed, score: Math.max(0, cargo + parking + clean + speed - penalty) };
 }
 
 /** One leg as the leaderboard keeps it: its score and how it was made, its time, and what went wrong. */
@@ -53,7 +64,7 @@ export function withLeg<T>(xs: T[] | undefined, n: number, v: T, fill: T): T[] {
 }
 
 /** A leg that never happened, as a gap in a log. */
-export const NO_LEG: LegLog = { cargo: 0, parking: 0, clean: 0, penalty: 0, score: 0, time: 0, lost: [], broken: [] };
+export const NO_LEG: LegLog = { cargo: 0, parking: 0, clean: 0, penalty: 0, speed: 0, score: 0, time: 0, lost: [], broken: [] };
 
 /** The score banked so far. */
 export const banked = (scores: number[] | undefined) => (scores ?? []).reduce((a, b) => a + b, 0);

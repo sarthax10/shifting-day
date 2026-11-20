@@ -26,10 +26,11 @@ A browser game can always be made to send a made-up score, so the Worker only re
 not have produced:
 
 - anything but five legs
-- a leg whose score is not its cargo + parking + clean-leg bonus − breakage, whose breakage is not half the
+- a leg whose score is not its cargo + parking + clean-leg bonus + speed bonus − breakage, whose breakage is not half the
   worth of what it says broke, that claims a clean leg with something lost or broken, or that names a thing
   the game does not have
-- a leg under 20 seconds or over two hours, and totals that are not the sum of the legs
+- a speed bonus that is not whole seconds at 5 points each, or lasts longer than the leg
+- a leg under 30 seconds or over two hours, and totals that are not the sum of the legs
 - stars the run did not earn (the Worker works them out itself)
 - names that are empty, longer than 12 characters, or rude (letters, digits, spaces, `.`, `-` and `_` only)
 - a second submission from the same player within 20 seconds

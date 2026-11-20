@@ -269,7 +269,7 @@ export function openBoard(run: (RunLog & { score: number; time: number }) | null
           const top = el('div', 'top');
           top.append(el('span', 'n', String(i + 1).padStart(2, '0')), el('b', '', LEGS[i].title.toUpperCase()), el('span', 't', clock(l.time)), el('span', 's', String(l.score)));
           const how = el('div', 'how');
-          const parts = [`CARGO ${l.cargo}`, `PARKING +${l.parking}`, l.clean ? `CLEAN LEG +${l.clean}` : '', l.penalty ? `BREAKAGE −${l.penalty}` : ''].filter(Boolean);
+          const parts = [`CARGO ${l.cargo}`, `PARKING +${l.parking}`, l.clean ? `CLEAN LEG +${l.clean}` : '', l.speed ? `SPEED +${l.speed}` : '', l.penalty ? `BREAKAGE −${l.penalty}` : ''].filter(Boolean);
           how.appendChild(document.createTextNode(parts.join(' · ')));
           const bad = [...l.lost.map((k) => `LOST ${thing(k)}`), ...l.broken.map((k) => `BROKE ${thing(k)}`)];
           if (bad.length) {

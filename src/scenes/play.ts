@@ -109,7 +109,7 @@ const bay = () => ({ from: FINISH + 80, to: FINISH + 900 });
 import { TUNNEL, buildTunnel, type Tunnel } from '../world/tunnel';
 import { Extras } from '../systems/extras';
 import { Crossbow } from '../systems/crossbow';
-import { NO_LEG, banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
+import { NO_LEG, SPEED_KMH, SPEED_RATE, banked, legScore, speedBonus, starsFor, withLeg, type LegScore } from '../world/score';
 import { isTouchDevice, touchPad, type TouchPad } from '../ui/touch';
 import { verdictFor } from '../ui/verdicts';
 import { Culler, SceneryCuller } from '../world/cull';
@@ -293,6 +293,12 @@ export class PlayScene extends Phaser.Scene {
   private roping = false;
   private engine = new Engine();
   private driveTime = 0;
+  /** Seconds this leg at SPEED_KMH or more, for the speed bonus; and the banner that counts it up. */
+  private fastTime = 0;
+  private speedTag!: Phaser.GameObjects.Container;
+  private speedTagPoints!: Phaser.GameObjects.Text;
+  private speedTagShown = 0;
+  private speedTagLast = 0;
   private arrivedAt = 0;
   private camLead = 0;
   /** When a wheel last touched the road: the engine keeps driving through a brief hop over a bump. */
@@ -367,6 +373,9 @@ export class PlayScene extends Phaser.Scene {
     this.walls = undefined;
     this.roping = false;
     this.driveTime = 0;
+    this.fastTime = 0;
+    this.speedTagShown = 0;
+    this.speedTagLast = 0;
     this.arrivedAt = 0;
     this.frame = 0;
     this.cameras.main.scrollX = 0;
@@ -896,7 +905,7 @@ export class PlayScene extends Phaser.Scene {
     const brokeNow = this.things.filter((t) => t.packed && t.broken && !t.wasBroken);
     const cargo = onBoard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
     const penalty = brokeNow.reduce((n, t) => n + Math.round(this.valueOf(t) / 2), 0);
-    return { lostNow, brokeNow, leg: legScore(cargo, this.parkBonus, !lostNow.length && !brokeNow.length, penalty) };
+    return { lostNow, brokeNow, leg: legScore(cargo, this.parkBonus, !lostNow.length && !brokeNow.length, penalty, speedBonus(this.fastTime)) };
   }
 
   /** Loads the truck as it was left at the last stop: the same things, where they sat, broken or not, tied or not. */
@@ -1157,16 +1166,18 @@ export class PlayScene extends Phaser.Scene {
       ['STILL ON THE TRUCK', `+${leg.cargo}`, true],
       [this.parkBonus >= 90 ? 'PARKING · PERFECT' : 'PARKING', `+${leg.parking}`, true],
       [leg.clean ? 'CLEAN LEG · NOTHING LOST' : `CLEAN LEG · ${lost ? `${lost} FELL OFF` : broke ? `${broke} BROKE` : 'EMPTY TRUCK'}`, leg.clean ? `+${leg.clean}` : '—', !!leg.clean],
+      [leg.speed ? `SPEED BONUS · ${leg.speed / SPEED_RATE}S AT ${SPEED_KMH}+ KM/H` : `SPEED BONUS · NEVER HIT ${SPEED_KMH} KM/H`, leg.speed ? `+${leg.speed}` : '—', !!leg.speed],
       [`BROKE ON THIS LEG${broke ? `  ×${broke}` : ''}`, broke ? `−${leg.penalty}` : '0', !broke],
     ];
+    const step = 50;
     lines.forEach(([label, value, good], i) => {
-      const y = 326 + i * 58;
+      const y = 326 + i * step;
       sheet.add(this.add.rectangle(cx, y + 27, 820, 2, 0xf3e3cc, 0.16));
       sheet.add(this.add.text(cx - 410, y, label, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '22px', color: '#F3E3CC', letterSpacing: 4 }).setOrigin(0, 0.5).setAlpha(good ? 0.85 : 0.55));
       sheet.add(this.add.text(cx + 410, y, value, { fontFamily: TITLE, fontSize: '42px', color: good ? '#F3E3CC' : '#E3263A', letterSpacing: 1 }).setOrigin(1, 0.5));
     });
     // What this leg banked, and the trip's running total.
-    const y = 326 + lines.length * 58 + 26;
+    const y = 326 + lines.length * step + 26;
     sheet.add(this.add.rectangle(cx, y - 10, 820, 3, 0xff6a30));
     sheet.add(this.add.text(cx - 410, y + 32, `LEG ${this.leg.n} SCORE`, { fontFamily: TITLE, fontSize: '40px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5));
     const legText = this.add.text(cx + 410, y + 30, '0', { fontFamily: TITLE, fontSize: '64px', color: '#FF6A30', letterSpacing: 1 }).setOrigin(1, 0.5);
@@ -1191,6 +1202,24 @@ export class PlayScene extends Phaser.Scene {
     });
     go.box.setDepth(205);
     this.button(cx - 170, 860, 'btn_rope', 'Title', 40, () => this.scene.start('title')).box.setDepth(205);
+  }
+
+  /**
+   * The speed bonus banner: in while the truck holds SPEED_KMH, the points slapping up a beat each whole
+   * second; it lingers a moment after the truck slows, then peels away.
+   */
+  private updateSpeedTag(fast: boolean) {
+    const tag = this.speedTag;
+    const points = speedBonus(this.fastTime);
+    if (fast) this.speedTagLast = this.time.now;
+    const show = fast || (points > 0 && this.time.now - this.speedTagLast < 1400);
+    tag.setAlpha(Phaser.Math.Linear(tag.alpha, show ? 1 : 0, show ? 0.3 : 0.08));
+    if (points !== this.speedTagShown) {
+      this.speedTagShown = points;
+      this.speedTagPoints.setText(`+${points}`);
+      this.tweens.add({ targets: this.speedTagPoints, scale: { from: 1.35, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: tag, angle: { from: -5, to: -2.5 }, duration: 260, ease: 'Back.easeOut' });
+    }
   }
 
   /** The start of a leg: its name, large, and the mood of the place, fading away. */
@@ -1640,6 +1669,15 @@ export class PlayScene extends Phaser.Scene {
     const best = bestRun();
     if (best) fixed(this.add.text(W - 560, 127, `BEST ${clock(best, false)}`, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5).setAlpha(0.55));
     this.hudClock = fixed(this.add.text(W - 30, 127, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '15px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(1, 0.5));
+    // Under the panel: the speed bonus, a strip of ember tape that slaps on at 50 km/h and counts up.
+    {
+      const tape = this.add.rectangle(0, 0, 330, 74, 0xff6a30).setStrokeStyle(4, 0x0a0712);
+      const shadow = this.add.rectangle(7, 7, 330, 74, 0xe3263a);
+      const label = this.add.text(-150, -16, `SPEED BONUS · ${SPEED_KMH}+ KM/H`, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '14px', color: '#0A0712', letterSpacing: 3 }).setOrigin(0, 0.5);
+      const rate = this.add.text(-150, 16, `+${SPEED_RATE} EVERY SECOND`, { fontFamily: TEXT, fontStyle: 'bold', fontSize: '12px', color: '#0A0712', letterSpacing: 2 }).setOrigin(0, 0.5).setAlpha(0.7);
+      this.speedTagPoints = this.add.text(150, 2, '+0', { fontFamily: TITLE, fontSize: '50px', color: '#0A0712', letterSpacing: 1 }).setOrigin(1, 0.5);
+      this.speedTag = fixed(this.add.container(W - 194, 196, [shadow, tape, label, rate, this.speedTagPoints]).setAngle(-2.5).setAlpha(0));
+    }
     fixed(this.add.text(W - 150, 127, 'RUN', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '13px', color: '#FF6A30', letterSpacing: 4 }).setOrigin(1, 0.5));
     // On a phone the game is drawn at a third of its size: the panel grows from its corner to stay readable.
     const k = this.hudScale();
@@ -2784,6 +2822,9 @@ export class PlayScene extends Phaser.Scene {
     if (this.phase === 'pack' && !this.waiting) this.driveTime += delta / 1000;
     if (this.phase === 'drive') {
       this.driveTime += delta / 1000;
+      const fast = this.speedNow * KMH >= SPEED_KMH;
+      if (fast) this.fastTime += delta / 1000;
+      this.updateSpeedTag(fast);
 
       const cx = this.chassis.position.x;
       for (const t of this.things) {
