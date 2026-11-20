@@ -111,6 +111,7 @@ import { Extras } from '../systems/extras';
 import { Crossbow } from '../systems/crossbow';
 import { banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
 import { isTouchDevice, touchPad, type TouchPad } from '../ui/touch';
+import { verdictFor } from '../ui/verdicts';
 import { Culler, SceneryCuller } from '../world/cull';
 import { LOW_POWER } from '../systems/quality';
 import { gearName } from '../systems/drivetrain';
@@ -2638,16 +2639,14 @@ export class PlayScene extends Phaser.Scene {
     clearTrip();
     const score = banked(scores);
     const stars = starsFor(score);
-    const catLeft = !onBoard.some((t) => t.spec.key === 'cat');
-    const verdict = catLeft
-      ? 'Biscuit is walking home. Biscuit will not forget this.'
-      : stars === 3
-        ? 'A perfect move. The neighbours are impressed.'
-        : stars === 2
-          ? 'Most of it made it. Good enough!'
-          : stars === 1
-            ? 'We can buy a new fridge. Probably.'
-            : 'We are minimalists now.';
+    // What became of everything: here and whole, broken, fell off on the way (and never claimed back), or
+    // never packed at all. The line under the card is a joke about exactly that (ui/verdicts.ts).
+    const keyOf = (t: Thing) => t.spec.key;
+    const lostNow = this.things.filter((t) => t.packed && !onBoard.includes(t) && !t.broken).map(keyOf);
+    const outcome = { delivered: delivered.map(keyOf), broken: broken.map(keyOf), lost: [...this.trip.lost, ...lostNow], left: [] as string[], stars };
+    const accounted = new Set([...outcome.delivered, ...outcome.broken, ...outcome.lost]);
+    outcome.left = ITEMS.map((i) => i.key).filter((k) => !accounted.has(k));
+    const verdict = verdictFor(outcome);
 
     showScorecard(
       this,
