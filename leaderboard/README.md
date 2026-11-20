@@ -1,23 +1,35 @@
 # The leaderboard
 
-A Cloudflare Worker with a D1 database, on Cloudflare's free plan. The game sends finished runs here and
-shows the top ten on the score card. Until it is deployed, the game has no leaderboard button.
+A Cloudflare Worker with a D1 database, on Cloudflare's free plan. The game sends finished runs here, and
+the score card's LEADERBOARD button shows three boards: FASTEST and TOP SCORE for whole runs, and BY LEG for
+any one leg, by time or by score. Tapping a name opens that run's card: every leg's time and score, how the
+score was made (cargo, parking, clean leg, breakage), what fell off or broke where, and which pets made it.
+Until it is deployed, the game has no leaderboard button.
 
 | File | What it is |
 |---|---|
-| `src/worker.js` | The Worker: `GET /scores` for the top ten, `POST /scores` to send a run |
-| `schema.sql` | The `scores` table |
+| `src/worker.js` | The Worker (below) |
+| `schema.sql` | The `runs` table (one row per run) and `legs` (each run's five legs, for the leg boards) |
 | `wrangler.toml` | The Worker's settings, and which database it uses |
+
+| Call | Answers |
+|---|---|
+| `GET /runs?by=time` or `by=score` | The top 20 whole runs |
+| `GET /legs?leg=1..5&by=time` or `by=score` | The top 20 results on one leg |
+| `GET /runs/:id` | One run in full, for its card |
+| `POST /runs` | Sends a run; answers with its id and its place on both whole-run boards |
 
 ## What it refuses
 
 A browser game can always be made to send a made-up score, so the Worker only refuses what the game could
 not have produced:
 
-- anything other than five leg scores, or a leg above 2420 (everything on the truck, perfect parking and a
-  clean leg)
-- a total that is not the sum of its legs
-- a run under two minutes or over six hours
+- anything but five legs
+- a leg whose score is not its cargo + parking + clean-leg bonus − breakage, whose breakage is not half the
+  worth of what it says broke, that claims a clean leg with something lost or broken, or that names a thing
+  the game does not have
+- a leg under 20 seconds or over two hours, and totals that are not the sum of the legs
+- stars the run did not earn (the Worker works them out itself)
 - names that are empty, longer than 12 characters, or rude (letters, digits, spaces, `.`, `-` and `_` only)
 - a second submission from the same player within 20 seconds
 
@@ -66,6 +78,6 @@ Point `LEADERBOARD_URL` at `http://127.0.0.1:8787` while testing (the Worker acc
 
 ## Looking after it
 
-See the board: `npx wrangler@4 d1 execute shifting-day-leaderboard --remote --command "SELECT * FROM scores ORDER BY score DESC LIMIT 20"`
+See the board: `npx wrangler@4 d1 execute shifting-day-leaderboard --remote --command "SELECT id, name, score, time FROM runs ORDER BY score DESC LIMIT 20"`
 
-Remove an entry: `npx wrangler@4 d1 execute shifting-day-leaderboard --remote --command "DELETE FROM scores WHERE id = 123"`
+Remove a run: `npx wrangler@4 d1 execute shifting-day-leaderboard --remote --command "DELETE FROM legs WHERE run_id = 123; DELETE FROM runs WHERE id = 123"`

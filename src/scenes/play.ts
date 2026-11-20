@@ -109,7 +109,7 @@ const bay = () => ({ from: FINISH + 80, to: FINISH + 900 });
 import { TUNNEL, buildTunnel, type Tunnel } from '../world/tunnel';
 import { Extras } from '../systems/extras';
 import { Crossbow } from '../systems/crossbow';
-import { banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
+import { NO_LEG, banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
 import { isTouchDevice, touchPad, type TouchPad } from '../ui/touch';
 import { verdictFor } from '../ui/verdicts';
 import { Culler, SceneryCuller } from '../world/cull';
@@ -947,7 +947,8 @@ export class PlayScene extends Phaser.Scene {
       lost: [...this.trip.lost, ...lostNow.map((t) => t.spec.key)],
       broken: [...this.trip.broken, ...brokeNow.map((t) => t.spec.key)],
       parking: [...this.trip.parking, this.parkBonus],
-      scores: withLeg(this.trip.scores, this.leg.n, leg.score),
+      scores: withLeg(this.trip.scores, this.leg.n, leg.score, 0),
+      logs: withLeg(this.trip.logs, this.leg.n, { ...leg, time: this.driveTime, lost: lostNow.map((t) => t.spec.key), broken: brokeNow.map((t) => t.spec.key) }, NO_LEG),
       time: this.trip.time + this.driveTime,
       coins: this.extras.coins + (this.parkBonus >= 90 ? 1 : 0),
     };
@@ -2631,8 +2632,9 @@ export class PlayScene extends Phaser.Scene {
     const onBoard = this.onBoardNow();
     const delivered = onBoard.filter((t) => !t.broken);
     const broken = this.things.filter((t) => t.packed && t.broken);
-    const { leg } = this.legTally(onBoard);
-    const scores = withLeg(this.trip.scores, this.leg.n, leg.score);
+    const { leg, lostNow: lostLast, brokeNow: brokeLast } = this.legTally(onBoard);
+    const scores = withLeg(this.trip.scores, this.leg.n, leg.score, 0);
+    const logs = withLeg(this.trip.logs, this.leg.n, { ...leg, time: this.driveTime, lost: lostLast.map((t) => t.spec.key), broken: brokeLast.map((t) => t.spec.key) }, NO_LEG);
     const tripTime = this.trip.time + this.driveTime;
     const best = bestRun();
     const record = saveRun(tripTime);
@@ -2659,6 +2661,7 @@ export class PlayScene extends Phaser.Scene {
         verdict,
         time: clock(tripTime, false),
         seconds: tripTime,
+        run: { logs, stars, delivered: outcome.delivered },
         best: best !== null ? clock(Math.min(best, tripTime), false) : null,
         record,
       },

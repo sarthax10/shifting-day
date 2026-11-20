@@ -1,3 +1,4 @@
+import type { LegLog } from './score';
 import { LEG1_FEATURES, type Feature } from './terrain';
 
 /**
@@ -236,6 +237,8 @@ export interface Trip {
   parking: number[];
   /** The score each leg banked at its checkpoint, by leg (see world/score.ts). */
   scores?: number[];
+  /** Each leg in full, for the leaderboard: its score's parts, its time, what fell off and broke. */
+  logs?: LegLog[];
   /** Coins picked up along the way, to spend at the stops. */
   coins?: number;
   /** Seconds on the road so far. */

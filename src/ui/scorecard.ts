@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { H, W } from '../world/terrain';
 import { BONE, BONE_CSS, DISPLAY, EMBER, EMBER_CSS, INK, INK_CSS, MONO, RED } from './poster';
 import { play } from '../systems/audio';
-import { leaderboardOn } from '../systems/leaderboard';
+import { leaderboardOn, type RunLog } from '../systems/leaderboard';
 import { openBoard } from './board';
 
 /** What the trip came to, for the card at the end. */
@@ -12,8 +12,9 @@ export interface Tally {
   /** What each leg banked at its checkpoint; the score is their sum. */
   legs: { name: string; score: number }[];
   score: number;
-  /** The run time in seconds, for the leaderboard. */
+  /** The run time in seconds, and the run in full, for the leaderboard. */
   seconds: number;
+  run: RunLog;
   stars: number;
   verdict: string;
   time: string;
@@ -175,7 +176,7 @@ export function showScorecard(scene: Phaser.Scene, t: Tally, onAgain: () => void
       if (boardOpen || gone) return;
       boardOpen = true;
       play('click');
-      openBoard({ legs: t.legs.map((l) => l.score), score: t.score, time: t.seconds }, () => (boardOpen = false));
+      openBoard({ ...t.run, score: t.score, time: t.seconds }, () => (boardOpen = false));
     });
     lb.setAlpha(0);
     scene.tweens.add({ targets: lb, alpha: 1, delay: 2900, duration: 400 });

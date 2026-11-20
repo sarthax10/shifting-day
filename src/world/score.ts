@@ -32,16 +32,28 @@ export function legScore(cargo: number, parking: number, nothingLost: boolean, p
   return { cargo, parking, clean, penalty, score: Math.max(0, cargo + parking + clean - penalty) };
 }
 
+/** One leg as the leaderboard keeps it: its score and how it was made, its time, and what went wrong. */
+export interface LegLog extends LegScore {
+  /** Seconds on this leg, packing at its start included. */
+  time: number;
+  /** Things that fell off on this leg, and things that broke on it. */
+  lost: string[];
+  broken: string[];
+}
+
 /**
- * The trip's leg scores with leg n's set. Scores are kept by leg, never appended, so a leg can be banked
+ * A per-leg list with leg n's entry set. Entries are kept by leg, never appended, so a leg can be banked
  * once: replaying it from a save, or coming back from the title, cannot count it twice.
  */
-export function withLeg(scores: number[] | undefined, n: number, score: number): number[] {
-  const out = [...(scores ?? [])];
-  while (out.length < n - 1) out.push(0);
-  out[n - 1] = score;
+export function withLeg<T>(xs: T[] | undefined, n: number, v: T, fill: T): T[] {
+  const out = [...(xs ?? [])];
+  while (out.length < n - 1) out.push(fill);
+  out[n - 1] = v;
   return out;
 }
+
+/** A leg that never happened, as a gap in a log. */
+export const NO_LEG: LegLog = { cargo: 0, parking: 0, clean: 0, penalty: 0, score: 0, time: 0, lost: [], broken: [] };
 
 /** The score banked so far. */
 export const banked = (scores: number[] | undefined) => (scores ?? []).reduce((a, b) => a + b, 0);
