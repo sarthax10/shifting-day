@@ -17,7 +17,7 @@ import type { BiomeKey } from '../world/legs';
 /** Road pictures are cut into pieces this wide, starting this far down the screen. */
 export { CHUNK, CHUNK_TOP } from '../world/prepare';
 import { CHUNK, CHUNK_TOP, groundKey, grassKey, holdLoadingWhile, legReady, prepareLeg, setLoadBudget, unloadLegsExcept } from '../world/prepare';
-import { applyBiomeFX } from '../systems/postfx';
+import { applyBiomeFX, lightVignette } from '../systems/postfx';
 import { buildFinale } from '../world/finale';
 import { showScorecard } from '../ui/scorecard';
 import { chip, hudText, uiText } from '../ui/ui';
@@ -111,6 +111,8 @@ import { Extras } from '../systems/extras';
 import { Crossbow } from '../systems/crossbow';
 import { banked, legScore, starsFor, withLeg, type LegScore } from '../world/score';
 import { isTouchDevice, touchPad, type TouchPad } from '../ui/touch';
+import { Culler, SceneryCuller } from '../world/cull';
+import { LOW_POWER } from '../systems/quality';
 import { gearName } from '../systems/drivetrain';
 /** True where the tunnel's rock hides the roadside, so nothing is put there. */
 const inTunnel = (x: number, on: boolean) => on && x > TUNNEL.from - 300 && x < TUNNEL.to + 300;
@@ -251,6 +253,14 @@ export class PlayScene extends Phaser.Scene {
   private touchAiming = false;
   /** The touchscreen's controls (ui/touch.ts), on a touch device. */
   private pad: TouchPad | null = null;
+  /**
+   * Static world pieces drawn as Graphics (the bay, gate lines, rails, the Lost & Found board), with the
+   * stretch of road they stand on: Phaser redraws a Graphics in full every frame, on screen or not, so
+   * each is hidden while the camera is away from it.
+   */
+  private culled = new Culler();
+  /** Every static piece of the world, masked out of the camera while off screen (world/cull.ts). */
+  private sceneCull?: SceneryCuller;
   /** A touchscreen: the slim gauge replaces the dashboard. */
   private slimGauge = false;
   /** The truck's speed along the road last frame, for the gauge. */
@@ -335,6 +345,7 @@ export class PlayScene extends Phaser.Scene {
     this.trip = data?.trip ?? { leg: 1, cargo: [], lost: [], broken: [], parking: [], time: 0 };
     this.phase = data?.intro && this.leg.n === 1 ? 'intro' : 'pack';
     this.parkBonus = 0;
+    this.culled = new Culler();
     this.parkNote = 0;
     this.things = [];
     this.byBody.clear();
@@ -616,6 +627,7 @@ export class PlayScene extends Phaser.Scene {
       if (rail) {
         // Rails set into the road, with their sleepers in the ground beneath.
         const r = this.add.graphics().setDepth(0.6);
+        this.cullWith([r], x - 100, x + 120);
         for (const dx of [-80, 40]) {
           r.fillStyle(0x2a2238, 1).fillRect(x + dx - 8, groundY(x + dx) + 8, 56, 12);
           r.fillStyle(0x9a9ab8, 1).fillRect(x + dx, groundY(x + dx) - 4, 40, 7);
@@ -669,6 +681,7 @@ export class PlayScene extends Phaser.Scene {
       } else this.matter.world.add(body);
       // The white line to stop at, painted on the road, and a warning sign before it.
       const line = this.add.graphics().setDepth(0.5);
+      this.cullWith([line], x - 240, x - 190);
       line.fillStyle(0xfff6e4, 0.9);
       for (let k = 0; k < 4; k++) line.fillRect(x - 230 + k * 8, groundY(x - 230 + k * 8) + 2, 6, 16);
       const sx = x - 900;
@@ -789,10 +802,12 @@ export class PlayScene extends Phaser.Scene {
     });
     this.tweens.add({ targets: flags, scaleX: { from: 1, to: 0.82 }, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.gantry = { banner, label };
+    this.cullWith([paint, g], left - 60, right + 60);
     for (const x of [bay().from, bay().to]) {
       const y = groundY(x);
       paint.fillStyle(0xfff6e4, 1).fillRect(x - 4, y + 1, 8, 18);
       const cone = this.add.graphics().setDepth(23);
+      this.cullWith([cone], x - 30, x + 30);
       cone.fillStyle(0x2a2140).fillTriangle(x - 24, y + 4, x + 24, y + 4, x, y - 62);
       cone.fillStyle(0xee6a4d).fillTriangle(x - 19, y + 1, x + 19, y + 1, x, y - 56);
       cone.fillStyle(0xfff2da).fillRect(x - 10, y - 30, 20, 9);
@@ -980,7 +995,11 @@ export class PlayScene extends Phaser.Scene {
         if (k * k * 4.5 > 0.5) dots.fillStyle(0xe3263a, 0.3 + k * 0.4).fillCircle(xx, yy, k * k * 4.5);
       }
     }
-    sign.add(dots);
+    // The dots never change: painted once into a picture, since a Graphics redraws every dot every frame.
+    const dotsLeft = bw / 2 - 150;
+    if (!this.textures.exists('lf_dots')) this.textures.addDynamicTexture('lf_dots', 150, bh)!.draw(dots, -dotsLeft, -top).render();
+    dots.destroy();
+    sign.add(this.add.image(dotsLeft, top, 'lf_dots').setOrigin(0));
     const title = this.add.text(-bw / 2 + 30, top + 68, 'LOST & FOUND', { fontFamily: TITLE, fontSize: '66px', color: '#F3E3CC', letterSpacing: 2 }).setOrigin(0, 0.5).setShadow(5, 6, '#E3263A', 0, true, false);
     const sub = this.add.text(-bw / 2 + 32, top + 128, '', { fontFamily: TEXT, fontStyle: 'bold', fontSize: '16px', color: '#F3E3CC', letterSpacing: 3 }).setOrigin(0, 0.5).setAlpha(0.8);
     const tapeImg = this.add.image(-bw / 2 + 24, top + 186, 't_tape').setOrigin(0, 0.5).setDisplaySize(200, 52).setAngle(-3);
@@ -997,6 +1016,7 @@ export class PlayScene extends Phaser.Scene {
     };
     show();
     this.lostFoundBoard = { sign, show };
+    this.cullWith([sign], x - bw / 2 - 20, x + bw / 2 + 20);
     board.setInteractive({ cursor: CURSOR.open });
     board.on('pointerover', () => {
       this.tweens.killTweensOf(sign);
@@ -1594,7 +1614,10 @@ export class PlayScene extends Phaser.Scene {
       g.generateTexture('t_dotscreen', 12, 12);
       g.destroy();
     }
-    this.add.tileSprite(0, 0, W, H, 't_dotscreen').setOrigin(0).setScrollFactor(0).setDepth(94).setAlpha(0.06);
+    // On a touchscreen the dot screen goes (another full-screen layer for a phone to fill, too fine to see on
+    // one), and the vignette is a picture rather than a filter pass (systems/postfx.ts).
+    if (!isTouchDevice()) this.add.tileSprite(0, 0, W, H, 't_dotscreen').setOrigin(0).setScrollFactor(0).setDepth(94).setAlpha(0.06);
+    lightVignette(this, 93.9);
     this.add.image(0, 0, 'grain').setOrigin(0).setDisplaySize(W, H).setScrollFactor(0).setDepth(94).setAlpha(0.7);
 
     // Top right: the points on the truck, and how far along the road it is.
@@ -1669,6 +1692,8 @@ export class PlayScene extends Phaser.Scene {
     this.ropeLabel = rope.label;
     this.setRoping(false);
     this.buildTouchControls();
+    // Everything is built: from here on, what is off screen is not drawn.
+    this.sceneCull = new SceneryCuller(this.cameras.main).addAll(this.children.list);
   }
 
   /**
@@ -1678,6 +1703,11 @@ export class PlayScene extends Phaser.Scene {
   private hudScale() {
     const shown = this.scale.displaySize.height / H;
     return shown > 0 ? Phaser.Math.Clamp(0.6 / shown, 1, 1.4) : 1;
+  }
+
+  /** Hides these while the camera is away from x0..x1 on the road (see `culled`). */
+  private cullWith(objs: (Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Visible)[], x0: number, x1: number) {
+    this.culled.add(objs, x0, x1);
   }
 
   /** On a touchscreen, binds the shared on-screen controls (ui/touch.ts) to this run of the scene. */
@@ -2339,7 +2369,8 @@ export class PlayScene extends Phaser.Scene {
   private updateHud(onTruck: number, points: number, pct: number) {
     this.hudHearts.setText(String(banked(this.trip.scores)));
     this.hudStake.setText(`+${points} ON BOARD`);
-    this.hudClock.setText(clock(this.trip.time + this.driveTime));
+    // Whole seconds on a phone: every change of a text is a texture upload, and tenths would be ten a second.
+    this.hudClock.setText(clock(this.trip.time + this.driveTime, !LOW_POWER));
     const packing = this.phase === 'pack' || this.phase === 'intro';
     this.hudLabel.setVisible(packing).setText(`${onTruck} / ${this.things.length} ON THE TRUCK`);
     this.hudTruck.setVisible(!packing);
@@ -2738,7 +2769,7 @@ export class PlayScene extends Phaser.Scene {
       }
       if (this.phase === 'drive' && this.frame % (pedal ? 7 : 20) === 0) this.exhaust();
       if (this.phase === 'drive') {
-        this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), this.extras.fuel, this.handbrake);
+        if (!this.slimGauge) this.dash.update(forward, Math.max(0, (this.chassis.position.x - TRUCK_X) / 1000), this.extras.fuel, this.handbrake);
         this.speedNow = forward;
         this.updateGates(forward, delta);
         this.parking(forward);
@@ -2815,6 +2846,8 @@ export class PlayScene extends Phaser.Scene {
       cam.scrollX += (Math.min(want, WORLD_END - W) - cam.scrollX) * 0.07;
     }
 
+    this.culled.update(cam.scrollX);
+    this.sceneCull?.update(cam.scrollX);
     const aboard = this.things.filter((t) => t.aboard && ((this.phase !== 'pack' && this.phase !== 'intro') || this.onTruck(t)));
     const points = aboard.filter((t) => !t.broken).reduce((n, t) => n + this.valueOf(t), 0);
     const pct = Phaser.Math.Clamp((this.chassis.position.x - TRUCK_X) / (FINISH - TRUCK_X), 0, 1);

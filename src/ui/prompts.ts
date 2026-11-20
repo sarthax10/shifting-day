@@ -1,5 +1,5 @@
-import { isTouchDevice } from './touch';
 import Phaser from 'phaser';
+import { isTouchDevice } from './touch';
 
 /**
  * How the game teaches, now that there are no toast messages: a small prompt that stands in the world

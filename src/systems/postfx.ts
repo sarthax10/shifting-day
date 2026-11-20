@@ -1,5 +1,13 @@
 import Phaser from 'phaser';
 import type { BiomeKey } from '../world/legs';
+import { isTouchDevice } from '../ui/touch';
+import { H, W } from '../world/terrain';
+
+/** On a touchscreen, the vignette as one picture over the world instead of a filter pass. */
+export function lightVignette(scene: Phaser.Scene, depth: number) {
+  if (!isTouchDevice()) return;
+  scene.add.image(W / 2, H / 2, 'vignette').setDisplaySize(W * 1.05, H * 1.05).setTint(0x000000).setAlpha(0.55).setScrollFactor(0).setDepth(depth);
+}
 
 /**
  * Screen-wide polish, built from Phaser 4's camera filter stack: a frame-darkening vignette so the eye
@@ -19,6 +27,9 @@ export function applyBiomeFX(camera: Phaser.Cameras.Scene2D.Camera, biome: Biome
   try {
     camera.filters.internal.clear();
     camera.filters.external.clear();
+    // A phone or tablet fills the screen's pixels far more slowly than a desktop: each filter is another
+    // full-screen pass, so there the grade and bloom go and a vignette picture stands in (see lightVignette).
+    if (isTouchDevice()) return;
     gradeFor(camera, biome);
     vignette(camera, 0x000000, biome === 'town' ? 0.4 : 0.3);
     if (biome === 'town') neonBloom(camera);

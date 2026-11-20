@@ -79,6 +79,8 @@ export async function runQA(game: Phaser.Game): Promise<QAReport> {
     report.issues.push(msg);
   };
   const scene = () => game.scene.getScene('play') as unknown as QAScene;
+  /** The scene has finished building: it is not waiting for its leg's pictures to draw. */
+  const ready = () => !(scene() as unknown as { waiting: boolean }).waiting && !!scene().chassis;
 
   try {
     log('Starting a fresh run from the title screen...');
@@ -93,7 +95,8 @@ export async function runQA(game: Phaser.Game): Promise<QAReport> {
     let booted = false;
     for (let attempt = 0; attempt < 3 && !booted; attempt++) {
       game.scene.start('play', { intro: false });
-      booted = await waitUntil(() => scene()?.sys?.isActive(), 2500, 100);
+      // Active is not enough: a leg whose pictures are still drawing waits, and restarts once they are in.
+      booted = await waitUntil(() => scene()?.sys?.isActive() && ready(), 60000, 200);
     }
     if (!booted) {
       warn('The play scene never became active.');
@@ -371,7 +374,7 @@ export async function runQA(game: Phaser.Game): Promise<QAReport> {
       let next = false;
       for (let attempt = 0; attempt < 3 && !next; attempt++) {
         game.scene.start('play', { leg: trip.leg, trip });
-        next = await waitUntil(() => scene()?.sys?.isActive() && scene().leg.n === trip.leg, 2000, 100);
+        next = await waitUntil(() => scene()?.sys?.isActive() && scene().leg.n === trip.leg && ready(), 60000, 200);
       }
       if (!next) {
         warn(`Leg ${trip.leg}: the scene did not come up after the checkpoint.`);

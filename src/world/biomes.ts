@@ -3,7 +3,7 @@ import { pen, type Art } from '../art/art';
 import { C, mix, type Pt } from '../art/ink';
 import { TILE, buildBackdrop, haze, plainPen, rnd } from '../art/backdrop';
 import type { BiomeKey } from './legs';
-import { FallsWater, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from '../art/falls';
+import { FallsWater, Loop, fallWaterArt, fallsFrontArt, fallsSetArt, gorgeArt, placeFalls, type FallSpec } from '../art/falls';
 import { SWITCH, TUNNEL } from './tunnel';
 import { FROST_TREES } from '../art/trees';
 import { HOUSE, STREET_TOP, houseArt, streetArt } from '../art/townhouses';
@@ -12,6 +12,8 @@ import { FALLS, MV, MV_SKY, valleyArt, valleyFarArt, valleyGlintArt, valleyRidge
 import { birdArts, cloudBankArt as printCloudArt } from '../art/oldstreet';
 import { COVE, LIGHT, bayArt, coastSunArt, coveArt, dolphinArt, headlandsArt, palmArt, promLampArt, sailArt, seaArt, surfArt, wavesArt } from '../art/coast';
 import { BILLBOARDS, LAKE_CABINS, MEGA_BEACONS, RAIL_DECK, cityArt, frostForestArt, frostLakeArt, frostMoonArt, frostPeaksArt, megaArt, railArt, snowNearArt, trainArt, wetStreetArt, holoFishArt } from '../art/night';
+import { Culler, strips } from './cull';
+import { LOW_POWER, every } from '../systems/quality';
 
 /**
  * The look of each leg's world. Every biome follows the same rules (see docs/JOURNEY.md):
@@ -237,14 +239,20 @@ const AUTUMN: Biome = {
     fogs.push(fogBand(scene, fog, o.horizon - 210, 0.2, -37, 0.26, 1.2));
     tiles(scene, 'bd_a_valley', o.horizon + 10, 0.36, -34, o.reach, -400);
     // The valley falls in each copy of the valley, all showing one live water picture, with spray at their feet.
-    const valleyWater = new FallsWater(scene, 'falls_valley', VALLEY_FALLS);
-    valleyWater.draw(0, 16);
+    const valleyWater = new FallsWater(scene, LOW_POWER ? 'falls_valley_scratch' : 'falls_valley', VALLEY_FALLS);
+    // On a low-power device, recorded once as a loop rather than redrawn and uploaded (art/falls.ts Loop).
+    const valleyLoop = LOW_POWER ? new Loop(scene, 'falls_valley_loop', valleyWater.tex.canvas, (t, dt) => valleyWater.paint(t, dt)) : null;
+    if (!valleyLoop) valleyWater.draw(0, 16);
+    const valleyImgs: Phaser.GameObjects.Image[] = [];
     const n = Math.ceil((1920 + o.reach * 0.36) / TILE) + 1;
     const top = o.horizon + 10 - 520;
+    const valleys = new Culler();
     for (let i = 0; i < n; i++) {
       const x0 = i * TILE - 400;
-      scene.add.image(x0 + VALLEY_FALLS.canvas.x, top + VALLEY_FALLS.canvas.y, 'falls_valley').setOrigin(0, 0).setScrollFactor(0.36, 1).setDepth(-33.5);
-      scene.add.particles(x0 + FALLS.x, top + 520 - 66, 'halo', { lifespan: 2000, x: { min: -50, max: 50 }, speedX: { min: -20, max: 20 }, speedY: { min: -30, max: -8 }, scale: { start: 0.15, end: 0.5 }, alpha: { start: 0.3, end: 0 }, tint: 0xffffff, frequency: 110 }).setScrollFactor(0.36, 1).setDepth(-33);
+      const img = scene.add.image(x0 + VALLEY_FALLS.canvas.x, top + VALLEY_FALLS.canvas.y, valleyLoop?.key ?? 'falls_valley', valleyLoop ? '0' : undefined).setOrigin(0, 0).setScrollFactor(0.36, 1).setDepth(-33.5);
+      valleyImgs.push(img);
+      const spray = scene.add.particles(x0 + FALLS.x, top + 520 - 66, 'halo', { lifespan: 2000, x: { min: -50, max: 50 }, speedX: { min: -20, max: 20 }, speedY: { min: -30, max: -8 }, scale: { start: 0.15, end: 0.5 }, alpha: { start: 0.3, end: 0 }, tint: 0xffffff, frequency: 110 }).setScrollFactor(0.36, 1).setDepth(-33);
+      valleys.add([img, spray], x0 + VALLEY_FALLS.canvas.x, x0 + VALLEY_FALLS.canvas.x + VALLEY_FALLS.canvas.w, 0.36);
     }
     // Light glinting on the river as it flows, two sets drifting at different speeds.
     const glints = [0, 1].map((k) =>
@@ -276,10 +284,19 @@ const AUTUMN: Biome = {
       f.img.setTint([0xe3263a, 0xff6a30, 0xffb23f, 0xc0602e][i % 4]).setScale(0.7 + Math.random() * 0.8);
     });
     let lastScroll = 0;
+    let valleyAt = 0;
     return {
       update(time, delta, scrollX) {
         const dt = delta / 1000;
-        valleyWater.draw(time, delta);
+        valleys.update(scrollX);
+        // The distant falls are small on screen: their water moves at half the rate of the near ones.
+        if (valleyLoop) {
+          const f = valleyLoop.at(time);
+          for (const img of valleyImgs) if (img.frame.name !== f) img.setFrame(f);
+        } else if (time - valleyAt > 66) {
+          valleyAt = time;
+          valleyWater.draw(time, delta);
+        }
         glints.forEach((g, k) => {
           g.tilePositionX = -time * (k ? 0.012 : 0.02) + k * 700;
           g.setAlpha(0.45 + Math.sin(time / (700 + k * 300) + k) * 0.3);
@@ -312,7 +329,7 @@ class Aurora {
   private readonly strips: HTMLCanvasElement[];
   private readonly seeds: number[];
   private last = -1;
-  constructor(scene: Phaser.Scene, key: string, private readonly w = 1024, private readonly h = 340) {
+  constructor(scene: Phaser.Scene, key: string, private readonly w = 512, private readonly h = 170) {
     this.key = key;
     this.tex = scene.textures.exists(key) ? (scene.textures.get(key) as Phaser.Textures.CanvasTexture) : scene.textures.createCanvas(key, w, h)!;
     // One column of colour per ribbon, stretched to each ray's height when drawn.
@@ -335,18 +352,24 @@ class Aurora {
     ];
     this.seeds = Array.from({ length: w }, () => Math.random());
   }
-  /** Redraws the ribbons for this moment, about twenty times a second. */
+  /** Redraws the ribbons for this moment, about fifteen times a second (eight on a phone). */
   draw(time: number) {
-    if (this.last >= 0 && time - this.last < 50) return;
+    if (this.last >= 0 && time - this.last < every(66, 125)) return;
     this.last = time;
     const t = time / 1000;
     const { w, h } = this;
     const ctx = this.tex.context;
     ctx.clearRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'lighter';
+    // Shapes are laid out for a 1024 × 340 canvas; this one is drawn at half that and shown just as large.
+    const s = h / 340;
     const ribbon = (strip: HTMLCanvasElement, base: number, amp: number, len: number, bright: number, phase: number) => {
+      amp *= s;
+      len *= s;
       let prev = 0;
-      for (let x = 0; x < w; x += 1) {
+      // A phone paints every other ray, each twice as wide: half the work, and the aurora is soft anyway.
+      const stride = LOW_POWER ? 2 : 1;
+      for (let x = 0; x < w; x += stride) {
         const u = x / w;
         // The hem: a long slow S-fold, a shorter fold that travels along it, and a little ripple.
         const y =
@@ -354,10 +377,10 @@ class Aurora {
           Math.sin(u * Math.PI * 1.6 + t * 0.1 + phase) * amp +
           Math.sin(u * Math.PI * 4.5 - t * 0.3 + phase * 2) * amp * 0.55 +
           Math.sin(u * Math.PI * 19 + t * 1.1) * amp * 0.05;
-        const slope = x === 0 ? 0 : Math.abs(y - prev);
+        const slope = x === 0 ? 0 : Math.abs(y - prev) / stride;
         prev = y;
         // Rays are brighter where the ribbon is seen edge-on, and shimmer in soft bands that run along it.
-        const fold = Math.min(1, 0.3 + slope * 1.2);
+        const fold = Math.min(1, 0.3 + (slope / s) * 0.6);
         const shimmer = 0.7 + 0.3 * Math.sin(u * 40 + t * 2.4 + phase) * Math.sin(u * 11 - t * 0.8);
         // The ribbon thins and breaks in places, so it is not one even band across the whole sky.
         const breaks = Math.max(0, Math.sin(u * Math.PI * 2.4 + t * 0.07 + phase * 3) * 0.6 + 0.55);
@@ -366,7 +389,7 @@ class Aurora {
         const edge = Math.min(1, u * 6, (1 - u) * 6);
         const ray = len * (0.65 + 0.35 * Math.sin(u * 30 + this.seeds[(x + 37) % w]) * 0.5 + 0.35 * fold);
         ctx.globalAlpha = Math.max(0, Math.min(1, k * edge * 0.6));
-        ctx.drawImage(strip, x - 1, y - ray, 3, ray + 8);
+        ctx.drawImage(strip, x - 1, y - ray, 2 + stride, ray + 8 * s);
       }
     };
     ribbon(this.strips[1], h * 0.34, 40, 130, 0.5, 2.1);
@@ -787,26 +810,26 @@ const COAST: Biome = {
     // The promenade: a white balustrade along the road, seafront lamps and palms, a beach hut now and then.
     const x0 = Math.max(1800, from(o));
     const x1 = Math.min(o.finish - 300, to(o));
-    const rail = scene.add.graphics().setDepth(-8.8);
-    for (let x = x0; x < x1; x += 22) {
-      const y = o.groundY(x) + 4;
-      rail.fillStyle(0xf3e3cc, 1).fillRect(x - 4, y - 40, 8, 40);
-      rail.fillStyle(0xd9c3a6, 1).fillRect(x + 1, y - 40, 3, 40);
-    }
-    rail.lineStyle(10, 0xf3e3cc, 1).beginPath();
-    for (let x = x0; x <= x1; x += 22) {
-      const y = o.groundY(x) + 4 - 44;
-      if (x === x0) rail.moveTo(x, y);
-      else rail.lineTo(x, y);
-    }
-    rail.strokePath();
-    rail.lineStyle(2.5, 0x0a0712, 0.8).beginPath();
-    for (let x = x0; x <= x1; x += 22) {
-      const y = o.groundY(x) + 4 - 49;
-      if (x === x0) rail.moveTo(x, y);
-      else rail.lineTo(x, y);
-    }
-    rail.strokePath();
+    // Drawn a strip at a time, so only the stretch on screen is drawn each frame.
+    const culler = new Culler();
+    strips(scene, culler, x0, x1, -8.8, (rail, a, b) => {
+      const first = x0 + Math.ceil((a - x0) / 22) * 22;
+      for (let x = first; x < b; x += 22) {
+        const y = o.groundY(x) + 4;
+        rail.fillStyle(0xf3e3cc, 1).fillRect(x - 4, y - 40, 8, 40);
+        rail.fillStyle(0xd9c3a6, 1).fillRect(x + 1, y - 40, 3, 40);
+      }
+      for (const [width, colour, alpha, lift] of [[10, 0xf3e3cc, 1, 44], [2.5, 0x0a0712, 0.8, 49]] as const) {
+        rail.lineStyle(width, colour, alpha).beginPath();
+        // One post past the strip's end, so the rails of neighbouring strips meet.
+        for (let x = first, i = 0; x <= Math.min(x1, b + 22); x += 22, i++) {
+          const y = o.groundY(x) + 4 - lift;
+          if (i === 0) rail.moveTo(x, y);
+          else rail.lineTo(x, y);
+        }
+        rail.strokePath();
+      }
+    });
     let seed = 7;
     for (let x = x0 + 120; x < x1; x += 300 + rnd(19, seed) * 200, seed++) {
       const r = rnd(21, seed);
@@ -822,6 +845,7 @@ const COAST: Biome = {
         const dt = delta / 1000;
         const pan = scrollX - lastScroll;
         lastScroll = scrollX;
+        culler.update(scrollX);
         for (const c of clouds) c.x += dt * 5;
         glitter.forEach((g, i) => g.setAlpha(Math.max(0, Math.sin(time / 260 + i * 1.7)) * 0.9));
         boats.forEach((b, i) => {

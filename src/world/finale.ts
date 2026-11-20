@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { pen, type Art } from '../art/art';
 import { C } from '../art/ink';
+import { Culler, STRIP, strips } from './cull';
 
 /**
  * The last stretch home. Over the final few kilometres of the coast road the bright morning turns to
@@ -181,7 +182,19 @@ export function buildFinale(scene: Phaser.Scene, o: FinaleOpts) {
   // ---- The avenue: golden maples, lamp posts with banners, and strings of lights between the posts.
   const posts: number[] = [];
   for (let x = from + 2600; x < finish - 260; x += 380) posts.push(x);
-  const lights = scene.add.graphics().setDepth(-7.4);
+  const culler = new Culler();
+  // The wires and their bulbs, grouped a strip of road at a time so only the stretch on screen is drawn.
+  const wires = new Map<number, Phaser.GameObjects.Graphics>();
+  const wireAt = (x: number) => {
+    const k = Math.floor((x - from) / STRIP);
+    let g = wires.get(k);
+    if (!g) {
+      g = scene.add.graphics().setDepth(-7.4);
+      wires.set(k, g);
+      culler.add([g], from + k * STRIP - 60, from + (k + 1) * STRIP + 440);
+    }
+    return g;
+  };
   const bulbs: Phaser.GameObjects.Image[] = [];
   const bulbColours = [0xffd27a, 0xff6a30, 0xf3e3cc, 0xe3263a];
   posts.forEach((x, i) => {
@@ -200,6 +213,7 @@ export function buildFinale(scene: Phaser.Scene, o: FinaleOpts) {
       const t = k / 16;
       pts.push([ax + (bx - ax) * t, ay + (by - ay) * t + Math.sin(t * Math.PI) * 46]);
     }
+    const lights = wireAt(ax);
     lights.lineStyle(3, 0x0a0712, 1).beginPath().moveTo(pts[0][0], pts[0][1]);
     for (const [px, py] of pts) lights.lineTo(px, py);
     lights.strokePath();
@@ -211,13 +225,15 @@ export function buildFinale(scene: Phaser.Scene, o: FinaleOpts) {
     }
   });
   // Flower beds along the verge.
-  const beds = scene.add.graphics().setDepth(-7.6);
-  for (let x = from + 2400; x < finish - 200; x += 26) {
-    const y = groundY(x) + 6;
-    const c = [0xe3263a, 0xffb23f, 0xf3e3cc, 0xff6a30][Math.floor(x / 26) % 4];
-    beds.fillStyle(0x2a4636, 1).fillRect(x - 1, y - 18, 3, 16);
-    beds.fillStyle(c, 1).fillCircle(x, y - 20, 6);
-  }
+  const bedsFrom = from + 2400;
+  strips(scene, culler, bedsFrom, finish - 200, -7.6, (beds, a, b) => {
+    for (let x = bedsFrom + Math.ceil((a - bedsFrom) / 26) * 26; x < b; x += 26) {
+      const y = groundY(x) + 6;
+      const c = [0xe3263a, 0xffb23f, 0xf3e3cc, 0xff6a30][Math.floor(x / 26) % 4];
+      beds.fillStyle(0x2a4636, 1).fillRect(x - 1, y - 18, 3, 16);
+      beds.fillStyle(c, 1).fillCircle(x, y - 20, 6);
+    }
+  });
 
   // ---- The welcome arches: a pillar on each side of the road on its own ground, the band level above.
   const arch = (cx: number, words: string) => {
@@ -258,6 +274,7 @@ export function buildFinale(scene: Phaser.Scene, o: FinaleOpts) {
   let nextShell = 0;
 
   return (time: number, camMid: number, celebrating: boolean) => {
+    culler.update(camMid - W / 2);
     const t = smooth((camMid - from) / (full - from));
     sky.setAlpha(t);
     for (const g of [sun, sunCore]) g.setAlpha(t);

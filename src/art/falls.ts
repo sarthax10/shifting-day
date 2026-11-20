@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { pen, type Art } from './art';
 import type { Pt } from './ink';
 import { P, clump, rng } from './trees';
+import { LOW_POWER } from '../systems/quality';
 
 /**
  * The hero waterfall of Maple Valley.
@@ -302,6 +303,40 @@ export function fallsSetArt(): Art {
 }
 
 /**
+ * A live picture recorded once as a short loop, for a low-power device. Every redraw of a live canvas is a
+ * texture upload, and on a phone each costs several milliseconds however small the canvas: so there the
+ * water is painted a few dozen times when the leg is built, into one sheet of frames, and played back by
+ * switching frames, with no uploads at all.
+ */
+export class Loop {
+  readonly key: string;
+  constructor(scene: Phaser.Scene, key: string, src: HTMLCanvasElement, paint: (time: number, dt: number) => void, readonly frames = 32, readonly fps = 12) {
+    this.key = key;
+    if (scene.textures.exists(key)) return;
+    const { width: w, height: h } = src;
+    const cols = Math.max(1, Math.min(frames, Math.floor(4096 / w)));
+    const sheet = document.createElement('canvas');
+    sheet.width = cols * w;
+    sheet.height = Math.ceil(frames / cols) * h;
+    const ctx = sheet.getContext('2d')!;
+    // Run it a moment first, so the spray and flecks are already flying in the first frame.
+    // (Times stay positive: the pool's ripples take a phase from them, and a negative one has no size.)
+    const warm = 24;
+    for (let i = 0; i < warm; i++) paint((i * 1000) / fps, 1 / fps);
+    for (let i = 0; i < frames; i++) {
+      paint(((warm + i) * 1000) / fps, 1 / fps);
+      ctx.drawImage(src, (i % cols) * w, Math.floor(i / cols) * h);
+    }
+    const t = scene.textures.addCanvas(key, sheet)!;
+    for (let i = 0; i < frames; i++) t.add(String(i), 0, (i % cols) * w, Math.floor(i / cols) * h, w, h);
+  }
+  /** The frame to show at this moment. */
+  at(time: number) {
+    return String(Math.floor((time / 1000) * this.fps) % this.frames);
+  }
+}
+
+/**
  * The river running down the hill to the falls, drawn live: deep teal water in its channel, flow lines
  * sliding downhill and speeding up as the slope steepens, white riffles crossing it where it tumbles,
  * and a bright rush of water at the very end where it reaches the lip.
@@ -321,6 +356,11 @@ class LiveRiver {
   draw(time: number) {
     if (this.last >= 0 && time - this.last < 33) return;
     this.last = time;
+    this.paint(time);
+    this.tex.refresh();
+  }
+  /** Paints the river at this moment, without uploading it. */
+  paint(time: number) {
     const t = time / 1000;
     const { x: bx, y: by, w, h } = this.box;
     const ctx = this.tex.context;
@@ -405,7 +445,6 @@ class LiveRiver {
     ctx.fillRect(ex0 - 6, ey, ex1 - ex0 + 12, h - ey);
     ctx.restore();
     ctx.globalAlpha = 1;
-    this.tex.refresh();
   }
 }
 
@@ -538,8 +577,15 @@ export class FallsWater {
   private readonly spray: Bit[] = [];
   private readonly flecks: Bit[] = [];
   private last = -1;
-  constructor(scene: Phaser.Scene, key: string, private readonly spec: FallSpec = HERO) {
-    this.tex = scene.textures.exists(key) ? (scene.textures.get(key) as Phaser.Textures.CanvasTexture) : scene.textures.createCanvas(key, this.spec.canvas.w, this.spec.canvas.h)!;
+  /**
+   * `res` is the canvas's resolution against the size it is shown at (show it scaled by 1 / res): moving
+   * water is soft enough to be drawn smaller, and every redraw is uploaded to the GPU whole, so a smaller
+   * canvas is much cheaper. `every` is how often it is redrawn, in milliseconds.
+   */
+  constructor(scene: Phaser.Scene, key: string, private readonly spec: FallSpec = HERO, readonly res = 1, private readonly every = 33) {
+    const w = Math.ceil(this.spec.canvas.w * res);
+    const h = Math.ceil(this.spec.canvas.h * res);
+    this.tex = scene.textures.exists(key) ? (scene.textures.get(key) as Phaser.Textures.CanvasTexture) : scene.textures.createCanvas(key, w, h)!;
     const r = rng(311);
     this.strands = this.spec.streams.map((s) => {
       const n = Math.max(6, Math.round((s.r1 - s.l1) / (4.5 * Math.max(0.6, this.spec.scale))));
@@ -576,17 +622,23 @@ export class FallsWater {
   }
 
   draw(time: number, delta: number) {
-    if (this.last >= 0 && time - this.last < 33) return;
+    if (this.last >= 0 && time - this.last < this.every) return;
     const dt = this.last < 0 ? 0.033 : Math.min(0.1, (time - this.last) / 1000);
     this.last = time;
+    this.paint(time, dt);
+    this.tex.refresh();
+    void delta;
+  }
+
+  /** Paints the water at this moment, `dt` seconds on from the last, without uploading it. */
+  paint(time: number, dt: number) {
     const tsec = time / 1000;
     const ctx = this.tex.context;
+    ctx.setTransform(this.res, 0, 0, this.res, 0, 0);
     ctx.clearRect(0, 0, this.spec.canvas.w, this.spec.canvas.h);
     ctx.lineCap = 'round';
     this.spec.streams.forEach((s, si) => this.stream(ctx, s, this.strands[si], tsec, dt));
     this.pool(ctx, tsec, dt);
-    this.tex.refresh();
-    void delta;
   }
 
   private stream(ctx: CanvasRenderingContext2D, s: Stream, strands: Strand[], t: number, dt: number) {
@@ -785,14 +837,19 @@ export function placeFalls(scene: Phaser.Scene, x: number, bottom: number, sf: n
   const keep = <T extends Phaser.GameObjects.GameObject>(o: T) => (objs.push(o), (o as unknown as Phaser.GameObjects.Components.ScrollFactor).setScrollFactor(sf, 1), o);
   // The hillside behind, the gorge set into it, and later the near bank in front.
   keep(scene.add.image(x, bottom, 'bd_a_falls_set').setOrigin(0.5, 1).setDepth(depth - 0.05));
-  const river = new LiveRiver(scene, `falls_river_${Math.round(x)}`);
-  river.draw(0);
-  keep(scene.add.image(x - SET.w / 2 + river.box.x, bottom - SET.h + river.box.y, river.tex.key).setOrigin(0, 0).setDepth(depth - 0.04));
+  // Live on a desktop; on a low-power device, recorded once as loops (both waterfalls share them).
+  const river = new LiveRiver(scene, LOW_POWER ? 'falls_river_scratch' : `falls_river_${Math.round(x)}`);
+  const water = new FallsWater(scene, LOW_POWER ? 'falls_live_scratch' : `falls_live_${Math.round(x)}`, HERO, LOW_POWER ? 0.45 : 0.6, 40);
+  const riverLoop = LOW_POWER ? new Loop(scene, 'falls_river_loop', river.tex.canvas, (t) => river.paint(t)) : null;
+  const waterLoop = LOW_POWER ? new Loop(scene, 'falls_water_loop', water.tex.canvas, (t, dt) => water.paint(t, dt)) : null;
+  if (!LOW_POWER) {
+    river.draw(0);
+    water.draw(0, 16);
+  }
+  const riverImg = keep(scene.add.image(x - SET.w / 2 + river.box.x, bottom - SET.h + river.box.y, riverLoop?.key ?? river.tex.key, riverLoop ? '0' : undefined).setOrigin(0, 0).setDepth(depth - 0.04));
   keep(scene.add.image(x, bottom, 'bd_a_gorge').setOrigin(0.5, 1).setDepth(depth));
-  const water = new FallsWater(scene, `falls_live_${Math.round(x)}`);
-  water.draw(0, 16);
   const [cx, cy] = at(CANVAS.x, CANVAS.y);
-  keep(scene.add.image(cx, cy, water.tex.key).setOrigin(0, 0).setDepth(depth + 0.1));
+  const waterImg = keep(scene.add.image(cx, cy, waterLoop?.key ?? water.tex.key, waterLoop ? '0' : undefined).setOrigin(0, 0).setDepth(depth + 0.1).setScale(1 / water.res));
   // A soft cloud of mist over the pool, and wisps rising off it.
   const [mx, my] = at(POOL.x, POOL.y - 40);
   const mist = keep(scene.add.image(mx, my, 'halo').setDepth(depth + 0.3).setDisplaySize(560, 200).setTint(0xf4fbff).setAlpha(0.3));
@@ -822,8 +879,13 @@ export function placeFalls(scene: Phaser.Scene, x: number, bottom: number, sf: n
         const sx = x - scrollX * sf;
         if (sx < -GORGE.w || sx > 1920 + GORGE.w) return;
       }
-      water.draw(time, delta);
-      river.draw(time);
+      if (waterLoop && riverLoop) {
+        waterImg.setFrame(waterLoop.at(time));
+        riverImg.setFrame(riverLoop.at(time));
+      } else {
+        water.draw(time, delta);
+        river.draw(time);
+      }
       mist.setAlpha(0.26 + Math.sin(time / 1500) * 0.08);
       bow.setAlpha(0.12 + Math.sin(time / 2700) * 0.05);
     },

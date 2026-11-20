@@ -1,4 +1,3 @@
-import { isTouchDevice } from '../ui/touch';
 import Phaser from 'phaser';
 import { TRUCK, DRIVER } from '../art/art';
 import { DRIVER_AT } from './play';
@@ -9,6 +8,7 @@ import { clearTrip, loadTrip, type Trip } from '../world/legs';
 import { ambience, audio, music, play } from '../systems/audio';
 import { PosterList, openControls } from '../ui/poster';
 import { BONE, INK, RAMP_DARK, freeScratch, buildLogo, catEye, halftoneBeam, halftoneSun, inked, mk, paperBackdrop, printRays, tape, type Logo } from '../art/logo';
+import { isTouchDevice } from '../ui/touch';
 
 /**
  * The title screen, designed outward from the logo. The logo is a screen-printed punk gig poster -

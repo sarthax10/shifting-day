@@ -127,6 +127,13 @@ export class Dash {
     this.handle = add(s.add.rectangle(HB.x, HB.top + 10, 46, 22, EMBER).setStrokeStyle(3, INK));
     add(s.add.text(HB.x + 38, (HB.top + HB.bottom) / 2, 'HANDBRAKE', { fontFamily: MONO, fontStyle: 'bold', fontSize: '11px', color: BONE_CSS, letterSpacing: 3 }).setOrigin(0.5).setRotation(-Math.PI / 2).setAlpha(0.55));
 
+    // The plate's dots, its corner marks and the dial never change: each is painted once into a texture,
+    // since a Graphics redraws every one of its shapes every frame.
+    for (const [g, key] of [[dots, 'dash_dots'], [marks, 'dash_marks'], [dial, 'dash_dial']] as const) {
+      if (!s.textures.exists(key)) g.generateTexture(key, PW, PH);
+      parts[parts.indexOf(g)] = s.add.image(0, 0, key).setOrigin(0);
+      g.destroy();
+    }
     this.box = s.add.container(CORNER.x, CORNER.y - PH, parts).setScrollFactor(0).setDepth(100);
     this.show(false);
   }

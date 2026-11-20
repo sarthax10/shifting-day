@@ -4,6 +4,7 @@ import type { Pt } from '../art/ink';
 import type { BiomeKey } from './legs';
 import { P, clump, rng, type Palette } from '../art/trees';
 import { H, W } from './terrain';
+import { bake } from './cull';
 
 /**
  * How one place turns into the next: through a road tunnel.
@@ -284,6 +285,9 @@ function portalInProfile(scene: Phaser.Scene, x: number, dir: 1 | -1, groundY: (
   }
   // The name plate, on the headwall above the hood.
   // The tunnel's name, lettered along the hood's side.
+  // Painted once into a picture: the hood is in view the whole way up to the tunnel.
+  const [left, right] = [X(-HOOD - 40), X(COLLAR + 12)].sort((p, q) => p - q);
+  bake(scene, g, `tunnel_portal_${Math.round(x)}`, left, right, cy - 250, cy + 80);
   const slope = Math.atan2(86, HOOD) * -dir;
   scene.add
     .text(X(-HOOD / 2 + 6), cy - 38, name, { fontFamily: '"Anton", "Impact", sans-serif', fontSize: '18px', color: POSTER_INK, letterSpacing: 1 })
@@ -316,6 +320,7 @@ const NAMES: Partial<Record<BiomeKey, string>> = { meadow: 'OLD HILL TUNNEL', au
  */
 export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, groundY: (x: number) => number): Tunnel {
   const { from: x0, to: x1 } = TUNNEL;
+  const before = new Set(scene.children.list);
   // Behind everything at the roadside (trees, lamps, signs, gates), in front of the scenery behind it.
   const mouthDepth = -9.6;
   const wallDepth = -5.5;
@@ -485,12 +490,34 @@ export function buildTunnel(scene: Phaser.Scene, from: BiomeKey, to: BiomeKey, g
     const e = Math.min(mid - a, b - mid);
     return Math.max(0, Math.min(1, (e + 300) / 700));
   };
+  // The wall, the ceiling and the floor are thousands of shapes, drawn while the truck is right there: each
+  // is painted once into pictures, cropped to the band of the screen it covers, the jet fans under the ceiling
+  // included (the camera never scrolls up
+  // or down, so nothing above the top of the screen is ever seen).
+  let low = -Infinity;
+  let high = Infinity;
+  for (let x = a; x <= b; x += step) {
+    low = Math.max(low, groundY(x));
+    high = Math.min(high, groundY(x));
+  }
+  bake(scene, frame, 'tunnel_frame', a - 440, b + 440, 0, low - BORE + 80);
+  bake(scene, g, 'tunnel_wall', a, b, high - BORE - 44, low + 10);
+  bake(scene, floor, 'tunnel_floor', a - COLLAR - 10, b + COLLAR + 10, high + 30, H);
+  // The bore's shapes are thousands of drawing commands, and a Graphics redraws all of them every frame
+  // whether it is on screen or not: the whole tunnel hides while the camera is nowhere near it.
+  const parts = scene.children.list.filter((o) => !before.has(o) && (o as unknown as { scrollFactorX: number }).scrollFactorX !== 0) as unknown as Phaser.GameObjects.Components.Visible[];
+  let shown = true;
   return {
     inside,
     update(_time, scrollX) {
+      const near = scrollX + W > x0 - 900 && scrollX < x1 + 900;
+      if (near !== shown) {
+        shown = near;
+        for (const o of parts) o.setVisible(near);
+      }
       const k = inside(scrollX + W / 2);
       amber.setAlpha(k);
-      glows.forEach((l) => l.setVisible(k > 0.01));
+      glows.forEach((l) => l.setVisible(near && k > 0.01));
     },
   };
 }
