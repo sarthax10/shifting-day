@@ -18,6 +18,9 @@ const CSS = `
 #board h2 { margin: 0; font: 400 clamp(28px, 6vmin, 44px)/1 Anton, Impact, sans-serif; letter-spacing: .03em; text-shadow: 4px 4px 0 #E3263A; }
 #board h3 { margin: 0; font: 400 clamp(26px, 5vmin, 38px)/1 Anton, Impact, sans-serif; letter-spacing: .03em; }
 #board .kicker { margin: 6px 0 12px; font-size: 12px; font-weight: 700; letter-spacing: .18em; color: #FFB23F; }
+#board .sign { margin: 4px 0 2px; padding: 12px; background: #1A1024; box-shadow: inset 0 0 0 2px #FF6A30; }
+#board .sign label { display: block; margin: 0 0 8px; font: 400 clamp(18px, 3.4vmin, 24px)/1.1 Anton, Impact, sans-serif; letter-spacing: .05em; color: #FFB23F; }
+#board .sign small { display: block; margin-top: 6px; font-size: 11px; letter-spacing: .1em; opacity: .7; }
 #board form { display: flex; gap: 8px; }
 #board input { flex: 1; min-width: 0; font: 400 20px/1 Anton, Impact, sans-serif; letter-spacing: .08em; text-transform: uppercase; padding: 8px 12px; background: #F3E3CC; color: #0A0712; border: 0; border-radius: 0; outline: 3px solid transparent; }
 #board input:focus { outline-color: #FF6A30; }
@@ -67,8 +70,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = '') 
   return e;
 }
 
-/** Opens the leaderboard for a finished run; `onClose` runs when it is closed. */
-export function openBoard(run: RunLog & { score: number; time: number }, onClose: () => void) {
+/**
+ * Opens the leaderboard; `onClose` runs when it is closed. From the score card it comes with the run just
+ * finished, to sign and send; from the title menu, with none, to look only.
+ */
+export function openBoard(run: (RunLog & { score: number; time: number }) | null, onClose: () => void) {
   if (!document.getElementById('board-css')) {
     const style = document.createElement('style');
     style.id = 'board-css';
@@ -112,14 +118,17 @@ export function openBoard(run: RunLog & { score: number; time: number }, onClose
   function showBoards() {
     sheet.dataset.view = 'boards';
     sheet.replaceChildren();
-    sheet.append(el('h2', '', 'THE LEADERBOARD'), el('div', 'kicker', `YOUR RUN · ${run.score} PTS · ${clock(run.time)}`));
+    sheet.append(el('h2', '', 'THE LEADERBOARD'), el('div', 'kicker', run ? `YOUR RUN · ${run.score} PTS · ${clock(run.time)}` : 'THE BEST MOVES ON THE ROAD'));
 
-    if (mine === null) {
+    if (run && mine === null) {
+      // Signing the run: a name, then SEND. It is the first thing on the panel, boxed in ember.
+      const sign = el('div', 'sign');
+      const label = el('label', '', 'PUT YOUR NAME ON THIS RUN');
+      label.htmlFor = 'board-name';
       const form = el('form');
       const input = el('input');
-      Object.assign(input, { maxLength: 12, placeholder: 'YOUR NAME', value: name, autocomplete: 'nickname' });
-      input.setAttribute('aria-label', 'Your name');
-      const send = el('button', '', 'SEND');
+      Object.assign(input, { id: 'board-name', maxLength: 12, placeholder: 'YOUR NAME', value: name, autocomplete: 'nickname' });
+      const send = el('button', '', 'SEND RUN');
       send.type = 'submit';
       form.append(input, send);
       form.addEventListener('submit', (e) => {
@@ -132,7 +141,7 @@ export function openBoard(run: RunLog & { score: number; time: number }, onClose
         }
         send.disabled = true;
         setNote('SENDING...');
-        submitRun({ name, ...run })
+        submitRun({ name, ...run! })
           .then(({ id, rank }) => {
             mine = id;
             saveName(name);
@@ -144,7 +153,8 @@ export function openBoard(run: RunLog & { score: number; time: number }, onClose
             setNote(err.message.toUpperCase());
           });
       });
-      sheet.appendChild(form);
+      sign.append(label, form, el('small', '', 'UP TO 12 LETTERS. IT GOES ON BOTH BOARDS AND EVERY LEG.'));
+      sheet.appendChild(sign);
       if (!input.value) setTimeout(() => input.focus(), 0);
     }
     const noteEl = el('div', 'note', note);

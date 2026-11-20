@@ -205,5 +205,14 @@ export function showScorecard(scene: Phaser.Scene, t: Tally, onAgain: () => void
     },
   });
   scene.tweens.add({ targets: [verdict, btn], alpha: 1, delay: 2900, duration: 400 });
+  // Pinned to the screen all the way down: the root's scroll factor alone does not reach its children's
+  // hit tests, so with the camera far along the road a click would land beside the buttons.
+  const pin = (c: Phaser.GameObjects.Container) => {
+    for (const o of c.list) {
+      (o as unknown as Phaser.GameObjects.Components.ScrollFactor).setScrollFactor(0, 0);
+      if (o instanceof Phaser.GameObjects.Container) pin(o);
+    }
+  };
+  pin(root);
   return root;
 }

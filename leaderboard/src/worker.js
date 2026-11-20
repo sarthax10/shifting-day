@@ -6,6 +6,15 @@
  *   GET  /runs/:id                  one run in full, for its card
  *   POST /runs                      send a finished run -> { id, rank: { time, score } }
  *
+ *   GET  /admin                     the admin console (admin.html); its calls below need the ADMIN_KEY secret
+ *   GET  /admin/api/stats           totals for the console's header
+ *   GET  /admin/api/runs?sort=new|score|time&q=&offset=   every run, newest first by default
+ *   GET  /admin/api/runs/:id        one run in full, with its player and how many runs they sent
+ *   POST /admin/api/runs/:id        { name } renames a run
+ *   DELETE /admin/api/runs/:id      removes a run
+ *   DELETE /admin/api/players/:p    removes every run a player sent
+ *   GET/POST/DELETE /admin/api/bans[/:p]  the players whose runs are refused
+ *
  * A browser game can never fully stop someone sending a made-up run, but this refuses anything the game
  * could not have produced. Each leg must add up (cargo + parking + clean-leg bonus - breakage = its score,
  * and the breakage must be half the worth of what it says broke), its time must be one a real drive could
@@ -29,6 +38,9 @@ const LEG_MAX = 2 * 3600;
 /** Seconds a player waits between submissions. */
 const COOLDOWN = 20;
 const TOP = 20;
+const PAGE = 50;
+
+import ADMIN_HTML from './admin.html';
 
 /** Pages allowed to call this: the game on itch.io and GitHub Pages, and a local dev server. */
 const ORIGINS = [/^https:\/\/([a-z0-9-]+\.)*itch\.zone$/, /^https:\/\/([a-z0-9-]+\.)*itch\.io$/, /^https:\/\/sarthax10\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -127,6 +139,8 @@ async function submit(request, env) {
   const stars = STARS.filter((s) => score >= s).length;
 
   const player = await playerOf(request, env);
+  // A banned player is told nothing more than a failed run would be.
+  if (await env.DB.prepare('SELECT 1 FROM bans WHERE player = ?').bind(player).first()) return json(request, { error: 'That run does not add up.' }, 400);
   const now = Math.floor(Date.now() / 1000);
   const last = await env.DB.prepare('SELECT MAX(created) AS at FROM runs WHERE player = ?').bind(player).first();
   if (last?.at && now - last.at < COOLDOWN) return json(request, { error: 'Easy! Try again in a few seconds.' }, 429);
@@ -142,9 +156,104 @@ async function submit(request, env) {
   return json(request, { id, rank: { time: (faster?.n ?? 0) + 1, score: (better?.n ?? 0) + 1 } });
 }
 
+// ------------------------------------------------------------------ admin
+
+const adminJson = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+
+/** The console's key, checked in constant time. With no ADMIN_KEY set, the console stays shut. */
+async function isAdmin(request, env) {
+  const given = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!env.ADMIN_KEY || !given) return false;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([crypto.subtle.digest('SHA-256', enc.encode(given)), crypto.subtle.digest('SHA-256', enc.encode(env.ADMIN_KEY))]);
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
+async function admin(request, env, url) {
+  const path = url.pathname.slice('/admin/api'.length);
+  const DB = env.DB;
+  const day = Math.floor(Date.now() / 1000) - 86400;
+
+  if (path === '/stats' && request.method === 'GET') {
+    const t = await DB.prepare('SELECT COUNT(*) AS runs, COUNT(DISTINCT player) AS players, MAX(score) AS best, MIN(time) AS fastest, SUM(CASE WHEN created > ? THEN 1 ELSE 0 END) AS today FROM runs').bind(day).first();
+    const bans = await DB.prepare('SELECT COUNT(*) AS n FROM bans').first();
+    return adminJson({ ...t, bans: bans?.n ?? 0 });
+  }
+
+  if (path === '/runs' && request.method === 'GET') {
+    const sort = url.searchParams.get('sort');
+    const order = sort === 'score' ? 'r.score DESC, r.time ASC' : sort === 'time' ? 'r.time ASC, r.score DESC' : 'r.created DESC';
+    const q = (url.searchParams.get('q') ?? '').trim().toUpperCase().slice(0, 24);
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) | 0);
+    const where = q ? 'WHERE r.name LIKE ? OR r.player LIKE ?' : '';
+    const args = q ? [`%${q}%`, `${q.toLowerCase()}%`] : [];
+    const { results } = await DB.prepare(
+      `SELECT r.id, r.name, r.score, r.time, r.stars, r.created, r.player, (SELECT COUNT(*) FROM runs x WHERE x.player = r.player) AS by_player, EXISTS (SELECT 1 FROM bans b WHERE b.player = r.player) AS banned FROM runs r ${where} ORDER BY ${order}, r.id DESC LIMIT ? OFFSET ?`,
+    ).bind(...args, PAGE + 1, offset).all();
+    return adminJson({ runs: results.slice(0, PAGE), more: results.length > PAGE });
+  }
+
+  const run = path.match(/^\/runs\/(\d+)$/);
+  if (run) {
+    const id = Number(run[1]);
+    if (request.method === 'GET') {
+      const r = await DB.prepare('SELECT r.*, (SELECT COUNT(*) FROM runs x WHERE x.player = r.player) AS by_player, EXISTS (SELECT 1 FROM bans b WHERE b.player = r.player) AS banned FROM runs r WHERE r.id = ?').bind(id).first();
+      if (!r) return adminJson({ error: 'No such run.' }, 404);
+      return adminJson({ ...r, delivered: JSON.parse(r.delivered), logs: JSON.parse(r.logs) });
+    }
+    if (request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const name = cleanName(body.name);
+      if (!name) return adminJson({ error: 'That name is empty or not allowed.' }, 400);
+      await DB.prepare('UPDATE runs SET name = ? WHERE id = ?').bind(name, id).run();
+      return adminJson({ ok: true, name });
+    }
+    if (request.method === 'DELETE') {
+      await DB.batch([DB.prepare('DELETE FROM legs WHERE run_id = ?').bind(id), DB.prepare('DELETE FROM runs WHERE id = ?').bind(id)]);
+      return adminJson({ ok: true });
+    }
+  }
+
+  const player = path.match(/^\/players\/([0-9a-f]{24})$/);
+  if (player && request.method === 'DELETE') {
+    const p = player[1];
+    const n = await DB.prepare('SELECT COUNT(*) AS n FROM runs WHERE player = ?').bind(p).first();
+    await DB.batch([DB.prepare('DELETE FROM legs WHERE run_id IN (SELECT id FROM runs WHERE player = ?)').bind(p), DB.prepare('DELETE FROM runs WHERE player = ?').bind(p)]);
+    return adminJson({ ok: true, removed: n?.n ?? 0 });
+  }
+
+  if (path === '/bans' && request.method === 'GET') {
+    const { results } = await DB.prepare('SELECT b.player, b.note, b.created, (SELECT name FROM runs r WHERE r.player = b.player ORDER BY created DESC LIMIT 1) AS last_name FROM bans b ORDER BY b.created DESC').all();
+    return adminJson({ bans: results });
+  }
+  const ban = path.match(/^\/bans\/([0-9a-f]{24})$/);
+  if (ban && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const note = String(body.note ?? '').slice(0, 80);
+    await DB.prepare('INSERT OR REPLACE INTO bans (player, note, created) VALUES (?, ?, ?)').bind(ban[1], note, Math.floor(Date.now() / 1000)).run();
+    return adminJson({ ok: true });
+  }
+  if (ban && request.method === 'DELETE') {
+    await DB.prepare('DELETE FROM bans WHERE player = ?').bind(ban[1]).run();
+    return adminJson({ ok: true });
+  }
+  return adminJson({ error: 'not found' }, 404);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/admin' || url.pathname === '/admin/')
+      return new Response(ADMIN_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' } });
+    if (url.pathname.startsWith('/admin/api/')) {
+      // Same-origin only: the console is served from here, and these answers carry no CORS headers.
+      if (!(await isAdmin(request, env))) return adminJson({ error: 'Wrong key.' }, 401);
+      return admin(request, env, url);
+    }
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(request) });
     const by = url.searchParams.get('by') === 'time' ? 'time' : 'score';
     if (url.pathname === '/runs' && request.method === 'GET') return json(request, { top: await runs(env, by) });

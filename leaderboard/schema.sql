@@ -30,3 +30,10 @@ CREATE TABLE IF NOT EXISTS legs (
 );
 CREATE INDEX IF NOT EXISTS legs_by_time ON legs (leg, time ASC, score DESC);
 CREATE INDEX IF NOT EXISTS legs_by_score ON legs (leg, score DESC, time ASC);
+
+-- Players whose runs are refused, set from the admin console.
+CREATE TABLE IF NOT EXISTS bans (
+  player TEXT PRIMARY KEY,
+  note TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL
+);

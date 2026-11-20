@@ -4,3 +4,7 @@ dist
 shots
 itch/*.zip
 .wrangler
+
+# The admin console key and local Worker secrets: never committed.
+leaderboard/.admin-key
+leaderboard/.dev.vars

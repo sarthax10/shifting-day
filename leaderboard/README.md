@@ -18,6 +18,7 @@ Until it is deployed, the game has no leaderboard button.
 | `GET /legs?leg=1..5&by=time` or `by=score` | The top 20 results on one leg |
 | `GET /runs/:id` | One run in full, for its card |
 | `POST /runs` | Sends a run; answers with its id and its place on both whole-run boards |
+| `GET /admin` | The admin console (`src/admin.html`), behind the `ADMIN_KEY` secret |
 
 ## What it refuses
 
@@ -56,9 +57,10 @@ Copy the `database_id` it prints into `wrangler.toml`, in place of `REPLACE_WITH
 ```bash
 npx wrangler@4 d1 execute shifting-day-leaderboard --remote --file schema.sql
 npx wrangler@4 secret put SALT
+npx wrangler@4 secret put ADMIN_KEY
 ```
 
-For `SALT`, type any long random text. It keeps the stored player hashes from being matched to addresses.
+For `SALT` and `ADMIN_KEY`, type any long random text (keep the admin key: it unlocks the console). It keeps the stored player hashes from being matched to addresses.
 
 ```bash
 npx wrangler@4 deploy
@@ -77,6 +79,14 @@ npx wrangler@4 dev --local --port 8787
 Point `LEADERBOARD_URL` at `http://127.0.0.1:8787` while testing (the Worker accepts localhost).
 
 ## Looking after it
+
+The admin console is at `<worker address>/admin`. Unlock it with the `ADMIN_KEY` secret (kept locally in
+`leaderboard/.admin-key`, which git ignores). It lists every run, opens any run in full, renames, deletes,
+clears all of one player's runs, and bans a player so their new runs are refused. To change the key:
+`npx wrangler@4 secret put ADMIN_KEY`, and put the same text in `.admin-key`.
+
+From the command line:
+
 
 See the board: `npx wrangler@4 d1 execute shifting-day-leaderboard --remote --command "SELECT id, name, score, time FROM runs ORDER BY score DESC LIMIT 20"`
 

@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { leaderboardOn } from '../systems/leaderboard';
+import { openBoard } from '../ui/board';
 import { TRUCK, DRIVER } from '../art/art';
 import { DRIVER_AT } from './play';
 import { CURSOR } from '../art/cursors';
@@ -419,6 +421,16 @@ export class TitleScene extends Phaser.Scene {
         openControls(this, 200, () => (this.ready = true), pad ? 'pad' : touch ? 'touch' : 'keys');
       },
     });
+    // The online leaderboard (ui/board.ts), to look at: runs are only sent from the end of a trip.
+    if (leaderboardOn())
+      defs.push({
+        label: () => 'LEADERBOARD',
+        act: () => {
+          this.ready = false;
+          play('click');
+          openBoard(null, () => (this.ready = true));
+        },
+      });
     defs.push({
       label: () => `SOUND: ${audio.muted ? 'OFF' : 'ON'}`,
       act: () => {

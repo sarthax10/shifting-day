@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0A0712">
+<title>Shifting Day HQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* The game's poster print: ink sheet, bone type, ember tape, a red misregistered shadow. */
+:root {
+  --ink: #0A0712; --sheet: #120B1C; --oxblood: #3A0F22; --red: #E3263A; --ember: #FF6A30; --bone: #F3E3CC; --gold: #FFB23F;
+  --dim: rgba(243, 227, 204, .62); --line: rgba(243, 227, 204, .22);
+  --display: Anton, Impact, "Arial Narrow", sans-serif; --mono: "Space Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--ink); }
+body {
+  margin: 0; min-height: 100vh; color: var(--bone); font: 400 14px/1.5 var(--mono);
+  background-color: var(--ink);
+  background-image: radial-gradient(circle at 50% 50%, rgba(227, 38, 58, .2) 1.2px, transparent 1.6px), linear-gradient(180deg, var(--oxblood) 0%, var(--ink) 60%);
+  background-size: 9px 9px, 100% 100%; background-attachment: fixed;
+  padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 60px max(16px, env(safe-area-inset-left));
+}
+::selection { background: var(--red); color: var(--bone); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.page { max-width: 1100px; margin: 0 auto; }
+
+/* Masthead */
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 22px; }
+h1 { margin: 0; font: 400 clamp(40px, 8vw, 76px)/.9 var(--display); letter-spacing: .02em; text-shadow: 5px 5px 0 var(--red); }
+h1 span { color: var(--ember); }
+.kicker { margin-top: 10px; font-size: 12px; font-weight: 700; letter-spacing: .32em; color: var(--gold); }
+.top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Buttons: ember tape, ghost outlines, a red one for things that cannot be undone */
+.btn { font: 400 17px/1 var(--display); letter-spacing: .07em; padding: 10px 16px; border: 0; cursor: pointer; background: var(--ember); color: var(--ink); box-shadow: 3px 3px 0 var(--red); text-decoration: none; display: inline-block; }
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--red); }
+.btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--red); }
+.btn.ghost { background: transparent; color: var(--bone); box-shadow: inset 0 0 0 2px var(--line); }
+.btn.ghost:hover { box-shadow: inset 0 0 0 2px var(--bone); transform: none; }
+.btn.on { background: var(--bone); color: var(--ink); box-shadow: 3px 3px 0 var(--red); }
+.btn.danger { background: var(--red); color: var(--bone); box-shadow: 3px 3px 0 var(--ink), 3px 3px 0 2px var(--bone); }
+.btn.danger.armed { background: var(--bone); color: var(--red); animation: arm .5s steps(2) infinite; }
+@keyframes arm { 50% { background: var(--red); color: var(--bone); } }
+.btn:disabled { opacity: .45; cursor: default; transform: none; }
+.btn.small { font-size: 14px; padding: 7px 10px; }
+
+/* The printed sheet */
+.sheet { background: var(--sheet); box-shadow: inset 0 0 0 3px var(--bone), 10px 10px 0 var(--red); padding: clamp(14px, 3vw, 28px); }
+.rule { height: 3px; background: var(--ember); margin: 16px 0; border: 0; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: .24em; color: var(--dim); }
+
+/* Lock */
+.lock { max-width: 520px; margin: 8vh auto 0; }
+.lock h2 { margin: 0 0 6px; font: 400 40px/1 var(--display); letter-spacing: .03em; }
+.lock p { margin: 0 0 16px; color: var(--dim); }
+.field { display: flex; gap: 8px; }
+.field input, .search input { flex: 1; min-width: 0; padding: 10px 12px; background: var(--bone); color: var(--ink); border: 0; font: 400 18px/1 var(--display); letter-spacing: .08em; }
+.field input::placeholder, .search input::placeholder { color: rgba(10, 7, 18, .45); }
+.check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; letter-spacing: .1em; color: var(--dim); cursor: pointer; }
+.check input { accent-color: var(--ember); width: 16px; height: 16px; }
+.err { min-height: 20px; margin-top: 10px; color: var(--ember); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+
+/* Stats strip */
+.stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; margin-bottom: 22px; background: var(--ink); box-shadow: inset 0 0 0 3px var(--bone); }
+.stat { padding: 14px 16px; border-right: 2px dashed var(--line); min-width: 0; }
+.stat:last-child { border-right: 0; }
+.stat b { display: block; font: 400 clamp(26px, 3.4vw, 38px)/1 var(--display); color: var(--ember); letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat.hot b { color: var(--gold); }
+@media (max-width: 760px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stat:nth-child(3) { border-right: 0; } .stat:nth-child(-n+3) { border-bottom: 2px dashed var(--line); } }
+
+/* Tabs and tools */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.search { display: flex; flex: 1 1 260px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Rows */
+.rows { margin-top: 6px; }
+.row { display: grid; grid-template-columns: 3.4em minmax(0, 1.6fr) 5em 6em 4.2em minmax(0, 1.2fr) 6.5em; gap: 12px; align-items: center; padding: 10px 8px; border-bottom: 1px dashed var(--line); cursor: pointer; font-variant-numeric: tabular-nums; }
+.row.head { cursor: default; padding-block: 4px 8px; border-bottom: 2px solid var(--line); }
+.row.head span { font-size: 10px; font-weight: 700; letter-spacing: .22em; color: var(--dim); }
+.row:not(.head):hover { background: rgba(255, 106, 48, .12); }
+.row .n { color: var(--gold); font-weight: 700; font-size: 12px; }
+.row .name { font: 400 20px/1.1 var(--display); letter-spacing: .05em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .score { font: 400 21px/1 var(--display); color: var(--ember); text-align: right; }
+.row .time { text-align: right; }
+.row .stars { color: var(--ember); letter-spacing: .1em; }
+.row .who { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .when { font-size: 12px; color: var(--dim); text-align: right; }
+.tag { display: inline-block; padding: 1px 6px; margin-left: 6px; font: 700 10px/1.5 var(--mono); letter-spacing: .14em; background: var(--red); color: var(--bone); vertical-align: middle; }
+.tag.gold { background: var(--gold); color: var(--ink); }
+.empty { padding: 26px 8px; color: var(--dim); letter-spacing: .12em; font-size: 13px; }
+.more { margin-top: 14px; }
+@media (max-width: 760px) {
+  .row { grid-template-columns: 2.6em minmax(0, 1fr) auto; grid-template-areas: "n name score" "n who time"; row-gap: 2px; }
+  .row.head { display: none; }
+  .row .n { grid-area: n; } .row .name { grid-area: name; } .row .score { grid-area: score; } .row .time { grid-area: time; font-size: 12px; }
+  .row .who { grid-area: who; } .row .stars, .row .when { display: none; }
+}
+
+/* Leg board picker */
+.legs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+
+/* Run detail drawer */
+.drawer { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(10, 7, 18, .78); padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+.drawer .sheet { width: min(720px, 100%); max-height: 100%; overflow: auto; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.card-head h2 { margin: 0; font: 400 clamp(32px, 6vw, 48px)/1 var(--display); letter-spacing: .03em; text-shadow: 4px 4px 0 var(--red); word-break: break-all; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 12px 0; font-size: 12px; letter-spacing: .14em; }
+.facts b { font: 400 26px/1 var(--display); letter-spacing: .03em; color: var(--ember); margin-right: 6px; }
+.pets span { margin-right: 14px; font-weight: 700; letter-spacing: .14em; font-size: 12px; }
+.pets .gone { text-decoration: line-through; opacity: .45; }
+.leg { padding: 10px 4px; border-bottom: 1px dashed var(--line); }
+.leg .top { display: grid; grid-template-columns: 2em minmax(0, 1fr) auto auto; gap: 12px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.leg .top .n { color: var(--gold); font-weight: 700; font-size: 12px; }
+.leg .top b { font: 400 19px/1 var(--display); letter-spacing: .05em; }
+.leg .top .s { font: 400 21px/1 var(--display); color: var(--ember); min-width: 3em; text-align: right; }
+.leg .how { margin: 4px 0 0 2.9em; font-size: 11px; letter-spacing: .08em; color: var(--dim); line-height: 1.7; }
+.leg .how .bad { color: var(--ember); }
+.bar { height: 6px; margin: 6px 0 0 2.9em; background: rgba(243, 227, 204, .1); }
+.bar i { display: block; height: 100%; background: var(--ember); }
+.panel { margin-top: 18px; padding: 14px; box-shadow: inset 0 0 0 2px var(--line); }
+.panel h3 { margin: 0 0 10px; font: 400 20px/1 var(--display); letter-spacing: .06em; color: var(--gold); }
+.panel .field input { font-size: 16px; }
+.panel .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.panel p { margin: 0; color: var(--dim); font-size: 12px; letter-spacing: .06em; }
+.mono-id { font-weight: 700; color: var(--bone); word-break: break-all; }
+
+/* Toast */
+.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30; background: var(--bone); color: var(--ink); font: 400 18px/1 var(--display); letter-spacing: .06em; padding: 12px 18px; box-shadow: 4px 4px 0 var(--red); }
+
+footer { margin-top: 26px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 11px; letter-spacing: .18em; color: var(--dim); }
+footer a { color: var(--gold); }
+@media (prefers-reduced-motion: reduce) { .btn.danger.armed { animation: none; } * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1>SHIFTING DAY <span>HQ</span></h1>
+      <div class="kicker">LEADERBOARD CONSOLE · OWNER ONLY</div>
+    </div>
+    <div class="top-actions" id="top-actions" hidden>
+      <button class="btn ghost" id="refresh" type="button">REFRESH</button>
+      <button class="btn ghost" id="signout" type="button">LOCK</button>
+    </div>
+  </header>
+
+  <!-- Locked: the key first. -->
+  <section class="sheet lock" id="lock">
+    <h2>UNLOCK THE CONSOLE</h2>
+    <p>Type the admin key. It is in <b>leaderboard/.admin-key</b> in the project folder.</p>
+    <form id="lock-form" autocomplete="off">
+      <div class="field">
+        <input id="key" type="password" placeholder="ADMIN KEY" aria-label="Admin key" autocomplete="current-password" spellcheck="false">
+        <button class="btn" type="submit">UNLOCK</button>
+      </div>
+      <label class="check"><input type="checkbox" id="remember" checked> REMEMBER ON THIS DEVICE</label>
+      <div class="err" id="lock-err"></div>
+    </form>
+  </section>
+
+  <!-- Open -->
+  <main id="app" hidden>
+    <div class="stats" id="stats">
+      <div class="stat"><span class="label">RUNS</span><b id="s-runs">–</b></div>
+      <div class="stat"><span class="label">PLAYERS</span><b id="s-players">–</b></div>
+      <div class="stat hot"><span class="label">LAST 24 H</span><b id="s-today">–</b></div>
+      <div class="stat"><span class="label">TOP SCORE</span><b id="s-best">–</b></div>
+      <div class="stat"><span class="label">FASTEST</span><b id="s-fast">–</b></div>
+      <div class="stat"><span class="label">BANNED</span><b id="s-bans">–</b></div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="btn on" type="button" data-tab="runs">ALL RUNS</button>
+      <button class="btn ghost" type="button" data-tab="boards">THE BOARDS</button>
+      <button class="btn ghost" type="button" data-tab="bans">BANS</button>
+    </div>
+
+    <section class="sheet" id="view"></section>
+
+    <footer>
+      <span>RUNS ARE CHECKED ON THE WAY IN · NAMES ARE CLEANED · ONE RUN PER PLAYER EVERY 20 S</span>
+      <a href="https://sarthax10.itch.io/shifting-day" target="_blank" rel="noopener">THE GAME ON ITCH ↗</a>
+    </footer>
+  </main>
+</div>
+
+<div class="drawer" id="drawer" hidden><div class="sheet" id="card" role="dialog" aria-modal="true" aria-label="Run"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+const ITEMS = { box_s: 'Small box', box_m: 'Box of books', box_l: 'Big box', sofa: 'Sofa', armchair: 'Armchair', fridge: 'Fridge', washer: 'Washing machine', tv: 'Old TV', bookshelf: 'Bookshelf', mattress: 'Mattress', rug: 'Rolled rug', plant: 'Monstera', fish: 'Goldie the fish', jam: 'Homemade jam', suitcase: 'Suitcase', toolbox: 'Toolbox', record: 'Record player', guitar: 'Guitar', clock: 'Grandfather clock', chair: 'Kitchen chair', lamp: 'Floor lamp', cat: 'Biscuit the cat', bird: 'Sunny the canary' };
+const LEGS = ['Old Street', 'Maple Valley', 'Frostpeak Pass', 'Neon Town', 'Coast Road'];
+const PETS = [['cat', 'BISCUIT'], ['bird', 'SUNNY'], ['fish', 'GOLDIE']];
+const KEY_STORE = 'sd-admin-key';
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls = '', text = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== '') e.textContent = text; return e; };
+const clock = (s) => (s == null ? '–' : `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`);
+const thing = (k) => (ITEMS[k] || k).toUpperCase();
+const ago = (t) => {
+  const d = Date.now() / 1000 - t;
+  if (d < 90) return 'JUST NOW';
+  if (d < 3600) return `${Math.round(d / 60)} MIN AGO`;
+  if (d < 86400) return `${Math.round(d / 3600)} H AGO`;
+  return new Date(t * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }).toUpperCase();
+};
+const stars = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
+
+let key = '';
+try { key = localStorage.getItem(KEY_STORE) || sessionStorage.getItem(KEY_STORE) || ''; } catch {}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { Authorization: `Bearer ${key}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) }, cache: 'no-store' });
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 401) { lock('THAT KEY DID NOT WORK.'); throw new Error('locked'); }
+  if (!r.ok) throw new Error(body.error || `The server answered ${r.status}.`);
+  return body;
+}
+
+function toast(t) {
+  const e = $('toast'); e.textContent = t; e.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => (e.hidden = true), 2200);
+}
+
+/** A button that needs a second press within three seconds: for things that cannot be undone. */
+function armed(label, sure, act) {
+  const b = el('button', 'btn danger', label); b.type = 'button';
+  let timer = 0;
+  b.addEventListener('click', async () => {
+    if (!b.classList.contains('armed')) {
+      b.classList.add('armed'); b.textContent = sure;
+      timer = setTimeout(() => { b.classList.remove('armed'); b.textContent = label; }, 3000);
+      return;
+    }
+    clearTimeout(timer); b.disabled = true;
+    try { await act(); } catch (e) { if (e.message !== 'locked') toast(e.message.toUpperCase()); b.disabled = false; b.classList.remove('armed'); b.textContent = label; }
+  });
+  return b;
+}
+
+// ------------------------------------------------------------ lock
+
+function lock(msg = '') {
+  key = '';
+  try { localStorage.removeItem(KEY_STORE); sessionStorage.removeItem(KEY_STORE); } catch {}
+  $('app').hidden = true; $('top-actions').hidden = true; $('drawer').hidden = true; $('lock').hidden = false;
+  $('lock-err').textContent = msg; $('key').value = ''; $('key').focus();
+}
+
+$('lock-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  key = $('key').value.trim();
+  if (!key) { $('lock-err').textContent = 'TYPE THE KEY FIRST.'; return; }
+  $('lock-err').textContent = 'CHECKING...';
+  try {
+    await api('/admin/api/stats');
+    try { ($('remember').checked ? localStorage : sessionStorage).setItem(KEY_STORE, key); } catch {}
+    open();
+  } catch (err) { if (err.message !== 'locked') $('lock-err').textContent = err.message.toUpperCase(); }
+});
+$('signout').addEventListener('click', () => lock());
+$('refresh').addEventListener('click', () => { loadStats(); render(); toast('UP TO DATE'); });
+
+function open() {
+  $('lock').hidden = true; $('app').hidden = false; $('top-actions').hidden = false;
+  loadStats(); render();
+}
+
+async function loadStats() {
+  try {
+    const s = await api('/admin/api/stats');
+    $('s-runs').textContent = s.runs ?? 0;
+    $('s-players').textContent = s.players ?? 0;
+    $('s-today').textContent = s.today ?? 0;
+    $('s-best').textContent = s.best ?? '–';
+    $('s-fast').textContent = clock(s.fastest);
+    $('s-bans').textContent = s.bans ?? 0;
+  } catch {}
+}
+
+// ------------------------------------------------------------ views
+
+const state = { tab: 'runs', sort: 'new', q: '', offset: 0, board: 'time', leg: 0, legBy: 'time' };
+
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  state.tab = b.dataset.tab;
+  document.querySelectorAll('[data-tab]').forEach((x) => (x.className = `btn ${x === b ? 'on' : 'ghost'}`));
+  state.offset = 0;
+  render();
+}));
+
+function render() {
+  const v = $('view');
+  v.replaceChildren();
+  if (state.tab === 'runs') renderRuns(v);
+  else if (state.tab === 'boards') renderBoards(v);
+  else renderBans(v);
+}
+
+function chipRow(options, current, pick) {
+  const row = el('div', 'chips');
+  for (const [value, label] of options) {
+    const c = el('button', `btn small ${value === current ? 'on' : 'ghost'}`, label); c.type = 'button';
+    c.addEventListener('click', () => pick(value));
+    row.appendChild(c);
+  }
+  return row;
+}
+
+function head(cols) {
+  const h = el('div', 'row head');
+  for (const c of cols) h.appendChild(el('span', '', c));
+  return h;
+}
+
+function runRow(r, n) {
+  const row = el('div', 'row');
+  row.tabIndex = 0;
+  const name = el('span', 'name', r.name);
+  if (r.banned) name.appendChild(el('span', 'tag', 'BANNED'));
+  const who = el('span', 'who', r.player ? `${r.player.slice(0, 6)} · ${r.by_player} RUN${r.by_player === 1 ? '' : 'S'}` : '');
+  row.append(el('span', 'n', n), name, el('span', 'score', String(r.score)), el('span', 'time', clock(r.time)), el('span', 'stars', r.stars != null ? stars(r.stars) : ''), who, el('span', 'when', r.created ? ago(r.created) : ''));
+  const go = () => showRun(r.id);
+  row.addEventListener('click', go);
+  row.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  return row;
+}
+
+async function renderRuns(v) {
+  const tools = el('div', 'tools');
+  const search = el('form', 'search');
+  const q = el('input'); q.id = 'q'; q.placeholder = 'NAME OR PLAYER ID'; q.value = state.q; q.setAttribute('aria-label', 'Search runs');
+  const go = el('button', 'btn', 'FIND'); go.type = 'submit';
+  search.append(q, go);
+  search.addEventListener('submit', (e) => { e.preventDefault(); state.q = q.value.trim(); state.offset = 0; render(); });
+  tools.append(search, chipRow([['new', 'NEWEST'], ['score', 'TOP SCORE'], ['time', 'FASTEST']], state.sort, (s) => { state.sort = s; state.offset = 0; render(); }));
+  v.append(tools, el('hr', 'rule'));
+  const rows = el('div', 'rows');
+  rows.append(head(['#', 'NAME', 'SCORE', 'TIME', 'STARS', 'PLAYER', 'SENT']), el('div', 'empty', 'LOADING...'));
+  v.appendChild(rows);
+  try {
+    const { runs, more } = await api(`/admin/api/runs?sort=${state.sort}&q=${encodeURIComponent(state.q)}&offset=${state.offset}`);
+    rows.lastChild.remove();
+    if (!runs.length) rows.appendChild(el('div', 'empty', state.q ? 'NOTHING MATCHES THAT.' : 'NO RUNS YET. THE FIRST FINISHED TRIP WILL SHOW UP HERE.'));
+    runs.forEach((r, i) => rows.appendChild(runRow(r, state.sort === 'new' ? `#${r.id}` : String(state.offset + i + 1).padStart(2, '0'))));
+    const pager = el('div', 'tools more');
+    if (state.offset > 0) { const b = el('button', 'btn ghost small', '← NEWER'); b.type = 'button'; b.onclick = () => { state.offset = Math.max(0, state.offset - 50); render(); }; pager.appendChild(b); }
+    if (more) { const b = el('button', 'btn ghost small', 'MORE →'); b.type = 'button'; b.onclick = () => { state.offset += 50; render(); }; pager.appendChild(b); }
+    if (pager.childNodes.length) v.appendChild(pager);
+  } catch (e) { if (e.message !== 'locked') rows.lastChild.textContent = e.message.toUpperCase(); }
+}
+
+async function renderBoards(v) {
+  v.appendChild(el('div', 'label', 'WHAT PLAYERS SEE IN THE GAME'));
+  const pick = el('div', 'tools'); pick.style.marginTop = '10px';
+  pick.appendChild(chipRow([['time', 'FASTEST'], ['score', 'TOP SCORE'], ['leg', 'BY LEG']], state.board, (b) => { state.board = b; if (b === 'leg' && !state.leg) state.leg = 1; render(); }));
+  v.appendChild(pick);
+  if (state.board === 'leg') {
+    const legs = el('div', 'legs');
+    LEGS.forEach((l, i) => { const c = el('button', `btn small ${state.leg === i + 1 ? 'on' : 'ghost'}`, `${i + 1} · ${l.toUpperCase()}`); c.type = 'button'; c.onclick = () => { state.leg = i + 1; render(); }; legs.appendChild(c); });
+    v.appendChild(legs);
+    v.appendChild(chipRow([['time', 'FASTEST LEG'], ['score', 'BEST LEG SCORE']], state.legBy, (b) => { state.legBy = b; render(); }));
+  }
+  v.appendChild(el('hr', 'rule'));
+  const rows = el('div', 'rows');
+  rows.appendChild(el('div', 'empty', 'LOADING...'));
+  v.appendChild(rows);
+  const byTime = state.board === 'time' || (state.board === 'leg' && state.legBy === 'time');
+  const url = state.board === 'leg' ? `/legs?leg=${state.leg}&by=${state.legBy}` : `/runs?by=${state.board}`;
+  try {
+    const r = await fetch(url, { cache: 'no-store' });
+    const { top } = await r.json();
+    rows.replaceChildren(head(['#', 'NAME', byTime ? 'TIME' : 'SCORE', byTime ? 'SCORE' : 'TIME', '', '', '']));
+    if (!top.length) rows.appendChild(el('div', 'empty', 'NO RUNS YET.'));
+    top.forEach((e, i) => {
+      const row = el('div', 'row'); row.tabIndex = 0;
+      row.append(el('span', 'n', String(i + 1).padStart(2, '0')), el('span', 'name', e.name), el('span', 'score', byTime ? clock(e.time) : String(e.score)), el('span', 'time', byTime ? `${e.score} PTS` : clock(e.time)), el('span'), el('span'), el('span'));
+      row.onclick = () => showRun(e.id);
+      row.onkeydown = (k) => { if (k.key === 'Enter') showRun(e.id); };
+      rows.appendChild(row);
+    });
+  } catch { rows.replaceChildren(el('div', 'empty', 'THE BOARD IS NOT ANSWERING.')); }
+}
+
+async function renderBans(v) {
+  v.appendChild(el('div', 'label', 'PLAYERS WHOSE RUNS ARE REFUSED · BAN FROM A RUN’S CARD'));
+  v.appendChild(el('hr', 'rule'));
+  const rows = el('div', 'rows');
+  rows.appendChild(el('div', 'empty', 'LOADING...'));
+  v.appendChild(rows);
+  try {
+    const { bans } = await api('/admin/api/bans');
+    rows.replaceChildren();
+    if (!bans.length) rows.appendChild(el('div', 'empty', 'NOBODY IS BANNED.'));
+    for (const b of bans) {
+      const row = el('div', 'panel');
+      const top = el('div', 'card-head');
+      const left = el('div');
+      left.append(el('div', 'mono-id', b.player), el('p', '', `${b.last_name ? `LAST NAME USED: ${b.last_name} · ` : ''}BANNED ${ago(b.created)}${b.note ? ` · ${b.note.toUpperCase()}` : ''}`));
+      const un = el('button', 'btn ghost small', 'UNBAN'); un.type = 'button';
+      un.onclick = async () => { un.disabled = true; try { await api(`/admin/api/bans/${b.player}`, { method: 'DELETE' }); toast('UNBANNED'); loadStats(); render(); } catch (e) { un.disabled = false; } };
+      top.append(left, un);
+      row.appendChild(top);
+      rows.appendChild(row);
+    }
+  } catch (e) { if (e.message !== 'locked') rows.replaceChildren(el('div', 'empty', e.message.toUpperCase())); }
+}
+
+// ------------------------------------------------------------ one run
+
+function closeRun() { $('drawer').hidden = true; }
+$('drawer').addEventListener('click', (e) => { if (e.target === $('drawer')) closeRun(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('drawer').hidden) closeRun(); });
+
+async function showRun(id) {
+  const card = $('card');
+  card.replaceChildren(el('div', 'empty', 'LOADING THE RUN...'));
+  $('drawer').hidden = false;
+  let r;
+  try { r = await api(`/admin/api/runs/${id}`); } catch (e) { card.replaceChildren(el('div', 'empty', e.message === 'locked' ? '' : e.message.toUpperCase())); return; }
+  card.replaceChildren();
+
+  const hd = el('div', 'card-head');
+  const t = el('div');
+  const h = el('h2', '', r.name);
+  t.append(h, el('div', 'kicker', `RUN #${r.id} · ${stars(r.stars)} · ${new Date(r.created * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).toUpperCase()}`));
+  const x = el('button', 'btn ghost small', 'CLOSE'); x.type = 'button'; x.onclick = closeRun;
+  hd.append(t, x);
+  card.appendChild(hd);
+
+  const facts = el('div', 'facts');
+  for (const [v, l] of [[r.score, 'PTS'], [clock(r.time), 'TOTAL'], [r.delivered.length, 'THINGS HOME']]) { const s = el('span'); s.append(el('b', '', String(v)), document.createTextNode(l)); facts.appendChild(s); }
+  card.appendChild(facts);
+  const pets = el('div', 'pets');
+  for (const [k, p] of PETS) pets.appendChild(el('span', r.delivered.includes(k) ? '' : 'gone', p));
+  card.appendChild(pets);
+  card.appendChild(el('hr', 'rule'));
+
+  const best = Math.max(1, ...r.logs.map((l) => l.score));
+  r.logs.forEach((l, i) => {
+    const row = el('div', 'leg');
+    const top = el('div', 'top');
+    top.append(el('span', 'n', String(i + 1).padStart(2, '0')), el('b', '', LEGS[i].toUpperCase()), el('span', '', clock(l.time)), el('span', 's', String(l.score)));
+    const how = el('div', 'how');
+    how.appendChild(document.createTextNode([`CARGO ${l.cargo}`, `PARKING +${l.parking}`, l.clean ? `CLEAN LEG +${l.clean}` : '', l.penalty ? `BREAKAGE −${l.penalty}` : ''].filter(Boolean).join(' · ')));
+    const bad = [...l.lost.map((k) => `LOST ${thing(k)}`), ...l.broken.map((k) => `BROKE ${thing(k)}`)];
+    if (bad.length) { how.appendChild(el('br')); how.appendChild(el('span', 'bad', bad.join(' · '))); }
+    const bar = el('div', 'bar'); const fill = el('i'); fill.style.width = `${(l.score / best) * 100}%`; bar.appendChild(fill);
+    row.append(top, bar, how);
+    card.appendChild(row);
+  });
+
+  // Rename
+  const ren = el('div', 'panel');
+  ren.appendChild(el('h3', '', 'RENAME THIS RUN'));
+  const f = el('form', 'field');
+  const inp = el('input'); inp.id = 'rename'; inp.maxLength = 12; inp.value = r.name; inp.setAttribute('aria-label', 'New name');
+  const save = el('button', 'btn', 'SAVE'); save.type = 'submit';
+  f.append(inp, save);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); save.disabled = true;
+    try { const out = await api(`/admin/api/runs/${r.id}`, { method: 'POST', body: JSON.stringify({ name: inp.value }) }); h.textContent = out.name; inp.value = out.name; toast('RENAMED'); render(); }
+    catch (err) { if (err.message !== 'locked') toast(err.message.toUpperCase()); }
+    save.disabled = false;
+  });
+  ren.appendChild(f);
+  card.appendChild(ren);
+
+  // The player
+  const pl = el('div', 'panel');
+  pl.appendChild(el('h3', '', 'THE PLAYER'));
+  const who = el('p'); who.append(document.createTextNode('ID '), el('span', 'mono-id', r.player), document.createTextNode(` · ${r.by_player} RUN${r.by_player === 1 ? '' : 'S'} SENT`));
+  if (r.banned) who.appendChild(el('span', 'tag', 'BANNED'));
+  pl.append(who, el('p', '', 'A salted hash of their address: the same person on the same connection, never who they are.'));
+  const acts = el('div', 'acts');
+  acts.appendChild(armed('DELETE THIS RUN', 'PRESS AGAIN TO DELETE', async () => { await api(`/admin/api/runs/${r.id}`, { method: 'DELETE' }); toast('RUN DELETED'); closeRun(); loadStats(); render(); }));
+  if (r.by_player > 1) acts.appendChild(armed(`DELETE ALL ${r.by_player} RUNS`, `PRESS AGAIN: ALL ${r.by_player} GO`, async () => { const o = await api(`/admin/api/players/${r.player}`, { method: 'DELETE' }); toast(`${o.removed} RUNS DELETED`); closeRun(); loadStats(); render(); }));
+  if (r.banned) {
+    const un = el('button', 'btn ghost', 'UNBAN'); un.type = 'button';
+    un.onclick = async () => { await api(`/admin/api/bans/${r.player}`, { method: 'DELETE' }); toast('UNBANNED'); loadStats(); showRun(r.id); render(); };
+    acts.appendChild(un);
+  } else {
+    acts.appendChild(armed('BAN THIS PLAYER', 'PRESS AGAIN TO BAN', async () => { await api(`/admin/api/bans/${r.player}`, { method: 'POST', body: JSON.stringify({ note: `from run #${r.id} (${r.name})` }) }); toast('BANNED: THEIR NEW RUNS ARE REFUSED'); loadStats(); showRun(r.id); render(); }));
+  }
+  pl.appendChild(acts);
+  card.appendChild(pl);
+}
+
+if (key) {
+  api('/admin/api/stats').then(open).catch(() => {});
+} else {
+  $('key').focus();
+}
+</script>
+</body>
+</html>
